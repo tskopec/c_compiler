@@ -1,3 +1,7 @@
+# zda se ze Types::Algebraic nefachci kdyz by tohle bylo ve vlastnim packagi, takze je to v main a z jinych packagu se typy volaji s prefixem :: 
+# (ale ne v match with(...) ..)
+# TODO vymyslet nejak jinak?
+
 use strict;
 use warnings;
 use feature qw(say isa state);

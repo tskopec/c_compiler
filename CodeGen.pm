@@ -1,31 +1,30 @@
+package CodeGen;
 use strict;
 use warnings;
 use feature qw(say);
 use Types::Algebraic;
-
-require "./Types.pm";
 
 
 sub translate_to_ASM {
 	my $node = shift;
 	match ($node) {
 		with (Program $declarations) {
-			return AsmProgram([ map { translate_to_ASM($_) } @$declarations ]);
+			return ::AsmProgram([ map { translate_to_ASM($_) } @$declarations ]);
 		}
 		with (FunctionDeclaration $name $body) {
-			return AsmFunction(
+			return ::AsmFunction(
 				$name,
 			   	[ map { translate_to_ASM($_) } @$body ]
 			);
 		}
 		with (Return $exp) {
 			return (
-				Mov(translate_to_ASM($exp), Register()),
-			   	Ret()
+				::Mov(translate_to_ASM($exp), ::Register()),
+			   	::Ret()
 			);
 		}
 		with (ConstantExp $val) {
-			return Imm($val);
+			return ::Imm($val);
 		}
 	}
 }

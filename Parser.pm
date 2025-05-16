@@ -1,9 +1,8 @@
+package Parser;
 use strict;
 use warnings;
 use feature qw(say);
-
 use Types::Algebraic;
-require "./Types.pm";
 
 my @TOKENS;
 
@@ -14,7 +13,7 @@ sub parse {
 
 sub parse_program {
 	my $func = parse_function();	
-	return Program([$func]);
+	return ::Program([$func]);
 }
 
 sub parse_function {
@@ -25,20 +24,20 @@ sub parse_function {
 	expect('Symbol', ')', '{');
 	my $body = parse_statement();
 	expect('Symbol', '}');
-	return FunctionDeclaration($name, [$body]);
+	return ::FunctionDeclaration($name, [$body]);
 }
 
 sub parse_statement {
 	expect('Keyword', 'return');	
 	my $ret_val = parse_expr();
 	expect('Symbol', ';');
-	return Return($ret_val);
+	return ::Return($ret_val);
 }
 
 sub parse_expr {
 	my $token = shift @TOKENS;
 	match ($token) {
-		with (Constant $val) { return ConstantExp($val) }
+		with (Constant $val) { return ::ConstantExp($val) }
 		default { die "unexpected token: $token" }
 	}
 }
