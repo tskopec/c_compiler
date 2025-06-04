@@ -12,8 +12,11 @@ sub parse {
 }
 
 sub parse_program {
-	my $func = parse_function();	
-	return ::Program([$func]);
+	my @fns;
+	while (@TOKENS) {
+		push @fns, parse_function();
+	}
+	return ::Program([@fns]);
 }
 
 sub parse_function {
@@ -38,6 +41,20 @@ sub parse_expr {
 	my $token = shift @TOKENS;
 	match ($token) {
 		with (Constant $val) { return ::ConstantExp($val) }
+		with (UnOp $op) { 
+			my $op_node = $op eq '-' ? ::Negate()
+						: $op eq '~' ? ::Complement()
+					   	: die "unknown op $op";
+		   	return ::Unary($op_node, parse_expr())
+	   	}
+		with (Symbol $char) {
+			if ($char eq '(') {
+				my $inner = parse_expr();
+				expect("Symbol", ")");
+				return $inner;
+			} 
+			die "unexpected symbol $char";
+		}
 		default { die "unexpected token: $token" }
 	}
 }
@@ -60,6 +77,10 @@ sub expect {
 		}
 		return $found unless @values;
 	}
+}
+
+sub peek {
+	return $TOKENS[0];
 }
 
 1;

@@ -8,17 +8,22 @@ use lib ".";
 use Types;
 use Lexer;
 use Parser;
+use TAC;
 use CodeGen;
+
 
 # ARGS
 my $src_path;
 my $target_phase = '';
+my $debug = 0;
 foreach (@ARGV) {
 	if (/\.c$/) {
 		$src_path = $_;
-	} elsif (/^--(lex|parse|codegen)$/) {
+	} elsif (/^--(lex|parse|tac|codegen)$/) {
 		$target_phase = $1;
-	} 
+	} elsif (/^-d$/) {
+		$debug = 1;
+	}
 }
 
 # PREPROCESS
@@ -28,22 +33,24 @@ qx/gcc -E -P $src_path -o $prep_file/;
 # LEX
 my $src_str = read_file($prep_file);
 my @tokens = Lexer::tokenize($src_str);
-if ($target_phase eq 'lex') {
-	say $_ for (@tokens);
-	exit 0;
-}	
+say(join("\n", @tokens) . "\n") if $debug;
+exit 0 if ($target_phase eq 'lex'); 	
+
 # PARSE
 my $ast = Parser::parse(@tokens);
-if ($target_phase eq 'parse') {
-	print_AST($ast);
-	exit 0;
-}
+print_AST($ast) if $debug;
+exit 0 if ($target_phase eq 'parse');
+
+# TAC
+my $tac = TAC::emit_TAC($ast);
+print_AST($tac) if $debug;
+exit 0 if ($target_phase eq 'tac');
+
 # ASSEMBLY GEN
-my $asm = CodeGen::translate_to_ASM($ast);
-if ($target_phase eq 'codegen') {
-	print_AST($asm);
-	exit 0;
-}
+my $asm = CodeGen::translate_to_ASM($tac);
+print_AST($asm) if $debug;
+exit 0 if ($target_phase eq 'codegen');
+
 # EMIT CODE
 my $asm_file = $src_path =~ s/c$/s/r;
 my $code = CodeGen::emit_code($asm);
@@ -53,10 +60,9 @@ write_file($asm_file, $code);
 my $bin_file = $src_path =~ s/\.c$//r;
 qx/gcc $asm_file -o $bin_file/;
 
-
+# CLEANUP
 END {
-	# CLEANUP
-	qx/rm $prep_file/ if defined $prep_file;
-	qx/rm $asm_file/ if defined $asm_file;
+	no warnings "uninitialized";
+	unlink($prep_file, $asm_file); 
 	say "compiler done";
 }

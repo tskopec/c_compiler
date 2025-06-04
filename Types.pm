@@ -4,7 +4,7 @@
 
 use strict;
 use warnings;
-use feature qw(say isa state);
+use feature qw(say isa current_sub);
 use Types::Algebraic;
 
 # Tokens
@@ -12,7 +12,8 @@ data Token =
 	Identifier :name
 	| Constant :val
 	| Keyword :word
-	| Symbol :char;
+	| Symbol :char
+	| UnOp :op;
 
 
 # AST
@@ -25,19 +26,39 @@ data Statement =
 	Return :Expression 
 	| If :Expression_cond :Statement_then :Statement_else;
 data Expression = 
-	ConstantExp :value;
+	ConstantExp :value
+	| Unary :UnaryOperator :Expression;
+data UnaryOperator = 
+	Complement
+	| Negate;
+
+
+# TAC AST
+data TAC_Program = 
+	TAC_Program :Declarations;
+data TAC_Declaration = 
+	TAC_Function :identifier :Instructions;
+data TAC_Instruction =
+	TAC_Return :Value
+	| TAC_Unary :UnaryOperator :Value_src :Value_dst;
+data TAC_Value =
+	TAC_Constant :int
+	| TAC_Variable :name;
+data TAC_UnaryOperator = 
+	TAC_Complement
+	| TAC_Negate;
 
 
 # Assembly AST
-data AsmProgram =
-	AsmProgram :Declarations;
-data AsmDeclaration =
-	AsmFunction :name :Instructions;
-data Instruction =
-	Mov :Operand_src :Operand_dst
-	| Ret;
-data Operand = 
-	Imm :int 
+data ASM_Program =
+	ASM_Program :Declarations;
+data ASM_Declaration =
+	ASM_Function :name :Instructions;
+data ASM_Instruction =
+	ASM_Move :Operand_src :Operand_dst
+	| ASM_Return;
+data ASM_Operand = 
+	ASM_Imm :int 
 	| Register;
 
 
@@ -45,22 +66,26 @@ data Operand =
 
 
 sub print_AST {
-	state $tab = "    ";
-	my ($node, $indent) = @_;
-	if ($node isa Types::Algebraic::ADT) {
-		say(($tab x $indent) . $node->{tag});
-		for my $val ($node->{values}->@*) {
-			print_AST($val, $indent + 1);
+	my $tab = "    ";
+	my $print_node = sub {
+		my ($node, $indent) = @_;
+		if ($node isa Types::Algebraic::ADT) {
+			say(($tab x $indent) . $node->{tag});
+			for my $val ($node->{values}->@*) {
+				__SUB__->($val, $indent + 1);
+			}
+		} elsif (ref($node) eq 'ARRAY') {
+			for my $val ($node->@*) {
+				__SUB__->($val, $indent);
+			}
+		} elsif (ref($node) eq 'HASH') {
+			die "todo print hash";
+		} else {
+			say(($tab x $indent) . $node);
 		}
-	} elsif (ref($node) eq 'ARRAY') {
-		for my $val ($node->@*) {
-			print_AST($val, $indent);
-		}
-	} elsif (ref($node) eq 'HASH') {
-		die "todo print hash";
-	} else {
-		say(($tab x $indent) . $node);
-	}
+	};
+	$print_node->(+shift, 0);
+	print "\n";
 }
 1;
 

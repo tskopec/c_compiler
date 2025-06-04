@@ -10,8 +10,11 @@ sub tokenize {
 	while ($src) {
 		$src =~ s/^\s+//;
 		last unless $src;
-		if ($src =~ /^(;|\(|\)|\{|\}).*/) {
+		if ($src =~ /^([;}{)(]).*/) {
 			push(@tokens, ::Symbol($1));
+		}
+		elsif ($src =~ /^(--|-|~).*/) {
+			push(@tokens, ::UnOp($1));
 		}
 		elsif ($src =~ /^(int|void|return)\b.*/) {
 			push(@tokens, ::Keyword($1));
