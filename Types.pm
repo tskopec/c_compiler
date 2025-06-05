@@ -55,11 +55,21 @@ data ASM_Program =
 data ASM_Declaration =
 	ASM_Function :name :Instructions;
 data ASM_Instruction =
-	ASM_Move :Operand_src :Operand_dst
-	| ASM_Return;
+	ASM_Mov :Operand_src :Operand_dst
+	| ASM_Unary :UnaryOperator :Operand
+	| ASM_AllocateStack :bytes
+	| ASM_Ret;
+data AMS_UnaryOperator = 
+	ASM_Neg
+	| ASM_Not;
 data ASM_Operand = 
 	ASM_Imm :int 
-	| Register;
+	| ASM_Reg :Reg
+	| ASM_Pseudo :id
+	| ASM_Stack :offset;
+data ASM_Register =
+	AX
+	| R10;
 
 
 
