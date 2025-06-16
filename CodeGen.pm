@@ -1,7 +1,8 @@
 package CodeGen;
 use strict;
 use warnings;
-use feature qw(say);
+use feature qw(say isa);
+use List::Util qw(min);
 use Types::Algebraic;
 
 
@@ -43,38 +44,114 @@ sub convert_unop {
 	}	
 }
 
-sub emit_code {
-	#	my $node = shift;
-	#	match ($node) {
-	#		with (AsmProgram $declarations) {
-	#			my $code = join "", map { emit_code($_) } @$declarations;
-	#			$code .= '.section .note.GNU-stack,"",@progbits' . "\n"; 
-	#			return $code;
-	#		}
-	#		with (AsmFunction $name $instructions) {
-	#			my $code = "	.globl $name\n";
-	#			$code .= "$name:\n";
-	#			$code .= join "", map { "\t" . emit_code($_) } @$instructions;
-	#			return $code;
-	#		}
-	#		with (AsmMove $src $dest) {
-	#			return "movl " . emit_code($src) . ", " . emit_code($dest) . "\n";
-	#		}
-	#		with (AsmReturn) {
-	#			return "ret\n";
-	#		}
-	#		with (AsmImm $val) {
-	#			return "\$$val";
-	#		}
-	#		with (Register) {
-	#			return "%eax";
-	#		}
-	#		default {
-	#			die "unknown asm node $node";
-	#		}
-	#	}
+sub fix_up {
+	my $program = shift;
+	for my $declaration ($program->{values}[0]->@*) {
+		match ($declaration) {
+			with (ASM_Function $name $instructions) {
+				replace_pseudo($declaration);
+				fix_movs($declaration);
+			}
+		}
+	}
 }
 
+sub replace_pseudo {
+	my $function = shift;
+	my $offsets = {};
+	my $process_node;
+	$process_node = sub {
+		my $node = shift;
+		match ($node) {
+			with (ASM_Pseudo $id) {
+				unless (exists $offsets->{$id}) {
+					$offsets->{$id} = -4 * (scalar(%$offsets) + 1);
+				}
+				return ::ASM_Stack($offsets->{$id});
+			}
+			default { 
+				for my $val ($node->{values}->@*) {
+					if ($val isa Types::Algebraic::ADT) {
+						$val = $process_node->($val);
+					} elsif (ref($val) eq 'ARRAY') {
+						$val = [ map { $process_node->($_) } @$val ];
+					}
+				}
+				return $node;
+			}
+		}
+	};
+	$process_node->($function);
+	unshift($function->{values}[1]->@*, ::ASM_AllocateStack(abs min(values %$offsets)));
+}
 
+sub fix_movs {
+	my $function = shift;
+	my $fix = sub {
+		my $instruction = shift;
+		match ($instruction) {
+			with (ASM_Mov $src $dst) {
+				if ($src->{tag} eq 'ASM_Stack' && $dst->{tag} eq 'ASM_Stack') {
+					return (::ASM_Mov($src, ::ASM_Reg(::R10())), ::ASM_Mov(::ASM_Reg(::R10()), $dst));
+				} else {
+					return $instruction;
+				}
+			} 
+			default { return $instruction; }
+		}	
+	};
+	$function->{values}[1] = [ map { $fix->($_) } $function->{values}[1]->@* ];
+}
 
+sub emit_code {
+	my $node = shift;
+	match ($node) {
+		with (ASM_Program $declarations) {
+			my $code = join "", map { emit_code($_) } @$declarations;
+			$code .= '.section .note.GNU-stack,"",@progbits' . "\n"; 
+			return $code;
+		}
+		with (ASM_Function $name $instructions) {
+			my $code = "	.globl $name\n";
+			$code .= "$name:\n";
+			$code .= "    pushq %rbp\n";
+			$code .= "    movq %rsp %rbp\n";
+			$code .= join "", map { "    " . emit_code($_) } @$instructions;
+			return $code;
+		} 
+		with (ASM_Mov $src $dst) {
+			return "movl " . emit_code($src) . ", " . emit_code($dst) . "\n";
+		}
+		with (ASM_Ret) {
+			my $code = "movq %rbp, %rsp\n";
+			$code .=   "    popq %rbp\n";
+			$code .=   "    ret\n";
+			return $code;
+		}
+		with (ASM_Unary $operator $operand) {
+			return emit_code($operator) . " " . emit_code($operand) . "\n";
+		}
+		with (ASM_AllocateStack $bytes) {
+			return "subq \$$bytes, %rsp\n";
+		}
+		with (ASM_Neg) {
+			return "negl";
+		}
+		with (ASM_Not) {
+			return "notl";
+		}
+		with (ASM_Reg $reg) {
+			if ($reg->{tag} eq 'AX') { return "%eax" }
+			elsif ($reg->{tag} eq 'R10') {return "%r10d" }
+			else { die "unknown register $reg" }
+		}
+		with (ASM_Stack $offset) {
+			return "$offset(%rbp)";
+		}
+		with (ASM_Imm $val) {
+			return "\$$val";
+		}
+		default { die "unknown asm node $node"}
+	}
+}
 1;

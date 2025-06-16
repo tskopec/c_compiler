@@ -59,7 +59,7 @@ data ASM_Instruction =
 	| ASM_Unary :UnaryOperator :Operand
 	| ASM_AllocateStack :bytes
 	| ASM_Ret;
-data AMS_UnaryOperator = 
+data ASM_UnaryOperator = 
 	ASM_Neg
 	| ASM_Not;
 data ASM_Operand = 
@@ -85,11 +85,10 @@ sub print_AST {
 				__SUB__->($val, $indent + 1);
 			}
 		} elsif (ref($node) eq 'ARRAY') {
+			say(($tab x $indent) . 'array:');
 			for my $val ($node->@*) {
-				__SUB__->($val, $indent);
+				__SUB__->($val, $indent + 1);
 			}
-		} elsif (ref($node) eq 'HASH') {
-			die "todo print hash";
 		} else {
 			say(($tab x $indent) . $node);
 		}

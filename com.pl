@@ -48,7 +48,12 @@ exit 0 if ($target_phase eq 'tac');
 
 # ASSEMBLY GEN
 my $asm = CodeGen::translate_to_ASM($tac);
-print_AST($asm) if $debug;
+CodeGen::fix_up($asm);
+print_AST($asm);
+
+my $code = CodeGen::emit_code($asm);
+say $code;
+
 exit 0 if ($target_phase eq 'codegen');
 
 # EMIT CODE
