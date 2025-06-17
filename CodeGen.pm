@@ -52,14 +52,14 @@ sub fix_up {
 				replace_pseudo($declaration);
 				fix_movs($declaration);
 			}
+			default { die "unknown declaration $declaration" }
 		}
 	}
 }
 
 sub replace_pseudo {
 	my $function = shift;
-	my $offsets = {};
-	my $process_node;
+	my $offsets = {}, my $process_node;
 	$process_node = sub {
 		my $node = shift;
 		match ($node) {
@@ -82,7 +82,8 @@ sub replace_pseudo {
 		}
 	};
 	$process_node->($function);
-	unshift($function->{values}[1]->@*, ::ASM_AllocateStack(abs min(values %$offsets)));
+	my ($name, $instructions) = ::extract('ASM_Function', $function);
+	unshift(@$instructions, ::ASM_AllocateStack(abs min(values %$offsets)));
 }
 
 sub fix_movs {
@@ -100,7 +101,8 @@ sub fix_movs {
 			default { return $instruction; }
 		}	
 	};
-	$function->{values}[1] = [ map { $fix->($_) } $function->{values}[1]->@* ];
+	my ($name, $instructions) = ::extract('ASM_Function', $function);
+	$function->{values}[1] = [ map { $fix->($_) } @$instructions ];
 }
 
 sub emit_code {
@@ -112,33 +114,33 @@ sub emit_code {
 			return $code;
 		}
 		with (ASM_Function $name $instructions) {
-			my $code = "	.globl $name\n";
+			my $code = "\t.globl $name\n";
 			$code .= "$name:\n";
-			$code .= "    pushq %rbp\n";
-			$code .= "    movq %rsp %rbp\n";
-			$code .= join "", map { "    " . emit_code($_) } @$instructions;
+			$code .= "\tpushq %rbp\n";
+			$code .= "\tmovq %rsp, %rbp\n";
+			$code .= join "", map { emit_code($_) } @$instructions;
 			return $code;
 		} 
 		with (ASM_Mov $src $dst) {
-			return "movl " . emit_code($src) . ", " . emit_code($dst) . "\n";
+			return "\tmovl " . emit_code($src) . ", " . emit_code($dst) . "\n";
 		}
 		with (ASM_Ret) {
-			my $code = "movq %rbp, %rsp\n";
-			$code .=   "    popq %rbp\n";
-			$code .=   "    ret\n";
+			my $code = "\tmovq %rbp, %rsp\n";
+			$code .=   "\tpopq %rbp\n";
+			$code .=   "\tret\n";
 			return $code;
 		}
 		with (ASM_Unary $operator $operand) {
 			return emit_code($operator) . " " . emit_code($operand) . "\n";
 		}
 		with (ASM_AllocateStack $bytes) {
-			return "subq \$$bytes, %rsp\n";
+			return "\tsubq \$$bytes, %rsp\n";
 		}
 		with (ASM_Neg) {
-			return "negl";
+			return "\tnegl";
 		}
 		with (ASM_Not) {
-			return "notl";
+			return "\tnotl";
 		}
 		with (ASM_Reg $reg) {
 			if ($reg->{tag} eq 'AX') { return "%eax" }

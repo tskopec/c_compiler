@@ -72,8 +72,11 @@ data ASM_Register =
 	| R10;
 
 
-
-
+sub extract {
+	my ($expected_tag, $adt) = @_;
+	die($adt->{tag} . " is not $expected_tag") unless $expected_tag eq $adt->{tag};
+	return $adt->{values}->@*;
+}
 
 sub print_AST {
 	my $tab = "    ";
