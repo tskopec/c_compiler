@@ -32,11 +32,35 @@ sub emit_TAC {
 			return $dst;
 		}
 		with (Binary $op $exp1 $exp2) {
-			my $binop = convert_binop($op);
-			my $src1 = emit_TAC($exp1, $instructions);
-			my $src2 = emit_TAC($exp2, $instructions);
 			my $dst = ::TAC_Variable(temp_name());
-			push @$instructions, ::TAC_Binary($binop, $src1, $src2, $dst);
+			if ($op->{tag} eq 'And') {
+				my ($false_label, $end_label) = labels(qw(false end));
+				my $src1 = emit_TAC($exp1, $instructions);
+				push @$instructions, ::TAC_JumpIfZero($src1, $false_label);
+				my $src2 = emit_TAC($exp2, $instructions);
+				push(@$instructions, ::TAC_JumpIfZero($src2, $false_label),
+									 ::TAC_Copy(::TAC_Constant(1), $dst),
+									 ::TAC_Jump($end_label),
+									 ::TAC_Label($false_label),
+									 ::TAC_Copy(::TAC_Constant(0), $dst),
+									 ::TAC_Label($end_label));
+			} elsif ($op->{tag} eq 'Or') {
+				my ($true_label, $end_label) = labels(qw(true end));
+				my $src1 = emit_TAC($exp1, $instructions);
+				push @$instructions, ::TAC_JumpIfNotZero($src1, $true_label);
+				my $src2 = emit_TAC($exp2,  $instructions);
+				push(@$instructions, ::TAC_JumpIfNotZero($src2, $true_label),
+									 ::TAC_Copy(::TAC_Constant(0), $dst),
+									 ::TAC_Jump($end_label),
+									 ::TAC_Label($true_label),
+									 ::TAC_Copy(::TAC_Constant(1), $dst),
+									 ::TAC_Label($end_label));
+			} else {
+				my $binop = convert_binop($op);
+				my $src1 = emit_TAC($exp1, $instructions);
+				my $src2 = emit_TAC($exp2, $instructions);
+				push @$instructions, ::TAC_Binary($binop, $src1, $src2, $dst);
+			}
 			return $dst;
 		}
 	}
@@ -45,28 +69,43 @@ sub emit_TAC {
 # TODO nahradit evalem mozna? nezpomali to?
 sub convert_unop {
 	my $op = shift;
-	match ($op) {
-		with (Complement)	{ return ::TAC_Complement }
-		with (Negate)		{ return ::TAC_Negate }
-		default				{ die "unknown un op $op" }
-	}	
+	state $map = {
+		Complement => ::TAC_Complement(),
+		Negate => ::TAC_Negate(),
+		Not => ::TAC_Not(),
+	};
+	return $map->{$op->{tag}} // die "unknown un op $op";
 }
 
 sub convert_binop {
 	my $op = shift;
-	match ($op) {
-		 with (Add)			{ return ::TAC_Add }
-		 with (Subtract)	{ return ::TAC_Subtract }
-		 with (Multiply)	{ return ::TAC_Multiply }
-		 with (Divide)		{ return ::TAC_Divide }
-		 with (Modulo)		{ return ::TAC_Modulo }
-		 default			{ die "unknown bin op $op" }
-	}
+	state $map = {
+		 Add => ::TAC_Add(),
+		 Subtract => ::TAC_Subtract(),
+		 Multiply => ::TAC_Multiply(),
+		 Divide => ::TAC_Divide(),
+		 Modulo => ::TAC_Modulo(),
+		 And => ::TAC_And(),
+		 Or => ::TAC_Or(),
+		 Equal => ::TAC_Equal(),
+		 NotEqual => ::TAC_NotEqual(),
+		 LessThan => ::TAC_LessThan(),
+		 LessOrEqual => ::TAC_LessOrEqual(),
+		 GreaterThan => ::TAC_GreaterThan(),
+		 GreaterOrEqual => ::TAC_GreaterOrEqual(),
+	};
+	return $map->{$op->{tag}} //  die "unknown bin op $op";
 }
 
 sub temp_name {
 	state $n = 0;
 	return "tmp." . $n++;
+}
+
+sub labels {
+	state $n = 0;
+	$n++;
+	return map { "label_${_}_" . $n } @_;
 }
 
 1;

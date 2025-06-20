@@ -10,6 +10,7 @@ use Lexer;
 use Parser;
 use TAC;
 use CodeGen;
+use Emitter;
 
 
 # ARGS
@@ -54,7 +55,7 @@ exit 0 if ($target_phase eq 'codegen');
 
 # EMIT CODE
 my $asm_file = $src_path =~ s/c$/s/r;
-my $code = CodeGen::emit_code($asm);
+my $code = Emitter::emit_code($asm);
 write_file($asm_file, $code);
  
 

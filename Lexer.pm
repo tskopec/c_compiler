@@ -13,7 +13,7 @@ sub tokenize {
 		if ($src =~ /^([;}{)(]).*/) {
 			push(@tokens, ::Symbol($1));
 		}
-		elsif ($src =~ /^(--|-|\+|\*|\/|%|~).*/) {
+		elsif ($src =~ /^(!=|==|<=|>=|<|>|!|\|\||&&|--|-|\+|\*|\/|%|~).*/) {
 			push(@tokens, ::Operator($1));
 		}
 		elsif ($src =~ /^(int|void|return)\b.*/) {

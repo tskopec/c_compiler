@@ -29,8 +29,8 @@ data Expression =
 	ConstantExp :value
 	| Unary :UnaryOperator :Expression
 	| Binary :BinaryOperator :Expression1 :Expression2;
-data UnaryOperator = Complement | Negate;
-data BinaryOperator = Add | Subtract | Multiply | Divide | Modulo; 
+data UnaryOperator = Complement | Negate | Not;
+data BinaryOperator = Add | Subtract | Multiply | Divide | Modulo | And | Or | Equal | NotEqual | LessThan | LessOrEqual | GreaterThan | GreaterOrEqual ; 
 
 
 # TAC AST
@@ -41,14 +41,19 @@ data TAC_Declaration =
 data TAC_Instruction =
 	TAC_Return :Value
 	| TAC_Unary :UnaryOperator :Value_src :Value_dst
-	| TAC_Binary :BinaryOperator :Value_1 :Value_2 :Value_dst;
+	| TAC_Binary :BinaryOperator :Value_1 :Value_2 :Value_dst
+	| TAC_Copy :Value_src :Value_dst
+	| TAC_Jump :target
+	| TAC_JumpIfZero :Value_cond :target
+	| TAC_JumpIfNotZero :Value_cond :target
+	| TAC_Label :ident;
 data TAC_Value =
 	TAC_Constant :int
 	| TAC_Variable :name;
 data TAC_UnaryOperator = 
-	TAC_Complement | TAC_Negate;
+	TAC_Complement | TAC_Negate | TAC_Not;
 data TAC_BinaryOperator = 
-	TAC_Add | TAC_Subtract | TAC_Multiply | TAC_Divide | TAC_Modulo;
+	TAC_Add | TAC_Subtract | TAC_Multiply | TAC_Divide | TAC_Modulo | TAC_And | TAC_Or | TAC_Equal | TAC_NotEqual | TAC_LessThan | TAC_LessOrEqual | TAC_GreaterThan | TAC_GreaterOrEqual;
 
 
 # Assembly AST
@@ -60,8 +65,13 @@ data ASM_Instruction =
 	ASM_Mov :Operand_src :Operand_dst
 	| ASM_Unary :UnaryOperator :Operand
 	| ASM_Binary :BinaryOperator :Operand1 :Operand2
+	| ASM_Cmp :Operand1 :Operand2
 	| ASM_Idiv :Operand
 	| ASM_Cdq
+	| ASM_Jmp :ident
+	| AMS_JmpCC :Cond :ident
+	| ASM_SetCC :Cond :Operand
+	| ASM_Label :ident
 	| ASM_AllocateStack :bytes
 	| ASM_Ret;
 data ASM_UnaryOperator = 
@@ -73,9 +83,20 @@ data ASM_Operand =
 	| ASM_Reg :Reg
 	| ASM_Pseudo :id
 	| ASM_Stack :offset;
+data AMS_CondCode = 
+	E | NE | G | GE | L | LE;
 data ASM_Register =
 	AX | DX | R10 | R11;
 
+sub select_index {
+	my ($adt, @tags) = @_;
+	my $n = 0;
+	for my $tag (@tags) {
+		return $n if $tag eq $adt->{tag};
+		$n++;
+	}
+	return -1;
+}
 
 sub extract {
 	my ($adt, @possible_tags) = @_;

@@ -1,7 +1,7 @@
 package Parser;
 use strict;
 use warnings;
-use feature qw(say);
+use feature qw(say state);
 use Types::Algebraic;
 
 
@@ -75,25 +75,42 @@ sub parse_identifier {
 
 sub parse_unop {
 	my ($op) = ::extract_or_die(shift, "Operator");
-	return $op eq '-' ? ::Negate()
-		 : $op eq '~' ? ::Complement()
-		 : die "unknown unop $op";
+	state $map = {
+		'-' => ::Negate(),
+		'~' => ::Complement(),
+		'!' => ::Not(),
+	};
+	return $map->{$op} // die "unknown unop $op";
 }
 
 sub parse_binop {
 	my ($op) = ::extract_or_die(shift, "Operator");
-	return $op eq '+' ? ::Add()
-		 : $op eq '-' ? ::Subtract()
-		 : $op eq '*' ? ::Multiply()
-		 : $op eq '/' ? ::Divide()
-		 : $op eq '%' ? ::Modulo()
-		 : die "unknown binop $op";
+	state $map = {
+		'+' => ::Add(),
+		'-' => ::Subtract(),
+		'*' => ::Multiply(),
+		'/' => ::Divide(),
+		'%' => ::Modulo(),
+		'&&' => ::And(),
+		'||' => ::Or(),
+		'==' => ::Equal(),
+		'!=' => ::NotEqual(),
+		'<'  => ::LessThan(),
+		'<=' => ::LessOrEqual(),
+		'>'  => ::GreaterThan(),
+		'>=' => ::GreaterOrEqual(),
+	};
+	return $map->{$op} // die "unknown binop $op";
 }
 
 sub precedence {
 	my $op = shift;
 	return 50 if $op =~ /\*|\/|%/;
 	return 45 if $op =~ /\+|-/;
+	return 35 if $op =~ /<=|>=|<|>|/;
+	return 30 if $op =~ /==|!=/;
+	return 10 if $op eq '&&';
+	return 5  if $op eq '||';
 	die "no precedence defined for $op";
 }
 
