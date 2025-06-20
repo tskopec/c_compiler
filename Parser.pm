@@ -4,6 +4,7 @@ use warnings;
 use feature qw(say);
 use Types::Algebraic;
 
+
 my @TOKENS;
 
 sub parse {
@@ -16,71 +17,106 @@ sub parse_program {
 	while (@TOKENS) {
 		push @fns, parse_function();
 	}
-	return ::Program([@fns]);
+	return ::Program(\@fns);
 }
 
 sub parse_function {
-	expect('Keyword', 'int');
+	expect(['Keyword', 'int']);
 	my $name = parse_identifier();
-	expect('Symbol', '(');
-	expect('Keyword', 'void');
-	expect('Symbol', ')', '{');
+	expect(['Symbol', '('], ['Keyword', 'void'], ['Symbol', ')', '{']);
 	my $body = parse_statement();
-	expect('Symbol', '}');
+	expect(['Symbol', '}']);
 	return ::FunctionDeclaration($name, [$body]);
 }
 
 sub parse_statement {
-	expect('Keyword', 'return');	
-	my $ret_val = parse_expr();
-	expect('Symbol', ';');
+	expect(['Keyword', 'return']);	
+	my $ret_val = parse_expr(0);
+	expect(['Symbol', ';']);
 	return ::Return($ret_val);
 }
 
-sub parse_expr {
+sub parse_factor {
 	my $token = shift @TOKENS;
 	match ($token) {
 		with (Constant $val) { return ::ConstantExp($val) }
-		with (UnOp $op) { 
-			my $op_node = $op eq '-' ? ::Negate()
-						: $op eq '~' ? ::Complement()
-					   	: die "unknown op $op";
-		   	return ::Unary($op_node, parse_expr())
-	   	}
+		with (Operator $op) {
+			my $op_node = parse_unop($token);
+			return ::Unary($op_node, parse_factor());
+		}
 		with (Symbol $char) {
 			if ($char eq '(') {
-				my $inner = parse_expr();
-				expect("Symbol", ")");
+				my $inner = parse_expr(0);
+				expect(["Symbol", ")"]);
 				return $inner;
-			} 
-			die "unexpected symbol $char";
+			}
 		}
-		default { die "unexpected token: $token" }
 	}
+	die "cant parse $token as factor";
+}
+
+
+sub parse_expr {
+	my $min_prec = shift;
+	my $left = parse_factor();
+	while (my ($op) = ::extract(peek(), 'Operator')) {
+		last if precedence($op) < $min_prec;
+		my $op_node = parse_binop(+shift @TOKENS);
+		my $right = parse_expr(precedence($op) + 1);
+		$left = ::Binary($op_node, $left, $right);
+	}
+	return $left;
 }
 
 sub parse_identifier {
-	my $iden = expect("Identifier");
+	my $iden = expect(["Identifier"]);
 	return $iden->{values}[0];
 }
 
-sub expect {
-	my ($type, @values) = @_;
-	while(1) {
-		my $found = shift @TOKENS;
-		if ($found->{tag} ne $type) {
-			die "syntax error: expected type $type found " . $found->{tag};
-		} 
-		my $expected_val = shift @values // return $found;
-		if ($expected_val ne $found->{values}[0]) {
-			die "syntax error: expected value $expected_val found " . $found->{values}[0];
-		}
-		return $found unless @values;
-	}
+sub parse_unop {
+	my ($op) = ::extract_or_die(shift, "Operator");
+	return $op eq '-' ? ::Negate()
+		 : $op eq '~' ? ::Complement()
+		 : die "unknown unop $op";
+}
+
+sub parse_binop {
+	my ($op) = ::extract_or_die(shift, "Operator");
+	return $op eq '+' ? ::Add()
+		 : $op eq '-' ? ::Subtract()
+		 : $op eq '*' ? ::Multiply()
+		 : $op eq '/' ? ::Divide()
+		 : $op eq '%' ? ::Modulo()
+		 : die "unknown binop $op";
+}
+
+sub precedence {
+	my $op = shift;
+	return 50 if $op =~ /\*|\/|%/;
+	return 45 if $op =~ /\+|-/;
+	die "no precedence defined for $op";
 }
 
 sub peek {
 	return $TOKENS[0];
+}
+
+sub expect {
+	my $found;
+	for my $expected (@_) {
+		my ($exp_tag, @exp_values) = @$expected;
+		for (my $i = 0; $i <= @exp_values; $i++) {
+			$found = shift @TOKENS;
+			if ($found->{tag} ne $exp_tag) {
+				die "syntax error: expected exp_tag $exp_tag found " . $found->{tag};
+			}
+			my $exp_value = shift @exp_values // next;
+			if ($found->{values}[0] ne $exp_value) {
+				die "syntax error: expected exp_value $exp_value found " . $found->{values}[0];
+			}
+		}
+	}
+	return $found;
 }
 
 1;

@@ -31,18 +31,38 @@ sub emit_TAC {
 			push @$instructions, ::TAC_Unary($unop, $src, $dst);	
 			return $dst;
 		}
+		with (Binary $op $exp1 $exp2) {
+			my $binop = convert_binop($op);
+			my $src1 = emit_TAC($exp1, $instructions);
+			my $src2 = emit_TAC($exp2, $instructions);
+			my $dst = ::TAC_Variable(temp_name());
+			push @$instructions, ::TAC_Binary($binop, $src1, $src2, $dst);
+			return $dst;
+		}
 	}
 }
 
+# TODO nahradit evalem mozna? nezpomali to?
 sub convert_unop {
 	my $op = shift;
 	match ($op) {
 		with (Complement)	{ return ::TAC_Complement }
 		with (Negate)		{ return ::TAC_Negate }
-		default				{ die "unknown op $op" }
+		default				{ die "unknown un op $op" }
 	}	
 }
 
+sub convert_binop {
+	my $op = shift;
+	match ($op) {
+		 with (Add)			{ return ::TAC_Add }
+		 with (Subtract)	{ return ::TAC_Subtract }
+		 with (Multiply)	{ return ::TAC_Multiply }
+		 with (Divide)		{ return ::TAC_Divide }
+		 with (Modulo)		{ return ::TAC_Modulo }
+		 default			{ die "unknown bin op $op" }
+	}
+}
 
 sub temp_name {
 	state $n = 0;

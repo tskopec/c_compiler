@@ -13,7 +13,7 @@ data Token =
 	| Constant :val
 	| Keyword :word
 	| Symbol :char
-	| UnOp :op;
+	| Operator :op;
 
 
 # AST
@@ -27,10 +27,10 @@ data Statement =
 	| If :Expression_cond :Statement_then :Statement_else;
 data Expression = 
 	ConstantExp :value
-	| Unary :UnaryOperator :Expression;
-data UnaryOperator = 
-	Complement
-	| Negate;
+	| Unary :UnaryOperator :Expression
+	| Binary :BinaryOperator :Expression1 :Expression2;
+data UnaryOperator = Complement | Negate;
+data BinaryOperator = Add | Subtract | Multiply | Divide | Modulo; 
 
 
 # TAC AST
@@ -40,13 +40,15 @@ data TAC_Declaration =
 	TAC_Function :identifier :Instructions;
 data TAC_Instruction =
 	TAC_Return :Value
-	| TAC_Unary :UnaryOperator :Value_src :Value_dst;
+	| TAC_Unary :UnaryOperator :Value_src :Value_dst
+	| TAC_Binary :BinaryOperator :Value_1 :Value_2 :Value_dst;
 data TAC_Value =
 	TAC_Constant :int
 	| TAC_Variable :name;
 data TAC_UnaryOperator = 
-	TAC_Complement
-	| TAC_Negate;
+	TAC_Complement | TAC_Negate;
+data TAC_BinaryOperator = 
+	TAC_Add | TAC_Subtract | TAC_Multiply | TAC_Divide | TAC_Modulo;
 
 
 # Assembly AST
@@ -57,24 +59,35 @@ data ASM_Declaration =
 data ASM_Instruction =
 	ASM_Mov :Operand_src :Operand_dst
 	| ASM_Unary :UnaryOperator :Operand
+	| ASM_Binary :BinaryOperator :Operand1 :Operand2
+	| ASM_Idiv :Operand
+	| ASM_Cdq
 	| ASM_AllocateStack :bytes
 	| ASM_Ret;
 data ASM_UnaryOperator = 
-	ASM_Neg
-	| ASM_Not;
+	ASM_Neg | ASM_Not;
+data ASM_BinaryOperator = 
+	ASM_Add | ASM_Sub | ASM_Mult;
 data ASM_Operand = 
 	ASM_Imm :int 
 	| ASM_Reg :Reg
 	| ASM_Pseudo :id
 	| ASM_Stack :offset;
 data ASM_Register =
-	AX
-	| R10;
+	AX | DX | R10 | R11;
 
 
 sub extract {
-	my ($expected_tag, $adt) = @_;
-	die($adt->{tag} . " is not $expected_tag") unless $expected_tag eq $adt->{tag};
+	my ($adt, @possible_tags) = @_;
+	for my $tag (@possible_tags) {
+		return $adt->{values}->@* if ($tag eq $adt->{tag});
+	}
+	return ();
+}
+
+sub extract_or_die {
+	my ($adt, $expected_tag) = @_;
+	die($adt->{tag} . " neni $expected_tag") unless $expected_tag eq $adt->{tag};
 	return $adt->{values}->@*;
 }
 
