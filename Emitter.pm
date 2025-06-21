@@ -1,4 +1,4 @@
-package CodeGen;
+package Emitter;
 use strict;
 use warnings;
 use feature qw(say);
@@ -6,7 +6,7 @@ use Types::Algebraic;
 
 
 sub emit_code {
-	my $node = shift;
+	my ($node, $parent) = @_;
 	match ($node) {
 		with (ASM_Program $declarations) {
 			my $code = join "", map { emit_code($_) } @$declarations;
@@ -45,6 +45,21 @@ sub emit_code {
 		with (ASM_AllocateStack $bytes) {
 			return "\tsubq \$$bytes, %rsp\n";
 		}
+		with (ASM_Cmp $a $b) {
+			return "\tcmpl " . emit_code($a) . ", " . emit_code($b) . "\n";
+		}
+		with (ASM_Jmp $label) {
+			return "\tjmp .L$label\n";
+		}
+		with (ASM_JmpCC $cond $label) {
+			return "\tj" . lc($cond->{tag}) . " .L$label\n";
+		}
+		with (ASM_SetCC $cond $operand) {
+			return "\tset" . lc($cond->{tag}) . " " . emit_code($operand, $node) . "\n";
+		}
+		with (ASM_Label $ident) {
+			return ".L$ident:\n";
+		}
 		with (ASM_Neg) {
 			return "\tnegl";
 		}
@@ -61,11 +76,12 @@ sub emit_code {
 			return "\timull";
 		}
 		with (ASM_Reg $reg) {
-			if ($reg->{tag} eq 'AX') { return "%eax" }
-			elsif ($reg->{tag} eq 'DX') { return "%edx" }
-			elsif ($reg->{tag} eq 'R10') { return "%r10d" }
-			elsif ($reg->{tag} eq 'R11') { return "%r11d" }
-			else { die "unknown register $reg" }
+			my $one_byte = $parent->{tag} eq 'ASM_SetCC';
+			if	  ($reg->{tag} eq 'AX')	 { return $one_byte ? "%al"   : "%eax"; }
+			elsif ($reg->{tag} eq 'DX')  { return $one_byte ? "%dl"   : "%edx"; }
+			elsif ($reg->{tag} eq 'R10') { return $one_byte ? "%r10b" : "%r10d"; }
+			elsif ($reg->{tag} eq 'R11') { return $one_byte ? "%r11b" : "%r11d"; }
+			else { die "unknown register $reg"; }
 		}
 		with (ASM_Stack $offset) {
 			return "$offset(%rbp)";
@@ -73,7 +89,7 @@ sub emit_code {
 		with (ASM_Imm $val) {
 			return "\$$val";
 		}
-		default { die "unknown asm node $node"}
+		default { die "unknown asm node $node"; }
 	}
 }
 

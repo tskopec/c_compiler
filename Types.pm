@@ -69,7 +69,7 @@ data ASM_Instruction =
 	| ASM_Idiv :Operand
 	| ASM_Cdq
 	| ASM_Jmp :ident
-	| AMS_JmpCC :Cond :ident
+	| ASM_JmpCC :Cond :ident
 	| ASM_SetCC :Cond :Operand
 	| ASM_Label :ident
 	| ASM_AllocateStack :bytes
@@ -88,7 +88,10 @@ data AMS_CondCode =
 data ASM_Register =
 	AX | DX | R10 | R11;
 
-sub select_index {
+
+
+
+sub index_of_in {
 	my ($adt, @tags) = @_;
 	my $n = 0;
 	for my $tag (@tags) {

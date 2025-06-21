@@ -5,7 +5,7 @@ use feature qw(say isa);
 use List::Util qw(min);
 use Types::Algebraic;
 
-
+### FIRST PASS ###
 sub translate_to_ASM {
 	my $node = shift;
 	match ($node) {
@@ -23,19 +23,24 @@ sub translate_to_ASM {
 		}
 		with (TAC_Unary $op $src $dst) {
 			my $asm_dst = translate_to_ASM($dst);
+			if ($op->{tag} eq 'TAC_Not') {
+				return (::ASM_Cmp(::ASM_Imm(0), translate_to_ASM($src)),
+						::ASM_Mov(::ASM_Imm(0), $asm_dst),
+						::ASM_SetCC(::E(), $asm_dst));
+			}
 			return (::ASM_Mov(translate_to_ASM($src), $asm_dst),
 					::ASM_Unary(convert_unop($op), $asm_dst));
 		}
 		with (TAC_Binary $op $src1 $src2 $dst) {
 			my $asm_dst = translate_to_ASM($dst);
-			if ((my $is_div = $op->{tag} eq 'TAC_Divide') || $op->{tag} eq 'TAC_Modulo') {
+			if (-1 != (my $i = ::index_of_in($op, qw(TAC_Divide TAC_Modulo)))) {
 				return (::ASM_Mov(translate_to_ASM($src1), ::ASM_Reg(::AX())),
 						::ASM_Cdq(),
 						::ASM_Idiv(translate_to_ASM($src2)),
-						::ASM_Mov(::ASM_Reg($is_div ? ::AX() : ::DX()), $asm_dst));
-			} elsif((my $i = ::select_index($op, qw(TAC_Equal TAC_NotEqual TAC_LessThan TAC_LessOrEqual TAC_GreaterThan TAC_GreaterOrEqual))) != -1) {
+						::ASM_Mov(::ASM_Reg((::AX(), ::DX())[$i]), $asm_dst));
+			} elsif (-1 != (my $i = ::index_of_in($op, qw(TAC_Equal TAC_NotEqual TAC_LessThan TAC_LessOrEqual TAC_GreaterThan TAC_GreaterOrEqual)))) {
 				return (::ASM_Cmp(translate_to_ASM($src1), translate_to_ASM($src2)),
-						::ASM_Mov(ASM_Imm(0), $asm_dst),
+						::ASM_Mov(::ASM_Imm(0), $asm_dst),
 						::ASM_SetCC((::E(), ::NE(), ::L(), ::LE(), ::G(), ::GE())[$i], $asm_dst));
 			} else {
 				return (::ASM_Mov(translate_to_ASM($src1), $asm_dst),
@@ -44,11 +49,20 @@ sub translate_to_ASM {
 		}
 		with (TAC_JumpIfZero $val $target) {
 			return (::ASM_Cmp(::ASM_Imm(0), translate_to_ASM($val)),
-					::ASM_JumpCC(::E(), translate_to_ASM($target)));
+					::ASM_JmpCC(::E(), $target));
 		}
 		with (TAC_JumpIfNotZero $val $target) {
 			return (::ASM_Cmp(::ASM_Imm(0), translate_to_ASM($val)),
-					::ASM_JumpCC(::NE(), translate_to_ASM($target)));
+					::ASM_JmpCC(::NE(), $target));
+		}
+		with (TAC_Jump $target) {
+			return ::ASM_Jmp($target);
+		}
+		with (TAC_Label $ident) {
+			return ::ASM_Label($ident);
+		}
+		with (TAC_Copy $src $dst) {
+			return ::ASM_Mov(translate_to_ASM($src), translate_to_ASM($dst));
 		}
 		with (TAC_Constant $int) {
 			return ::ASM_Imm($int);
@@ -79,6 +93,8 @@ sub convert_binop {
 	}	
 }
 
+
+### SECOND PASS ###
 sub fix_up {
 	my $program = shift;
 	for my $declaration ($program->{values}[0]->@*) {
@@ -142,6 +158,14 @@ sub fix_instr {
 			if ($src->{tag} eq 'ASM_Stack' && $dst->{tag} eq 'ASM_Stack') {
 				return (::ASM_Mov($src, ::ASM_Reg(::R10())),
 						::ASM_Mov(::ASM_Reg(::R10()), $dst));
+			}
+		} elsif (my ($src, $dst) = ::extract($instruction, 'ASM_Cmp')) {
+			if ($src->{tag} eq 'ASM_Stack' && $dst->{tag} eq 'ASM_Stack') {
+				return (::ASM_Mov($src, ::ASM_Reg(::R10())),
+						::ASM_Cmp(::ASM_Reg(::R10()), $dst));
+			} elsif ($dst->{tag} eq 'ASM_Imm') {
+				return (::ASM_Mov($dst, ::ASM_Reg(::R11())),
+						::ASM_Cmp($src, ::ASM_Reg(::R11())));
 			}
 		}
 		elsif (my ($operand) = ::extract($instruction, 'ASM_Idiv')) {
