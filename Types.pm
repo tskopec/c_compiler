@@ -15,22 +15,29 @@ data Token =
 	| Symbol :char
 	| Operator :op;
 
-
 # AST
-data Program = 
-	Program :Declarations;
-data Declaration = 
-	FunctionDeclaration :name :Statement_body
-	| VariableDeclaration :name;
+data _Program = 
+	Program :Definitions;
+data Definition = 
+	Function :name :BlockItems_body;
+data BlockItem =
+	S :Statement
+	| D :Declaration;
+data _Declaration =
+	Declaration :name :Expression_initializer;
 data Statement = 
 	Return :Expression 
+	| Expression :Expression
+	| Null
 	| If :Expression_cond :Statement_then :Statement_else;
-data Expression = 
+data _Expression = 
 	ConstantExp :value
+	| Var :ident
 	| Unary :UnaryOperator :Expression
-	| Binary :BinaryOperator :Expression1 :Expression2;
+	| Binary :BinaryOperator :Expression1 :Expression2
+	| Assignment :LExpression :RExpression;
 data UnaryOperator = Complement | Negate | Not;
-data BinaryOperator = Add | Subtract | Multiply | Divide | Modulo | And | Or | Equal | NotEqual | LessThan | LessOrEqual | GreaterThan | GreaterOrEqual ; 
+data BinaryOperator = Add | Subtract | Multiply | Divide | Modulo | And | Or | Equal | NotEqual | LessThan | LessOrEqual | GreaterThan | GreaterOrEqual; 
 
 
 # TAC AST
@@ -90,6 +97,8 @@ data ASM_Register =
 
 
 
+
+### UTILS
 
 sub index_of_in {
 	my ($adt, @tags) = @_;

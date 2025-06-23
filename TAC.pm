@@ -11,7 +11,7 @@ sub emit_TAC {
 		with (Program $declarations) {
 			return ::TAC_Program([ map { emit_TAC($_) } @$declarations ]);
 		}
-		with (FunctionDeclaration $name $body) {
+		with (Function $name $body) {
 			my $instructions = [];
 			for my $stm (@$body) {
 				emit_TAC($stm, $instructions);
@@ -98,14 +98,12 @@ sub convert_binop {
 }
 
 sub temp_name {
-	state $n = 0;
-	return "tmp." . $n++;
+	return "tmp." . $::global_counter++;
 }
 
 sub labels {
-	state $n = 0;
-	$n++;
-	return map { "label_${_}_" . $n } @_;
+	return map { "label_${_}_" . $global_counter } @_;
+	$global_counter++;
 }
 
 1;
