@@ -22,7 +22,7 @@ my $debug = 0;
 foreach (@ARGV) {
 	if (/\.c$/) {
 		$src_path = $_;
-	} elsif (/^--(lex|parse|tac|codegen)$/) {
+	} elsif (/^--(lex|parse|validate|tac|codegen)$/) {
 		$target_phase = $1;
 	} elsif (/^-d$/) {
 		$debug = 1;
@@ -43,6 +43,9 @@ exit 0 if ($target_phase eq 'lex');
 my $ast = Parser::parse(@tokens);
 print_AST($ast) if $debug;
 exit 0 if ($target_phase eq 'parse');
+SemanticAnalysis::run($ast);
+exit 0 if ($target_phase eq 'validate');
+print_AST($ast) if $debug;
 
 # TAC
 my $tac = TAC::emit_TAC($ast);

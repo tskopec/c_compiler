@@ -41,10 +41,19 @@ sub parse_block_item {
 }
 
 sub parse_statement {
-	expect(['Keyword', 'return']);	
-	my $ret_val = parse_expr(0);
-	expect(['Symbol', ';']);
-	return ::S(::Return($ret_val));
+	if (peek() eq ::Keyword('return')) {
+		shift @TOKENS;
+		my $ret_val = parse_expr(0);
+		expect(['Symbol', ';']);
+		return ::S(::Return($ret_val));
+	} elsif (peek() eq ::Symbol(';')){
+		shift @TOKENS;
+		return ::S(::Null());
+	} else {
+		my $expr = parse_expr(0);
+		expect(['Symbol', ';']);
+		return ::S(::Expression($expr));
+	}
 }
 
 sub parse_declaration {
@@ -57,6 +66,24 @@ sub parse_declaration {
 	}
 	expect(['Symbol', ';']);
 	return ::D(::Declaration($name, $init));
+}
+
+sub parse_expr {
+	my $min_prec = shift;
+	my $left = parse_factor();
+	while (my ($op) = ::extract(peek(), 'Operator')) {
+		last if precedence($op) < $min_prec;
+		if ($op eq '=') {
+			shift @TOKENS;
+			my $right = parse_expr(precedence($op));
+			$left = ::Assignment($left, $right);
+		} else {
+			my $op_node = parse_binop(shift @TOKENS);
+			my $right = parse_expr(precedence($op) + 1);
+			$left = ::Binary($op_node, $left, $right);
+		}
+	}
+	return $left;
 }
 
 sub parse_factor {
@@ -77,25 +104,6 @@ sub parse_factor {
 		}
 	}
 	die "cant parse $token as factor";
-}
-
-
-sub parse_expr {
-	my $min_prec = shift;
-	my $left = parse_factor();
-	while (my ($op) = ::extract(peek(), 'Operator')) {
-		last if precedence($op) < $min_prec;
-		if ($op eq '=') {
-			shift @TOKENS;
-			my $right = parse_expr(precedence($op));
-			$left = ::Assignment($left, $right);
-		} else {
-			my $op_node = parse_binop(+shift @TOKENS);
-			my $right = parse_expr(precedence($op) + 1);
-			$left = ::Binary($op_node, $left, $right);
-		}
-	}
-	return $left;
 }
 
 sub parse_identifier {
@@ -156,11 +164,11 @@ sub expect {
 		for (my $i = 0; $i <= @exp_values; $i++) {
 			$found = shift @TOKENS;
 			if ($found->{tag} ne $exp_tag) {
-				die "syntax error: expected exp_tag $exp_tag found " . $found->{tag};
+				die "syntax error: expected $exp_tag found " . $found->{tag};
 			}
 			my $exp_value = shift @exp_values // next; # last? TODO
 			if ($found->{values}[0] ne $exp_value) {
-				die "syntax error: expected exp_value $exp_value found " . $found->{values}[0];
+				die "syntax error: expected $exp_value found " . $found->{values}[0];
 			}
 		}
 	}

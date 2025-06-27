@@ -27,8 +27,8 @@ data _Declaration =
 	Declaration :name :Expression_initializer;
 data Statement = 
 	Return :Expression 
-	| Expression :Expression
 	| Null
+	| Expression :Expression
 	| If :Expression_cond :Statement_then :Statement_else;
 data _Expression = 
 	ConstantExp :value

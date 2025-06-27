@@ -13,16 +13,29 @@ sub emit_TAC {
 		}
 		with (Function $name $body) {
 			my $instructions = [];
-			for my $stm (@$body) {
-				emit_TAC($stm, $instructions);
+			for my $item (@$body) {
+				emit_TAC($item, $instructions);
 			}
+			push @$instructions, ::TAC_Return(::TAC_Constant(0));
 			return ::TAC_Function($name, $instructions);
 		}
+		with (S $statement) { emit_TAC($statement, $instructions);	}
+		with (D $declaration) { 
+			my ($name, $init) = ::extract_or_die($declaration, 'Declaration');
+			if (defined $init) {
+				emit_TAC(::Assignment(::Var($name), $init), $instructions);
+			}
+	   	}
 		with (Return $exp) {
 			push(@$instructions, ::TAC_Return(emit_TAC($exp, $instructions)));
 		}
+		with (Null) {;}
+		with (Expression $expr) { emit_TAC($expr, $instructions); }
 		with (ConstantExp $val) {
 			return ::TAC_Constant($val);
+		}
+		with (Var $ident) {
+			return ::TAC_Variable($ident);
 		}
 		with (Unary $op $exp) {
 			my $unop = convert_unop($op);
@@ -63,6 +76,12 @@ sub emit_TAC {
 			}
 			return $dst;
 		}
+		with (Assignment $var $expr) {
+			my $tac_var = emit_TAC($var, $instructions);
+			my $value = emit_TAC($expr, $instructions);
+			push @$instructions, ::TAC_Copy($value, $tac_var);
+			return $tac_var;
+		}
 	}
 }
 
@@ -102,8 +121,8 @@ sub temp_name {
 }
 
 sub labels {
-	return map { "label_${_}_" . $global_counter } @_;
-	$global_counter++;
+	return map { "label_${_}_" . $::global_counter } @_;
+	$::global_counter++;
 }
 
 1;
