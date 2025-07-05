@@ -35,7 +35,8 @@ data _Expression =
 	| Var :ident
 	| Unary :UnaryOperator :Expression
 	| Binary :BinaryOperator :Expression1 :Expression2
-	| Assignment :LExpression :RExpression;
+	| Assignment :LExpression :RExpressio)n
+	| Conditional :Expression_cond :Expression_then :Expression_else;
 data UnaryOperator = Complement | Negate | Not;
 data BinaryOperator = Add | Subtract | Multiply | Divide | Modulo | And | Or | Equal | NotEqual | LessThan | LessOrEqual | GreaterThan | GreaterOrEqual; 
 

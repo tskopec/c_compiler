@@ -81,6 +81,14 @@ sub parse_expr {
 			shift @TOKENS;
 			my $right = parse_expr(precedence($op));
 			$left = ::Assignment($left, $right);
+		} elsif ($op eq '?') {
+			shift @TOKENS;
+			my $then = parse_expr(0);
+			my $else = parse_expr(precedence($op));
+			$left = ::Conditional($left, $then, $else);
+		} elsif ($op eq ':') {
+			shift @TOKENS;
+			return $left;
 		} else {
 			my $op_node = parse_binop(shift @TOKENS);
 			my $right = parse_expr(precedence($op) + 1);
@@ -153,6 +161,7 @@ sub precedence {
 	return 30 if $op =~ /==|!=/;
 	return 10 if $op eq '&&';
 	return 5  if $op eq '||';
+	return 3  if $op eq '?';
 	return 1  if $op eq '=';
 	die "no precedence defined for $op";
 }

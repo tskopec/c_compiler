@@ -44,6 +44,11 @@ sub resolve_statement_vars {
 		with (Return $e) { resolve_expr_vars($e, $vars); }
 		with (Expression $e) { resolve_expr_vars($e, $vars); }
 		with (Null) {;}
+		with (If $cond $then $else) {
+			resolve_expr_vars($cond, $vars);
+			resolve_statement_vars($then, $vars);
+			resolve_statement_vars($else, $vars) if defined $else;
+		}
 	}	   
 }
 
@@ -57,6 +62,7 @@ sub resolve_expr_vars {
 			die "not a variable $le" if ($le->{tag} ne 'Var');
 		   	resolve_expr_vars($_, $vars) for ($le, $re);
 	   	}
+		with (Conditional $cond $then $else) { resolve_expr_vars($_, $vars) for ($cond, $then, $else); }
 	}
 }
 

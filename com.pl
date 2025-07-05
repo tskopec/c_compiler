@@ -43,9 +43,11 @@ exit 0 if ($target_phase eq 'lex');
 my $ast = Parser::parse(@tokens);
 print_AST($ast) if $debug;
 exit 0 if ($target_phase eq 'parse');
+
+# SEMANTICS
 SemanticAnalysis::run($ast);
-exit 0 if ($target_phase eq 'validate');
 print_AST($ast) if $debug;
+exit 0 if ($target_phase eq 'validate');
 
 # TAC
 my $tac = TAC::emit_TAC($ast);
@@ -63,7 +65,6 @@ my $asm_file = $src_path =~ s/c$/s/r;
 my $code = Emitter::emit_code($asm);
 write_file($asm_file, $code);
  
-
 # ASSEMBLE
 my $bin_file = $src_path =~ s/\.c$//r;
 qx/gcc $asm_file -o $bin_file/;

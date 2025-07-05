@@ -30,6 +30,19 @@ sub emit_TAC {
 			push(@$instructions, ::TAC_Return(emit_TAC($exp, $instructions)));
 		}
 		with (Null) {;}
+		with (If $cond $then $else) {
+			my ($else_label) = labels('else') if defined $else;
+			my ($end_label) = labels('end');
+			my $cond_res = emit_TAC($cond, $instructions);
+			push @$instructions, ::TAC_JumpIfZero($cond_res, defined $else ? $else_label : $end_label);
+			emit_TAC($then, $instructions);
+			push @$instructions, ::TAC_Jump($end_label);
+			if (defined $else) {
+				push @$instructions, ::TAC_Label($else_label);
+				emit_TAC($else, $instructions);
+			}
+			push @$instructions, ::TAC_Label($end_label);
+		}
 		with (Expression $expr) { emit_TAC($expr, $instructions); }
 		with (ConstantExp $val) {
 			return ::TAC_Constant($val);
@@ -82,6 +95,19 @@ sub emit_TAC {
 			push @$instructions, ::TAC_Copy($value, $tac_var);
 			return $tac_var;
 		}
+		with (Conditional $cond $then $else) {
+			my $res = ::TAC_Variable(temp_name());
+			my ($e2_label, $end_label) = labels(qw(e2 end));
+			my $cond_res = emit_TAC($cond, $instructions);
+			push @$instructions, ::TAC_JumpIfZero($cond_res, $e2_label);
+			my $e1_res = emit_TAC($then, $instructions);
+			push @$instructions, ::TAC_Copy($e1_res, $res);
+			push @$instructions, ::TAC_Jump($end_label);
+			my $e2_res = emit_TAC($else, $instructions);
+			push @$instructions, (::TAC_Copy($e2_res, $res),
+								  ::TAC_Label($end_label)); 
+			return $res;
+		}
 	}
 }
 
@@ -121,8 +147,9 @@ sub temp_name {
 }
 
 sub labels {
-	return map { "label_${_}_" . $::global_counter } @_;
+	my @res = map { "label_${_}_" . $::global_counter } @_;
 	$::global_counter++;
+	return @res;
 }
 
 1;
