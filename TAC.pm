@@ -101,8 +101,9 @@ sub emit_TAC {
 			my $cond_res = emit_TAC($cond, $instructions);
 			push @$instructions, ::TAC_JumpIfZero($cond_res, $e2_label);
 			my $e1_res = emit_TAC($then, $instructions);
-			push @$instructions, ::TAC_Copy($e1_res, $res);
-			push @$instructions, ::TAC_Jump($end_label);
+			push @$instructions, (::TAC_Copy($e1_res, $res),
+								  ::TAC_Jump($end_label),
+			 					  ::TAC_Label($e2_label));
 			my $e2_res = emit_TAC($else, $instructions);
 			push @$instructions, (::TAC_Copy($e2_res, $res),
 								  ::TAC_Label($end_label)); 

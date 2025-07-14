@@ -25,15 +25,13 @@ sub resolve_vars {
 sub resolve_body_vars {
 	my ($item, $vars) = @_;
 	match ($item) {
-		with (S $statement) { 
-			resolve_statement_vars($statement, $vars);
-		}
-		with (D $declaration) {
-			my ($name, $init) = ::extract($declaration, 'Declaration');
+		with (Declaration $name $init) {
 			die "duplicate var $name" if exists $vars->{$name};
-			$vars->{$name} = unique_var_name($name);
-			$declaration->{values}[0] = $vars->{$name};
+			$item->{values}[0] = $vars->{$name} = unique_var_name($name);
 			resolve_expr_vars($init, $vars) if defined $init;
+		}
+		default {
+			resolve_statement_vars($item, $vars);
 		}
 	}
 }

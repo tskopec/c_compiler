@@ -28,15 +28,15 @@ sub parse_function {
 	while (@TOKENS && peek()->{values}[0] ne '}') {
 		push @$body, parse_block_item();
 	}
-	shift @TOKENS;
+	expect("Symbol", "}");
 	return ::Function($name, $body);
 }
 
 sub parse_block_item {
 	if (peek() eq ::Keyword('int')) {
-		return ::D(parse_declaration());
+		return parse_declaration();
 	} else {
-		return ::S(parse_statement());
+		return parse_statement();
 	}
 }
 
@@ -76,6 +76,7 @@ sub parse_expr {
 	my $min_prec = shift;
 	my $left = parse_factor();
 	while (my ($op) = ::extract(peek(), 'Operator')) {
+		last if $op eq ':';
 		last if precedence($op) < $min_prec;
 		if ($op eq '=') {
 			shift @TOKENS;
@@ -84,11 +85,9 @@ sub parse_expr {
 		} elsif ($op eq '?') {
 			shift @TOKENS;
 			my $then = parse_expr(0);
+			expect('Operator', ':');
 			my $else = parse_expr(precedence($op));
 			$left = ::Conditional($left, $then, $else);
-		} elsif ($op eq ':') {
-			shift @TOKENS;
-			return $left;
 		} else {
 			my $op_node = parse_binop(shift @TOKENS);
 			my $right = parse_expr(precedence($op) + 1);
@@ -101,8 +100,8 @@ sub parse_expr {
 sub parse_factor {
 	my $token = shift @TOKENS;
 	match ($token) {
-		with (Constant $val) { return ::ConstantExp($val) }
-		with (Identifier $name) { return ::Var($name) }
+		with (Constant $val) { return ::ConstantExp($val); }
+		with (Identifier $name) { return ::Var($name); }
 		with (Operator $op) {
 			my $op_node = parse_unop($token);
 			return ::Unary($op_node, parse_factor());
@@ -157,7 +156,7 @@ sub precedence {
 	my $op = shift;
 	return 50 if $op =~ /\*|\/|%/;
 	return 45 if $op =~ /\+|-/;
-	return 35 if $op =~ /<=|>=|<|>|/;
+	return 35 if $op =~ /<=|>=|<|>/;
 	return 30 if $op =~ /==|!=/;
 	return 10 if $op eq '&&';
 	return 5  if $op eq '||';
@@ -177,7 +176,8 @@ sub expect {
 			$expected_tag = $arg;
 		} else {
 			$found = shift @TOKENS;
-			if ($found->{tag} ne $expected_tag || $found->{values}[0] ne $arg) {
+			if (!defined $found || $found->{tag} ne $expected_tag || $found->{values}[0] ne $arg) {
+				do '/home/tom/bin/perl/stacktracer.pl'; #TODO
 				die "syntax err: expected $expected_tag $arg, found $found";
 			}
 		}	
@@ -188,7 +188,8 @@ sub expect {
 sub expect_any {
 	my $expected_tag = shift;
 	my $found = shift @TOKENS;
-	if ($found->{tag} ne $expected_tag) {
+	if (!defined $found || $found->{tag} ne $expected_tag) {
+		do '/home/tom/bin/perl/stacktracer.pl'; #TODO
 		die "syntax err: expected $expected_tag, found $found";
 	}
 	return $found;

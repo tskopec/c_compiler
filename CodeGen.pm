@@ -39,7 +39,7 @@ sub translate_to_ASM {
 						::ASM_Idiv(translate_to_ASM($src2)),
 						::ASM_Mov(::ASM_Reg((::AX(), ::DX())[$i]), $asm_dst));
 			} elsif (-1 != (my $i = ::index_of_in($op, qw(TAC_Equal TAC_NotEqual TAC_LessThan TAC_LessOrEqual TAC_GreaterThan TAC_GreaterOrEqual)))) {
-				return (::ASM_Cmp(translate_to_ASM($src1), translate_to_ASM($src2)),
+				return (::ASM_Cmp(translate_to_ASM($src2), translate_to_ASM($src1)),
 						::ASM_Mov(::ASM_Imm(0), $asm_dst),
 						::ASM_SetCC((::E(), ::NE(), ::L(), ::LE(), ::G(), ::GE())[$i], $asm_dst));
 			} else {

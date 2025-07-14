@@ -16,12 +16,12 @@ use Emitter;
 our $global_counter = 0;
 
 # ARGS
-my $src_path;
+my @src_paths;
 my $target_phase = '';
 my $debug = 0;
 foreach (@ARGV) {
 	if (/\.c$/) {
-		$src_path = $_;
+		push @src_paths, $_;
 	} elsif (/^--(lex|parse|validate|tac|codegen)$/) {
 		$target_phase = $1;
 	} elsif (/^-d$/) {
@@ -29,49 +29,56 @@ foreach (@ARGV) {
 	}
 }
 
-# PREPROCESS
-my $prep_file = $src_path =~ s/c$/i/r;
-qx/gcc -E -P $src_path -o $prep_file/;
 
-# LEX
-my $src_str = read_file($prep_file);
-my @tokens = Lexer::tokenize($src_str);
-say(join("\n", @tokens) . "\n") if $debug;
-exit 0 if ($target_phase eq 'lex'); 	
+for my $src_path (@src_paths) {
+	# PREPROCESS
+	my $prep_file = $src_path =~ s/c$/i/r;
+	qx/gcc -E -P $src_path -o $prep_file/;
 
-# PARSE
-my $ast = Parser::parse(@tokens);
-print_AST($ast) if $debug;
-exit 0 if ($target_phase eq 'parse');
+	# LEX
+	my $src_str = read_file($prep_file);
+	say "COMPILING $src_path:\n $src_str\n" if $debug;
+	unlink($prep_file); 
+	my @tokens = Lexer::tokenize($src_str);
+	say(join("\n", @tokens) . "\n") if $debug;
+	next if ($target_phase eq 'lex'); 	
 
-# SEMANTICS
-SemanticAnalysis::run($ast);
-print_AST($ast) if $debug;
-exit 0 if ($target_phase eq 'validate');
+	# PARSE
+	my $ast = Parser::parse(@tokens);
+	print_AST($ast) if $debug;
+	next if ($target_phase eq 'parse');
 
-# TAC
-my $tac = TAC::emit_TAC($ast);
-print_AST($tac) if $debug;
-exit 0 if ($target_phase eq 'tac');
+	# SEMANTICS
+	SemanticAnalysis::run($ast);
+	print_AST($ast) if $debug;
+	next if ($target_phase eq 'validate');
 
-# ASSEMBLY GEN
-my $asm = CodeGen::translate_to_ASM($tac);
-CodeGen::fix_up($asm);
-print_AST($asm) if $debug;
-exit 0 if ($target_phase eq 'codegen');
+	# TAC
+	my $tac = TAC::emit_TAC($ast);
+	print_AST($tac) if $debug;
+	next if ($target_phase eq 'tac');
 
-# EMIT CODE
-my $asm_file = $src_path =~ s/c$/s/r;
-my $code = Emitter::emit_code($asm);
-write_file($asm_file, $code);
+	# ASSEMBLY GEN
+	my $asm = CodeGen::translate_to_ASM($tac);
+	CodeGen::fix_up($asm);
+	print_AST($asm) if $debug;
+	next if ($target_phase eq 'codegen');
+
+	# EMIT CODE
+	my $asm_file = $src_path =~ s/c$/s/r;
+	my $code = Emitter::emit_code($asm);
+	write_file($asm_file, $code);
+	 
+	# ASSEMBLE
+	my $bin_file = $src_path =~ s/\.c$//r;
+	qx/gcc $asm_file -o $bin_file/;
+	unlink($asm_file); 
+
+} continue {
+	$global_counter = 0;
+}
  
-# ASSEMBLE
-my $bin_file = $src_path =~ s/\.c$//r;
-qx/gcc $asm_file -o $bin_file/;
 
-# CLEANUP
 END {
-	no warnings "uninitialized";
-	unlink($prep_file, $asm_file); 
 	say "compiler done";
 }
