@@ -19,7 +19,9 @@ data Token =
 data _Program = 
 	Program :Definitions;
 data Definition = 
-	Function :name :BlockItems_body;
+	Function :name :Block_body;
+data _Block = 
+	Block :BlockItems
 data BlockItem =
 	S :Statement
 	| D :Declaration;
@@ -29,7 +31,8 @@ data Statement =
 	Return :Expression 
 	| Null
 	| Expression :Expression
-	| If :Expression_cond :Statement_then :Statement_else;
+	| If :Expression_cond :Statement_then :Statement_else
+	| Compound :Block;
 data _Expression = 
 	ConstantExp :value
 	| Var :ident

@@ -29,8 +29,22 @@ foreach (@ARGV) {
 	}
 }
 
-
 for my $src_path (@src_paths) {
+	eval { compile($src_path) };
+	if ($@) {
+		say "ERROR, SRC: ${src_path}: $@";
+	}
+} continue {
+	$global_counter = 0;
+}
+ 
+
+END {
+	say "compiler done";
+}
+
+sub compile {
+	my $src_path = shift;
 	# PREPROCESS
 	my $prep_file = $src_path =~ s/c$/i/r;
 	qx/gcc -E -P $src_path -o $prep_file/;
@@ -73,12 +87,6 @@ for my $src_path (@src_paths) {
 	my $bin_file = $src_path =~ s/\.c$//r;
 	qx/gcc $asm_file -o $bin_file/;
 	unlink($asm_file); 
-
-} continue {
-	$global_counter = 0;
 }
- 
 
-END {
-	say "compiler done";
-}
+

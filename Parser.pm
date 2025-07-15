@@ -24,12 +24,17 @@ sub parse_function {
 	expect('Keyword', 'int');
 	my $name = parse_identifier();
 	expect('Symbol', '(', 'Keyword', 'void', 'Symbol', ')', '{');
-	my $body = [];
-	while (@TOKENS && peek()->{values}[0] ne '}') {
-		push @$body, parse_block_item();
-	}
-	expect("Symbol", "}");
+	my $body = parse_block();
 	return ::Function($name, $body);
+}
+
+sub parse_block {
+	my $items = [];
+	while (@TOKENS && peek()->{values}[0] ne '}') {
+		push @$items, parse_block_item();
+	}
+	expect('Symbol', '}');
+	return ::Block($items);
 }
 
 sub parse_block_item {
@@ -56,6 +61,8 @@ sub parse_statement {
 		my $ret_val = parse_expr(0);
 		expect('Symbol', ';');
 		return ::Return($ret_val);
+	} elsif (try_expect('Symbol', '{')) {
+		return parse_block();
 	} elsif (try_expect('Symbol', ';')){
 		return ::Null();
 	} elsif (try_expect('Keyword', 'if')) {
@@ -177,7 +184,6 @@ sub expect {
 		} else {
 			$found = shift @TOKENS;
 			if (!defined $found || $found->{tag} ne $expected_tag || $found->{values}[0] ne $arg) {
-				do '/home/tom/bin/perl/stacktracer.pl'; #TODO
 				die "syntax err: expected $expected_tag $arg, found $found";
 			}
 		}	
@@ -189,7 +195,6 @@ sub expect_any {
 	my $expected_tag = shift;
 	my $found = shift @TOKENS;
 	if (!defined $found || $found->{tag} ne $expected_tag) {
-		do '/home/tom/bin/perl/stacktracer.pl'; #TODO
 		die "syntax err: expected $expected_tag, found $found";
 	}
 	return $found;

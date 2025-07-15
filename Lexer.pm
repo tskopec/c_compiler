@@ -2,7 +2,6 @@ package Lexer;
 use strict;
 use warnings;
 use feature qw(say);
- #TODO
 
 my $sym_re = qr/^([;}{)(]).*/;
 my $op_re = qr/^(!=|==|<=|>=|<|>|=|!|\|\||&&|--|-|\+|\*|\/|%|~|\?|:).*/;
