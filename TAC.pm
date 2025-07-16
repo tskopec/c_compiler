@@ -12,16 +12,15 @@ sub emit_TAC {
 			return ::TAC_Program([ map { emit_TAC($_) } @$declarations ]);
 		}
 		with (Function $name $body) {
+			my ($items) = ::extract_or_die($body, 'Block');
 			my $instructions = [];
-			for my $item (@$body) {
+			for my $item (@$items) {
 				emit_TAC($item, $instructions);
 			}
 			push @$instructions, ::TAC_Return(::TAC_Constant(0));
 			return ::TAC_Function($name, $instructions);
 		}
-		with (S $statement) { emit_TAC($statement, $instructions);	}
-		with (D $declaration) { 
-			my ($name, $init) = ::extract_or_die($declaration, 'Declaration');
+		with (Declaration $name $init) { 
 			if (defined $init) {
 				emit_TAC(::Assignment(::Var($name), $init), $instructions);
 			}

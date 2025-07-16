@@ -1,7 +1,9 @@
 package SemanticAnalysis;
+
 use strict;
 use warnings;
 use feature qw(say state);
+use List::Util qw(pairmap);
 use Types::Algebraic;
 
 
@@ -15,8 +17,9 @@ sub resolve_vars {
 	for my $def (@$definitions) {
 		match ($def) {
 			with (Function $name $body) {
+				my ($items) = ::extract_or_die($body, 'Block');
 				my $var_map = {};
-				resolve_body_vars($_, $var_map) for (@$body); 
+				resolve_body_vars($_, $var_map) for (@$items); 
 			}
 		}
 	}
@@ -26,8 +29,11 @@ sub resolve_body_vars {
 	my ($item, $vars) = @_;
 	match ($item) {
 		with (Declaration $name $init) {
-			die "duplicate var $name" if exists $vars->{$name};
-			$item->{values}[0] = $vars->{$name} = unique_var_name($name);
+			if (exists($vars->{$name}) && $vars->{$name}{from_this_block}) {
+				die "duplicate var $name";
+			}
+			$item->{values}[0] = unique_var_name($name);
+			$vars->{$name} = { uniq_name => $item->{values}[0], from_this_block => 1 };
 			resolve_expr_vars($init, $vars) if defined $init;
 		}
 		default {
@@ -47,13 +53,18 @@ sub resolve_statement_vars {
 			resolve_statement_vars($then, $vars);
 			resolve_statement_vars($else, $vars) if defined $else;
 		}
+		with (Compound $block) {
+			my ($items) = ::extract_or_die($block, 'Block');
+			my $block_vars = { pairmap { ($a, { uniq_name => $b->{uniq_name}, from_this_block => 0 }) } %$vars };
+			resolve_body_vars($_, $block_vars) for @$items; 
+		}
 	}	   
 }
 
 sub resolve_expr_vars {
 	my ($expr, $vars) = @_;
 	match ($expr) {
-		with (Var $name) { $expr->{values}[0] = ($vars->{$name} // die "undeclared variable $name"); }
+		with (Var $name) { $expr->{values}[0] = ($vars->{$name}{uniq_name} // die "undeclared variable $name"); }
 		with (Unary $op $e) { resolve_expr_vars($e, $vars); }
 		with (Binary $op $e1 $e2) { resolve_expr_vars($_, $vars) for ($e1, $e2); }
 		with (Assignment $le $re) { 
