@@ -72,6 +72,26 @@ sub parse_statement {
 		my $then = parse_statement();
 		my $else = parse_statement() if try_expect('Keyword', 'else'); 
 		return ::If($cond, $then, $else);
+	} elsif (try_expect('Keyword', 'break')) {
+		expect('Symbol', ';');
+		return ::Break('dummy');
+	} elsif (try_expect('Keyword', 'continue')) {
+		expect('Symbol', ';');
+		return ::Continue('dummy');
+	} elsif (try_expect('Keyword', 'while')) {
+		expect('Symbol', '(');
+		my $cond = parse_expr(0);
+		expect('Symbol', ')');
+		my $body = parse_statement();
+		return ::While($cond, $body, 'dummy');
+	} elsif (try_expect('Keyword', 'do')) {
+		my $body = parse_statement();
+		expect('Keyword', 'while', 'Symbol', '(');
+		my $cond = parse_expr(0);
+		expect('Symbol', ')', ';');
+		return ::DoWhile($body, $cond, 'dummy');
+	} elsif (try_expect('Keyword', 'for')) {
+
 	} else {
 		my $expr = parse_expr(0);
 		expect('Symbol', ';');

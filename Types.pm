@@ -21,18 +21,20 @@ data _Program =
 data Definition = 
 	Function :name :Block_body;
 data _Block = 
-	Block :BlockItems
-data BlockItem =
-	S :Statement
-	| D :Declaration;
+	Block :StatementOrDeclaration_blockItems;
 data _Declaration =
 	Declaration :name :Expression_initializer;
 data Statement = 
-	Return :Expression 
-	| Null
+	Null
+	| Return :Expression 
 	| Expression :Expression
 	| If :Expression_cond :Statement_then :Statement_else
-	| Compound :Block;
+	| Compound :Block
+	| Break :label
+	| Continue :label
+	| While :Expression_cond :Statement_body :label
+	| DoWhile :Statement_body :Expression_cond :label
+	| For :DeclOrExpr_init :Expression_cond  :Expression_post :Statement_body :label;
 data _Expression = 
 	ConstantExp :value
 	| Var :ident
