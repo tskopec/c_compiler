@@ -145,7 +145,7 @@ sub print_AST {
 				__SUB__->($val, $indent + 1);
 			}
 		} else {
-			say(($tab x $indent) . $node);
+			say(($tab x $indent) . ($node // 'undef'));
 		}
 	};
 	$print_node->(+shift, 0);

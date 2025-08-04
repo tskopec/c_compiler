@@ -38,22 +38,20 @@ sub parse_block {
 }
 
 sub parse_block_item {
-	if (peek() eq ::Keyword('int')) {
-		return parse_declaration();
-	} else {
-		return parse_statement();
-	}
+	return try_parse_declaration() // parse_statement();
 }
 
-sub parse_declaration {
-	expect('Keyword', 'int');
-	my $name = parse_identifier();
-	my $init;
-	if (try_expect('Operator', '=')) {
-		$init = parse_expr(0);
+sub try_parse_declaration {
+	if (try_expect('Keyword', 'int')) {
+		my $name = parse_identifier();
+		my $init;
+		if (try_expect('Operator', '=')) {
+			$init = parse_expr(0);
+		}
+		expect('Symbol', ';');
+		return ::Declaration($name, $init);
 	}
-	expect('Symbol', ';');
-	return ::Declaration($name, $init);
+	return undef;
 }
 
 sub parse_statement {
@@ -91,7 +89,12 @@ sub parse_statement {
 		expect('Symbol', ')', ';');
 		return ::DoWhile($body, $cond, 'dummy');
 	} elsif (try_expect('Keyword', 'for')) {
-
+		expect('Symbol', '(');
+		my $init = try_parse_declaration() // parse_opt_expr(';');
+		my $cond = parse_opt_expr(';');
+		my $post = parse_opt_expr(')');
+		my $body = parse_statement();
+		return ::For($init, $cond, $post, $body, 'dummy');
 	} else {
 		my $expr = parse_expr(0);
 		expect('Symbol', ';');
@@ -124,6 +127,14 @@ sub parse_expr {
 	return $left;
 }
 
+sub parse_opt_expr {
+	my $end_symbol = shift;
+	return undef if (try_expect('Symbol', $end_symbol)); 
+	my $expr = parse_expr(0);
+	expect('Symbol', $end_symbol);
+	return $expr;
+}
+
 sub parse_factor {
 	my $token = shift @TOKENS;
 	match ($token) {
@@ -145,7 +156,7 @@ sub parse_factor {
 }
 
 sub parse_identifier {
-	my $iden = expect_any("Identifier");
+	my $iden = expect("Identifier");
 	return $iden->{values}[0];
 }
 
@@ -197,25 +208,23 @@ sub peek {
 }
 
 sub expect {
-	my ($found, $expected_tag);
-	for my $arg (@_) {
-		if ($arg =~ /^[A-Z]/) {
-			$expected_tag = $arg;
-		} else {
-			$found = shift @TOKENS;
-			if (!defined $found || $found->{tag} ne $expected_tag || $found->{values}[0] ne $arg) {
-				die "syntax err: expected $expected_tag $arg, found $found";
-			}
-		}	
-	}
-	return $found;
-}
-
-sub expect_any {
-	my $expected_tag = shift;
-	my $found = shift @TOKENS;
-	if (!defined $found || $found->{tag} ne $expected_tag) {
-		die "syntax err: expected $expected_tag, found $found";
+	my ($found, $expected_tag, $expected_value);
+	state $next_arg_is_tag = sub {
+		return $_[0] =~ /^[A-Z]/;
+	}; 
+	die "args: [tag, [values]?], ..." unless $next_arg_is_tag->(@_); 
+	while (@_) {
+		if ($next_arg_is_tag->(@_)) {
+			$expected_tag = shift @_;
+			undef $expected_value;
+		}
+		if (!$next_arg_is_tag->(@_)) {
+			$expected_value = shift @_;
+		}
+		$found = shift @TOKENS // die "no tokens";
+		if ($found->{tag} ne $expected_tag || (defined $expected_value && $found->{values}[0] ne $expected_value)) {
+			die "syntax err -> expected: $expected_tag $expected_value, but found: $found";
+		}
 	}
 	return $found;
 }
