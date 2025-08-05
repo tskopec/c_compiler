@@ -15,7 +15,6 @@ use Emitter;
 
 our $global_counter = 0;
 
-
 # ARGS
 my @src_paths;
 my $target_phase = '';
@@ -33,7 +32,7 @@ foreach (@ARGV) {
 for my $src_path (@src_paths) {
 	eval { compile($src_path) };
 	if ($@) {
-		say "ERROR in src file: ${src_path}:\n$@";
+		print "ERROR in src file: ${src_path}:\n$@";
 		say "------------------------------------------";
 	}
 } continue {

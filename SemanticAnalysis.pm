@@ -2,18 +2,18 @@ package SemanticAnalysis;
 
 use strict;
 use warnings;
-use feature qw(say state);
-use List::Util qw(pairmap);
+use feature qw(say state isa);
 use Types::Algebraic;
-
 
 sub run {
 	my $ast = shift;
 	resolve_vars($ast);
+	label_loops($ast, undef);
 }
 
+### VARIABLE RESOLUTION ###
 sub resolve_vars {
-	my ($definitions) = ::extract_or_die(+shift, 'Program'); 
+	my ($definitions) = ::extract_or_die(shift(), 'Program'); 
 	for my $def (@$definitions) {
 		match ($def) {
 			with (Function $name $body) {
@@ -21,6 +21,7 @@ sub resolve_vars {
 				my $var_map = {};
 				resolve_body_vars($_, $var_map) for (@$items); 
 			}
+			default { die "unknown def $def" }
 		}
 	}
 }
@@ -29,17 +30,23 @@ sub resolve_body_vars {
 	my ($item, $vars) = @_;
 	match ($item) {
 		with (Declaration $name $init) {
-			if (exists($vars->{$name}) && $vars->{$name}{from_this_block}) {
-				die "duplicate var $name";
-			}
-			$item->{values}[0] = unique_var_name($name);
-			$vars->{$name} = { uniq_name => $item->{values}[0], from_this_block => 1 };
-			resolve_expr_vars($init, $vars) if defined $init;
+			resolve_declaration_vars($item, $vars);
 		}
 		default {
 			resolve_statement_vars($item, $vars);
 		}
 	}
+}
+
+sub resolve_declaration_vars {
+	my ($declaration, $vars) = @_;
+	my ($name, $init) = ::extract_or_die($declaration, 'Declaration');
+	if (exists($vars->{$name}) && $vars->{$name}{from_this_block}) {
+		die "duplicate var $name";
+	}
+	$declaration->{values}[0] = unique_var_name($name);
+	$vars->{$name} = { uniq_name => $declaration->{values}[0], from_this_block => 1 };
+	resolve_expr_vars($init, $vars) if defined $init;
 }
 
 sub resolve_statement_vars {
@@ -55,15 +62,43 @@ sub resolve_statement_vars {
 		}
 		with (Compound $block) {
 			my ($items) = ::extract_or_die($block, 'Block');
-			my $block_vars = { pairmap { ($a, { uniq_name => $b->{uniq_name}, from_this_block => 0 }) } %$vars };
-			resolve_body_vars($_, $block_vars) for @$items; 
+			my $new_vars = copy_vars($vars);
+			resolve_body_vars($_, $new_vars) for @$items; 
 		}
+		with (While $cond $body $label) {
+			resolve_expr_vars($cond, $vars);
+			resolve_statement_vars($body, $vars);
+		} 
+		with (DoWhile $body $cond $label) {
+			resolve_statement_vars($body, $vars);
+			resolve_expr_vars($cond, $vars);
+		}
+		with (For $init $cond $post $body $label) {
+			my $new_vars = copy_vars($vars);
+			if ($init->{tag} eq 'Declaration') {
+				resolve_declaration_vars($init, $new_vars);
+			} else {
+				resolve_opt_expr_vars($init, $new_vars);
+			}
+			resolve_opt_expr_vars($cond, $new_vars);
+			resolve_opt_expr_vars($post, $new_vars);
+			resolve_statement_vars($body, $new_vars);
+		}
+		with (Break $label) {;}
+		with (Continue $label) {;}
+		default { die "unknown statement $statement" }
 	}	   
+}
+
+sub resolve_opt_expr_vars {
+	my ($expr, $vars) = @_;
+	resolve_expr_vars($expr, $vars) if defined $expr;
 }
 
 sub resolve_expr_vars {
 	my ($expr, $vars) = @_;
 	match ($expr) {
+		with (ConstantExp $val) {;}
 		with (Var $name) { $expr->{values}[0] = ($vars->{$name}{uniq_name} // die "undeclared variable $name"); }
 		with (Unary $op $e) { resolve_expr_vars($e, $vars); }
 		with (Binary $op $e1 $e2) { resolve_expr_vars($_, $vars) for ($e1, $e2); }
@@ -72,12 +107,65 @@ sub resolve_expr_vars {
 		   	resolve_expr_vars($_, $vars) for ($le, $re);
 	   	}
 		with (Conditional $cond $then $else) { resolve_expr_vars($_, $vars) for ($cond, $then, $else); }
+		default { die "unknown expression $expr" }
 	}
 }
 
-
 sub unique_var_name {
 	return +shift . '.' . $::global_counter++;
+}
+
+sub copy_vars {
+	my $original_vars = shift;
+	my $result = {};
+	while (my ($name_in_src, $properties) = each %$original_vars) {
+		$result->{$name_in_src} = {
+			uniq_name => $properties->{uniq_name},
+			from_this_block => 0
+		}
+	};
+	return $result;
+}
+
+### LOOP LABELING ###
+sub label_loops {
+	my ($node, $current_label) = @_;
+	if ($node isa Types::Algebraic::ADT) {
+		match ($node) {
+			with (While $cond $body $label) {
+				my $new_label = uniq_label();
+				$node->{values}[2] = $new_label;
+				label_loops($body, $new_label);
+			}
+			with (DoWhile $body $cond $label) {
+				my $new_label = uniq_label();
+				$node->{values}[2] = $new_label;
+				label_loops($body, $new_label);
+			}
+			with (For $init $cond $post $body $label) {
+				my $new_label = uniq_label();
+				$node->{values}[4] = $new_label;
+				label_loops($body, $new_label);
+			}
+			with (Break $label) {
+				die "'break' outside loop" if(!defined $current_label);
+				$node->{values}[0] = $current_label;
+			}
+			with (Continue $label) {
+				die "'continue' outside loop" if(!defined $current_label);
+				$node->{values}[0] = $current_label;
+			}
+			default {
+				label_loops($_, $current_label) for $node->{values}->@*;
+			}
+		}
+	} elsif (ref($node) eq 'ARRAY') {
+		label_loops($_, $current_label) for $node->@*;
+	} 
+}
+
+sub uniq_label {
+	return "loop_label_" . $::global_counter++;
 }
 
 1;

@@ -60,7 +60,7 @@ sub parse_statement {
 		expect('Symbol', ';');
 		return ::Return($ret_val);
 	} elsif (try_expect('Symbol', '{')) {
-		return parse_block();
+		return ::Compound(parse_block());
 	} elsif (try_expect('Symbol', ';')){
 		return ::Null();
 	} elsif (try_expect('Keyword', 'if')) {
