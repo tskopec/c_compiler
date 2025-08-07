@@ -82,6 +82,7 @@ sub compile {
 	# EMIT CODE
 	my $asm_file = $src_path =~ s/c$/s/r;
 	my $code = Emitter::emit_code($asm);
+	say($code) if $debug;
 	write_file($asm_file, $code);
 	 
 	# ASSEMBLE

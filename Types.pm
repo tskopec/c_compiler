@@ -106,11 +106,16 @@ data ASM_Register =
 
 ### UTILS
 
+sub is_one_of {
+	my ($adt, @tags) = @_;
+	return index_of_in($adt, @tags) != -1;
+}
+
 sub index_of_in {
 	my ($adt, @tags) = @_;
 	my $n = 0;
 	for my $tag (@tags) {
-		return $n if $tag eq $adt->{tag};
+		return $n if ($tag eq $adt->{tag});
 		$n++;
 	}
 	return -1;

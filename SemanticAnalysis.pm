@@ -131,41 +131,21 @@ sub copy_vars {
 sub label_loops {
 	my ($node, $current_label) = @_;
 	if ($node isa Types::Algebraic::ADT) {
-		match ($node) {
-			with (While $cond $body $label) {
-				my $new_label = uniq_label();
-				$node->{values}[2] = $new_label;
-				label_loops($body, $new_label);
-			}
-			with (DoWhile $body $cond $label) {
-				my $new_label = uniq_label();
-				$node->{values}[2] = $new_label;
-				label_loops($body, $new_label);
-			}
-			with (For $init $cond $post $body $label) {
-				my $new_label = uniq_label();
-				$node->{values}[4] = $new_label;
-				label_loops($body, $new_label);
-			}
-			with (Break $label) {
-				die "'break' outside loop" if(!defined $current_label);
-				$node->{values}[0] = $current_label;
-			}
-			with (Continue $label) {
-				die "'continue' outside loop" if(!defined $current_label);
-				$node->{values}[0] = $current_label;
-			}
-			default {
-				label_loops($_, $current_label) for $node->{values}->@*;
-			}
+		if (::is_one_of($node, 'While', 'DoWhile', 'For')) {
+			$current_label = new_loop_label();
+			$node->{values}[-1] = $current_label;
+		} elsif (::is_one_of($node, 'Break', 'Continue')) {
+			$node->{values}[0] = ($current_label // die("'" . lc($node->{tag}) . "' outside loop"));
+			return;
 		}
+		label_loops($_, $current_label) for $node->{values}->@*;
 	} elsif (ref($node) eq 'ARRAY') {
 		label_loops($_, $current_label) for $node->@*;
-	} 
+	}
 }
 
-sub uniq_label {
-	return "loop_label_" . $::global_counter++;
+sub new_loop_label {
+	return "_loop_" . $::global_counter++;
 }
 
 1;

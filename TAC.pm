@@ -42,6 +42,47 @@ sub emit_TAC {
 			}
 			push @$instructions, ::TAC_Label($end_label);
 		}
+		with (Compound $block) {
+			my ($items) = ::extract_or_die($block, 'Block');
+			emit_TAC($_, $instructions) for @$items;	
+		}
+		with (DoWhile $body $cond $label) {
+			my ($start_label) = labels('start');
+			push @$instructions, ::TAC_Label($start_label);
+			emit_TAC($body, $instructions);
+			push @$instructions, ::TAC_Label("continue_$label");
+			my $cond_res = emit_TAC($cond, $instructions);
+			push(@$instructions, (::TAC_JumpIfNotZero($cond_res, $start_label),
+								  ::TAC_Label("break_$label")));
+		}
+		with (While $cond $body $label) {
+			push @$instructions, ::TAC_Label("continue_$label");
+			my $cond_res = emit_TAC($cond, $instructions);
+			push @$instructions, ::TAC_JumpIfZero($cond_res, "break_$label");
+			emit_TAC($body, $instructions);
+			push(@$instructions, (::TAC_Jump("continue_$label"),
+								  ::TAC_Label("break_$label")));
+		}
+		with (For $init $cond $post $body $label) {
+			my ($start_label) = labels('start');
+			emit_TAC($init, $instructions) if defined $init;
+			push @$instructions, ::TAC_Label($start_label);
+			if (defined $cond) {
+				my $cond_res = emit_TAC($cond, $instructions);
+				push @$instructions, ::TAC_JumpIfZero($cond_res, "break_$label");
+			}
+			emit_TAC($body, $instructions);
+			push @$instructions, ::TAC_Label("continue_$label");
+			emit_TAC($post, $instructions) if defined $post;
+			push(@$instructions, (::TAC_Jump($start_label),
+								  ::TAC_Label("break_$label")));
+		}
+		with (Break $label) {
+			push @$instructions, ::TAC_Jump("break_$label");
+		}
+		with (Continue $label) {
+			push @$instructions, ::TAC_Jump("continue_$label");
+		}
 		with (Expression $expr) { emit_TAC($expr, $instructions); }
 		with (ConstantExp $val) {
 			return ::TAC_Constant($val);
@@ -108,10 +149,12 @@ sub emit_TAC {
 								  ::TAC_Label($end_label)); 
 			return $res;
 		}
+		default {
+			die "unknown AST node: $node";
+		}
 	}
 }
 
-# TODO nahradit evalem mozna? nezpomali to?
 sub convert_unop {
 	my $op = shift;
 	state $map = {
@@ -119,7 +162,7 @@ sub convert_unop {
 		Negate => ::TAC_Negate(),
 		Not => ::TAC_Not(),
 	};
-	return $map->{$op->{tag}} // die "unknown un op $op";
+	return $map->{$op->{tag}} // die "unknown unop $op";
 }
 
 sub convert_binop {
@@ -147,7 +190,7 @@ sub temp_name {
 }
 
 sub labels {
-	my @res = map { "label_${_}_" . $::global_counter } @_;
+	my @res = map { "${_}_" . $::global_counter } @_;
 	$::global_counter++;
 	return @res;
 }
