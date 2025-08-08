@@ -75,7 +75,7 @@ sub resolve_statement_vars {
 		}
 		with (For $init $cond $post $body $label) {
 			my $new_vars = copy_vars($vars);
-			if ($init->{tag} eq 'Declaration') {
+			if (defined $init && $init->{tag} eq 'Declaration') {
 				resolve_declaration_vars($init, $new_vars);
 			} else {
 				resolve_opt_expr_vars($init, $new_vars);
