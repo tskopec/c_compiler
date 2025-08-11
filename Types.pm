@@ -17,31 +17,31 @@ data Token =
 
 # AST
 data _Program = 
-	Program :Definitions;
-data Definition = 
-	Function :name :Block_body;
+	Program :Declarations;
+data Declaration =
+	VarDeclaration :name :OptExpression_initializer
+	| FunDeclaration :name :Identifier_params :OptBlock_body;
 data _Block = 
 	Block :StatementOrDeclaration_blockItems;
-data _Declaration =
-	Declaration :name :Expression_initializer;
 data Statement = 
 	Null
 	| Return :Expression 
 	| Expression :Expression
-	| If :Expression_cond :Statement_then :Statement_else
+	| If :Expression_cond :Statement_then :OptStatement_else
 	| Compound :Block
 	| Break :label
 	| Continue :label
 	| While :Expression_cond :Statement_body :label
 	| DoWhile :Statement_body :Expression_cond :label
-	| For :DeclOrExpr_init :Expression_cond  :Expression_post :Statement_body :label;
+	| For :VarDeclOrOptExpr_init :OptExpression_cond  :OptExpression_post :Statement_body :label;
 data _Expression = 
 	ConstantExp :value
 	| Var :ident
 	| Unary :UnaryOperator :Expression
 	| Binary :BinaryOperator :Expression1 :Expression2
 	| Assignment :LExpression :RExpression
-	| Conditional :Expression_cond :Expression_then :Expression_else;
+	| Conditional :Expression_cond :Expression_then :Expression_else
+	| FunctionCall :ident :Expression_args;
 data UnaryOperator = Complement | Negate | Not;
 data BinaryOperator = Add | Subtract | Multiply | Divide | Modulo | And | Or | Equal | NotEqual | LessThan | LessOrEqual | GreaterThan | GreaterOrEqual; 
 
@@ -136,24 +136,20 @@ sub extract_or_die {
 }
 
 sub print_AST {
-	my $tab = "    ";
+	my $tab = "  ";
 	my $print_node = sub {
 		my ($node, $indent) = @_;
 		if ($node isa Types::Algebraic::ADT) {
 			say(($tab x $indent) . $node->{tag});
-			for my $val ($node->{values}->@*) {
-				__SUB__->($val, $indent + 1);
-			}
+			__SUB__->($_, $indent + 1) for $node->{values}->@*;
 		} elsif (ref($node) eq 'ARRAY') {
 			say(($tab x $indent) . 'array:');
-			for my $val ($node->@*) {
-				__SUB__->($val, $indent + 1);
-			}
+			__SUB__->($_, $indent + 1) for $node->@*;
 		} else {
 			say(($tab x $indent) . ($node // 'undef'));
 		}
 	};
-	$print_node->(+shift, 0);
+	$print_node->(shift(), 0);
 	print "\n";
 }
 1;

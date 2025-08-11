@@ -16,23 +16,27 @@ use Emitter;
 our $global_counter = 0;
 
 # ARGS
-my @src_paths;
-my $target_phase = '';
+my @src_files;
+my $target_phase = "";
 my $debug = 0;
+my $dont_link = 0;
+
 foreach (@ARGV) {
 	if (/\.c$/) {
-		push @src_paths, $_;
+		push @src_files, $_;
 	} elsif (/^--(lex|parse|validate|tac|codegen)$/) {
 		$target_phase = $1;
 	} elsif (/^-d$/) {
 		$debug = 1;
+	} elsif (/^-c$/) {
+		$dont_link = 1;
 	}
 }
 
-for my $src_path (@src_paths) {
-	eval { compile($src_path) };
+for my $src_file (@src_files) {
+	eval { compile($src_file) };
 	if ($@) {
-		print "ERROR in src file: ${src_path}:\n$@";
+		print "ERROR in src file: $src_file:\n$@";
 		say "------------------------------------------";
 	}
 } continue {
@@ -45,14 +49,14 @@ END {
 }
 
 sub compile {
-	my $src_path = shift;
+	my $src_file = shift;
 	# PREPROCESS
-	my $prep_file = $src_path =~ s/c$/i/r;
-	qx/gcc -E -P $src_path -o $prep_file/;
+	my $prep_file = $src_file =~ s/c$/i/r;
+	qx/gcc -E -P $src_file -o $prep_file/;
 
 	# LEX
 	my $src_str = read_file($prep_file);
-	say "COMPILING $src_path:\n $src_str\n" if $debug;
+	say "COMPILING $src_file:\n $src_str\n" if $debug;
 	unlink($prep_file); 
 	my @tokens = Lexer::tokenize($src_str);
 	say(join("\n", @tokens) . "\n") if $debug;
@@ -80,15 +84,21 @@ sub compile {
 	next if ($target_phase eq 'codegen');
 
 	# EMIT CODE
-	my $asm_file = $src_path =~ s/c$/s/r;
+	my $asm_file = $src_file =~ s/c$/s/r;
 	my $code = Emitter::emit_code($asm);
 	say($code) if $debug;
 	write_file($asm_file, $code);
 	 
 	# ASSEMBLE
-	my $bin_file = $src_path =~ s/\.c$//r;
-	qx/gcc $asm_file -o $bin_file/;
+	if ($dont_link) {
+		my $obj_file = $src_file =~ s/\.c$/.o/r;
+		qx/gcc -c $asm_file -o $obj_file/;
+	} else {
+		my $bin_file = $src_file =~ s/\.c$//r;
+		qx/gcc $asm_file -o $bin_file/;
+	}
 	unlink($asm_file); 
 }
+
 
 

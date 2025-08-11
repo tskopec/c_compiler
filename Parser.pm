@@ -23,18 +23,34 @@ sub parse_program {
 sub parse_function {
 	expect('Keyword', 'int');
 	my $name = parse_identifier();
-	expect('Symbol', '(', 'Keyword', 'void', 'Symbol', ')', '{');
-	my $body = parse_block();
-	return ::Function($name, $body);
+	my $params = parse_params_list();
+	my $body = try_expect('Symbol', '{') ? parse_block() : undef;
+	return ::FunDeclaration($name, $params, $body);
+}
+
+
+sub parse_params_list {
+	my @list;
+	expect('Symbol', '(');
+	if (try_expect('Keyword', 'void')) {
+		push(@list, ['void']);
+	} else {
+		while (1) {
+			push(@list, [(expect('Keyword', 'int'))->{values}[0], parse_identifier()]);	
+			last if try_expect('Symbol', ')');
+			expect('Symbol', ',');
+		} 
+	}
+	return \@list;
 }
 
 sub parse_block {
-	my $items = [];
+	my @items;
 	while (@TOKENS && peek()->{values}[0] ne '}') {
-		push @$items, parse_block_item();
+		push @items, parse_block_item();
 	}
 	expect('Symbol', '}');
-	return ::Block($items);
+	return ::Block(\@items);
 }
 
 sub parse_block_item {
@@ -42,16 +58,21 @@ sub parse_block_item {
 }
 
 sub try_parse_declaration {
-	if (try_expect('Keyword', 'int')) {
+	my $res;
+	if (peek(0) eq ::Keyword('int') && peek(1) eq ::Symbol('(')) {
+		$res = parse_function();
+	} elsif (try_expect('Keyword', 'int')) {
 		my $name = parse_identifier();
-		my $init;
-		if (try_expect('Operator', '=')) {
-			$init = parse_expr(0);
+		if (try_expect('Symbol', '(')) {
+			$res = parse_function();	
+		} elsif (try_expect('Operator', '=')) {
+			$res = ::VarDeclaration($name, parse_expr(0));
+		} else {
+			$res = ::VarDeclaration($name, undef);
 		}
 		expect('Symbol', ';');
-		return ::Declaration($name, $init);
 	}
-	return undef;
+	return $res;
 }
 
 sub parse_statement {
@@ -204,7 +225,7 @@ sub precedence {
 }
 
 sub peek {
-	return $TOKENS[0];
+	return $TOKENS[shift() // 0];
 }
 
 sub expect {
