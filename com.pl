@@ -38,7 +38,7 @@ for my $src_file (@src_files) {
 	if ($@) {
 		print "ERROR in src file: $src_file:\n$@";
 		say "------------------------------------------";
-	}
+	} 
 } continue {
 	$global_counter = 0;
 }

@@ -24,8 +24,12 @@ sub parse_function {
 	expect('Keyword', 'int');
 	my $name = parse_identifier();
 	my $params = parse_params_list();
-	my $body = try_expect('Symbol', '{') ? parse_block() : undef;
-	return ::FunDeclaration($name, $params, $body);
+	if (try_expect('Symbol', '{')) {
+		return ::FunDeclaration($name, $params, parse_block());
+	} else {
+		expect('Symbol', ';');
+		return ::FunDeclaration($name, $params, undef);
+	}
 }
 
 
@@ -34,6 +38,7 @@ sub parse_params_list {
 	expect('Symbol', '(');
 	if (try_expect('Keyword', 'void')) {
 		push(@list, ['void']);
+		expect('Symbol', ')');
 	} else {
 		while (1) {
 			push(@list, [(expect('Keyword', 'int'))->{values}[0], parse_identifier()]);	
@@ -59,19 +64,15 @@ sub parse_block_item {
 
 sub try_parse_declaration {
 	my $res;
-	if (peek(0) eq ::Keyword('int') && peek(1) eq ::Symbol('(')) {
-		$res = parse_function();
-	} elsif (try_expect('Keyword', 'int')) {
-		my $name = parse_identifier();
-		if (try_expect('Symbol', '(')) {
-			$res = parse_function();	
-		} elsif (try_expect('Operator', '=')) {
-			$res = ::VarDeclaration($name, parse_expr(0));
+	if (peek() eq ::Keyword('int')) {
+		if (peek(2) eq ::Symbol('(')) {
+			$res = parse_function();
 		} else {
-			$res = ::VarDeclaration($name, undef);
+			expect('Keyword', 'int');
+			$res = ::VarDeclaration(parse_identifier(), try_expect('Operator', '=') ? parse_expr(0) : undef);
+			expect('Symbol', ';');
 		}
-		expect('Symbol', ';');
-	}
+	}	
 	return $res;
 }
 
@@ -111,7 +112,7 @@ sub parse_statement {
 		return ::DoWhile($body, $cond, 'dummy');
 	} elsif (try_expect('Keyword', 'for')) {
 		expect('Symbol', '(');
-		my $init = try_parse_declaration() // parse_opt_expr(';');
+		my $init = parse_for_init();
 		my $cond = parse_opt_expr(';');
 		my $post = parse_opt_expr(')');
 		my $body = parse_statement();
@@ -121,6 +122,29 @@ sub parse_statement {
 		expect('Symbol', ';');
 		return ::Expression($expr);
 	}
+}
+
+sub parse_for_init {
+	my $res;
+	if (try_expect('Keyword', 'int')) {
+		$res = ::VarDeclaration(parse_identifier(), try_expect('Operator', '=') ? parse_expr(0) : undef);
+	} elsif (try_expect('Symbol', ';')) {
+		return undef;
+	} else {
+		$res = parse_expr(0);
+	}
+	expect('Symbol', ';');
+	return $res;
+}
+
+sub parse_opt_expr {
+	my $end_symbol = shift;
+	unless (try_expect('Symbol', $end_symbol)) {
+		my $expr = parse_expr(0);
+		expect('Symbol', $end_symbol);
+		return $expr;
+	}
+	return undef;
 }
 
 sub parse_expr {
@@ -148,19 +172,24 @@ sub parse_expr {
 	return $left;
 }
 
-sub parse_opt_expr {
-	my $end_symbol = shift;
-	return undef if (try_expect('Symbol', $end_symbol)); 
-	my $expr = parse_expr(0);
-	expect('Symbol', $end_symbol);
-	return $expr;
-}
-
 sub parse_factor {
 	my $token = shift @TOKENS;
 	match ($token) {
 		with (Constant $val) { return ::ConstantExp($val); }
-		with (Identifier $name) { return ::Var($name); }
+		with (Identifier $name) { 
+			if (try_expect('Symbol', '(')) {
+				return ::FunctionCall($name, []) if (try_expect('Symbol', ')'));
+				my @args;
+				while (1) {
+					push(@args, parse_expr(0));
+					last if (try_expect('Symbol', ')'));
+					expect('Symbol', ',');
+				}
+				return ::FunctionCall($name, \@args);
+			} else {
+				return ::Var($name);
+			}
+	   	}
 		with (Operator $op) {
 			my $op_node = parse_unop($token);
 			return ::Unary($op_node, parse_factor());
@@ -244,7 +273,7 @@ sub expect {
 		}
 		$found = shift @TOKENS // die "no tokens";
 		if ($found->{tag} ne $expected_tag || (defined $expected_value && $found->{values}[0] ne $expected_value)) {
-			die "syntax err -> expected: $expected_tag $expected_value, but found: $found";
+			die "syntax err -> expected: $expected_tag '$expected_value', but found: $found";
 		}
 	}
 	return $found;
