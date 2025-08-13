@@ -37,12 +37,11 @@ sub parse_params_list {
 	my @list;
 	expect('Symbol', '(');
 	if (try_expect('Keyword', 'void')) {
-		push(@list, ['void']);
 		expect('Symbol', ')');
 	} else {
 		while (1) {
 			expect('Keyword', 'int');
-			push(@list, ['int', parse_identifier()]);	
+			push(@list, ::VarDeclaration(parse_identifier(), undef));	
 			last if try_expect('Symbol', ')');
 			expect('Symbol', ',');
 		} 
@@ -253,7 +252,7 @@ sub precedence {
 
 
 sub peek {	
-	return $TOKENS[shift() // 0] // die 'no more tokens';
+	return $TOKENS[shift() // 0] // die 'peek: no more tokens';
 }
 
 sub try_expect {
@@ -266,7 +265,7 @@ sub try_expect {
 
 sub expect {
 	my ($tag, $val) = @_;
-	my $found = shift @TOKENS // die 'no more tokens';
+	my $found = shift @TOKENS // die "expected: $tag '$val', but no more tokens";
 	if ($found->{tag} eq $tag && (!defined $val || $found->{values}[0] eq $val)) {
 		return $found;
 	}	

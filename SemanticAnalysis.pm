@@ -7,145 +7,170 @@ use Types::Algebraic;
 
 sub run {
 	my $ast = shift;
-	#	resolve_vars($ast);
-	#	label_loops($ast, undef);
+	resolve_ids($ast);
+	label_loops($ast, undef);
 }
 
-### VARIABLE RESOLUTION ###
-#	sub resolve_vars {
-#		my ($definitions) = ::extract_or_die(shift(), 'Program'); 
-#		for my $def (@$definitions) {
-#			match ($def) {
-#				with (FunDeclaration $name $body) {
-#					my ($items) = ::extract_or_die($body, 'Block');
-#					my $var_map = {};
-#					resolve_body_vars($_, $var_map) for (@$items); 
-#				}
-#				default { die "unknown def $def" }
-#			}
-#		}
-#	}
-#	
-#	sub resolve_body_vars {
-#		my ($item, $vars) = @_;
-#		match ($item) {
-#			with (Declaration $name $init) {
-#				resolve_declaration_vars($item, $vars);
-#			}
-#			default {
-#				resolve_statement_vars($item, $vars);
-#			}
-#		}
-#	}
-#	
-#	sub resolve_declaration_vars {
-#		my ($declaration, $vars) = @_;
-#		my ($name, $init) = ::extract_or_die($declaration, 'Declaration');
-#		if (exists($vars->{$name}) && $vars->{$name}{from_this_block}) {
-#			die "duplicate var $name";
-#		}
-#		$declaration->{values}[0] = unique_var_name($name);
-#		$vars->{$name} = { uniq_name => $declaration->{values}[0], from_this_block => 1 };
-#		resolve_expr_vars($init, $vars) if defined $init;
-#	}
-#	
-#	sub resolve_statement_vars {
-#		my ($statement, $vars) = @_;
-#		match ($statement) {
-#			with (Return $e) { resolve_expr_vars($e, $vars); }
-#			with (Expression $e) { resolve_expr_vars($e, $vars); }
-#			with (Null) {;}
-#			with (If $cond $then $else) {
-#				resolve_expr_vars($cond, $vars);
-#				resolve_statement_vars($then, $vars);
-#				resolve_statement_vars($else, $vars) if defined $else;
-#			}
-#			with (Compound $block) {
-#				my ($items) = ::extract_or_die($block, 'Block');
-#				my $new_vars = copy_vars($vars);
-#				resolve_body_vars($_, $new_vars) for @$items; 
-#			}
-#			with (While $cond $body $label) {
-#				resolve_expr_vars($cond, $vars);
-#				resolve_statement_vars($body, $vars);
-#			} 
-#			with (DoWhile $body $cond $label) {
-#				resolve_statement_vars($body, $vars);
-#				resolve_expr_vars($cond, $vars);
-#			}
-#			with (For $init $cond $post $body $label) {
-#				my $new_vars = copy_vars($vars);
-#				if (defined $init && $init->{tag} eq 'Declaration') {
-#					resolve_declaration_vars($init, $new_vars);
-#				} else {
-#					resolve_opt_expr_vars($init, $new_vars);
-#				}
-#				resolve_opt_expr_vars($cond, $new_vars);
-#				resolve_opt_expr_vars($post, $new_vars);
-#				resolve_statement_vars($body, $new_vars);
-#			}
-#			with (Break $label) {;}
-#			with (Continue $label) {;}
-#			default { die "unknown statement $statement" }
-#		}	   
-#	}
-#	
-#	sub resolve_opt_expr_vars {
-#		my ($expr, $vars) = @_;
-#		resolve_expr_vars($expr, $vars) if defined $expr;
-#	}
-#	
-#	sub resolve_expr_vars {
-#		my ($expr, $vars) = @_;
-#		match ($expr) {
-#			with (ConstantExp $val) {;}
-#			with (Var $name) { $expr->{values}[0] = ($vars->{$name}{uniq_name} // die "undeclared variable $name"); }
-#			with (Unary $op $e) { resolve_expr_vars($e, $vars); }
-#			with (Binary $op $e1 $e2) { resolve_expr_vars($_, $vars) for ($e1, $e2); }
-#			with (Assignment $le $re) { 
-#				die "not a variable $le" if ($le->{tag} ne 'Var');
-#			   	resolve_expr_vars($_, $vars) for ($le, $re);
-#		   	}
-#			with (Conditional $cond $then $else) { resolve_expr_vars($_, $vars) for ($cond, $then, $else); }
-#			default { die "unknown expression $expr" }
-#		}
-#	}
-#	
-#	sub unique_var_name {
-#		return +shift . '.' . $::global_counter++;
-#	}
-#	
-#	sub copy_vars {
-#		my $original_vars = shift;
-#		my $result = {};
-#		while (my ($name_in_src, $properties) = each %$original_vars) {
-#			$result->{$name_in_src} = {
-#				uniq_name => $properties->{uniq_name},
-#				from_this_block => 0
-#			}
-#		};
-#		return $result;
-#	}
-#	
-#	### LOOP LABELING ###
-#	sub label_loops {
-#		my ($node, $current_label) = @_;
-#		if ($node isa Types::Algebraic::ADT) {
-#			if (::is_one_of($node, 'While', 'DoWhile', 'For')) {
-#				$current_label = new_loop_label();
-#				$node->{values}[-1] = $current_label;
-#			} elsif (::is_one_of($node, 'Break', 'Continue')) {
-#				$node->{values}[0] = ($current_label // die("'" . lc($node->{tag}) . "' outside loop"));
-#				return;
-#			}
-#			label_loops($_, $current_label) for $node->{values}->@*;
-#		} elsif (ref($node) eq 'ARRAY') {
-#			label_loops($_, $current_label) for $node->@*;
-#		}
-#	}
-#	
-#	sub new_loop_label {
-#		return "_loop_" . $::global_counter++;
-#	}
+### IDENTIFIER RESOLUTION ###
+sub resolve_ids {
+	my ($declarations) = ::extract_or_die(shift(), 'Program'); 
+	my $ids_map = {};
+	for my $decl (@$declarations) {
+		match ($decl) {
+			with (FunDeclaration $name $params $body) {
+				resolve_fun_declaration_ids($decl, $ids_map);
+			}
+			default { die "unknown declaration: $decl" }
+		}
+	}
+}
+
+sub resolve_fun_declaration_ids {
+	my ($fun, $ids_map) = @_;
+	my ($name, $params, $body) = ::extract_or_die($fun, 'FunDeclaration');
+	if (exists $ids_map->{$name}) {
+		my $previous_entry = $ids_map->{$name};
+		if ($previous_entry->{from_current_scope} && !$previous_entry->{has_linkage}) {
+			die "duplicate function declaration $name";
+		}
+	}
+	$ids_map->{$name} = { uniq_name => $name, from_current_scope => 1, has_linkage => 1 };
+	my $inner_ids_map = make_inner_scope_map($ids_map);
+	resolve_var_declaration_ids($_, $inner_ids_map) for @$params;
+   	if (defined $body) {
+		my ($items) = ::extract($body, 'Block');
+		resolve_block_item_ids($_, $inner_ids_map) for @$items;
+	}
+}
+
+sub resolve_var_declaration_ids {
+	my ($declaration, $ids_map) = @_;
+	my ($name, $init) = ::extract_or_die($declaration, 'VarDeclaration');
+	if (exists($ids_map->{$name}) && $ids_map->{$name}{from_this_scope}) {
+		die "duplicate var $name";
+	}
+	$declaration->{values}[0] = unique_var_name($name);
+	$ids_map->{$name} = { uniq_name => $declaration->{values}[0], from_this_scope => 1, has_linkage => 0 };
+	resolve_expr_ids($init, $ids_map) if defined $init;
+}
+
+sub resolve_block_item_ids {
+	my ($item, $ids_map) = @_;
+	match ($item) {
+		with (VarDeclaration $name $init) {
+			resolve_var_declaration_ids($item, $ids_map);
+		}
+		with (FunDeclaration $name $params $body) {
+			die "local fun definition: $name" if defined $body;
+			resolve_fun_declaration_ids($item, $ids_map);
+		}
+		default {
+			resolve_statement_ids($item, $ids_map);
+		}
+	}
+}
+
+sub resolve_statement_ids {
+	my ($statement, $ids_map) = @_;
+	match ($statement) {
+		with (Return $e) { resolve_expr_ids($e, $ids_map); }
+		with (Expression $e) { resolve_expr_ids($e, $ids_map); }
+		with (Null) {;}
+		with (If $cond $then $else) {
+			resolve_expr_ids($cond, $ids_map);
+			resolve_statement_ids($then, $ids_map);
+			resolve_statement_ids($else, $ids_map) if defined $else;
+		}
+		with (Compound $block) {
+			my ($items) = ::extract_or_die($block, 'Block');
+			my $new_idents = make_inner_scope_map($ids_map);
+			resolve_body_ids($_, $new_idents) for @$items; 
+		}
+		with (While $cond $body $label) {
+			resolve_expr_ids($cond, $ids_map);
+			resolve_statement_ids($body, $ids_map);
+		} 
+		with (DoWhile $body $cond $label) {
+			resolve_statement_ids($body, $ids_map);
+			resolve_expr_ids($cond, $ids_map);
+		}
+		with (For $init $cond $post $body $label) {
+			my $new_idents = make_inner_scope_map($ids_map);
+			if (defined $init && $init->{tag} eq 'Declaration') {
+				resolve_declaration_ids($init, $new_idents);
+			} else {
+				resolve_opt_expr_ids($init, $new_idents);
+			}
+			resolve_opt_expr_ids($cond, $new_idents);
+			resolve_opt_expr_ids($post, $new_idents);
+			resolve_statement_ids($body, $new_idents);
+		}
+		with (Break $label) {;}
+		with (Continue $label) {;}
+		default { die "unknown statement $statement" }
+	}	   
+}
+
+sub resolve_opt_expr_ids {
+	my ($expr, $ids_map) = @_;
+	resolve_expr_ids($expr, $ids_map) if defined $expr;
+}
+
+sub resolve_expr_ids {
+	my ($expr, $ids_map) = @_;
+	match ($expr) {
+		with (ConstantExp $val) {;}
+		with (Var $name) { $expr->{values}[0] = ($ids_map->{$name}{uniq_name} // die "undeclared variable $name"); }
+		with (Unary $op $e) { resolve_expr_ids($e, $ids_map); }
+		with (Binary $op $e1 $e2) { resolve_expr_ids($_, $ids_map) for ($e1, $e2); }
+		with (Assignment $le $re) { 
+			die "not a variable $le" if ($le->{tag} ne 'Var');
+		   	resolve_expr_ids($_, $ids_map) for ($le, $re);
+	   	}
+		with (Conditional $cond $then $else) { resolve_expr_ids($_, $ids_map) for ($cond, $then, $else); }
+		with (FunctionCall $name $args) {
+			$expr->{values}[0] = ($ids_map->{$name}{uniq_name} // die "calling undeclared function $name");
+			resolve_expr_ids($_, $ids_map) for @$args;
+		}
+		default { die "unknown expression $expr" }
+	}
+}
+
+sub unique_var_name {
+	return +shift . '.' . $::global_counter++;
+}
+
+sub make_inner_scope_map {
+	my $original_ids = shift;
+	my $result = {};
+	while (my ($name_in_src, $properties) = each %$original_ids) {
+		while (my ($k, $v) = each %$properties) {
+			$result->{$name_in_src}{$k} = $v;
+		}
+		$result->{$name_in_src}{from_this_scope} = 0;
+	};
+	return $result;
+}
+
+### LOOP LABELING ###
+sub label_loops {
+	my ($node, $current_label) = @_;
+	if ($node isa Types::Algebraic::ADT) {
+		if (::is_one_of($node, 'While', 'DoWhile', 'For')) {
+			$current_label = new_loop_label();
+			$node->{values}[-1] = $current_label;
+		} elsif (::is_one_of($node, 'Break', 'Continue')) {
+			$node->{values}[0] = ($current_label // die("'" . lc($node->{tag}) . "' outside loop"));
+			return;
+		}
+		label_loops($_, $current_label) for $node->{values}->@*;
+	} elsif (ref($node) eq 'ARRAY') {
+		label_loops($_, $current_label) for $node->@*;
+	}
+}
+
+sub new_loop_label {
+	return "_loop_" . $::global_counter++;
+}
 
 1;
