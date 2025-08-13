@@ -41,7 +41,8 @@ sub parse_params_list {
 		expect('Symbol', ')');
 	} else {
 		while (1) {
-			push(@list, [(expect('Keyword', 'int'))->{values}[0], parse_identifier()]);	
+			expect('Keyword', 'int');
+			push(@list, ['int', parse_identifier()]);	
 			last if try_expect('Symbol', ')');
 			expect('Symbol', ',');
 		} 
@@ -51,10 +52,10 @@ sub parse_params_list {
 
 sub parse_block {
 	my @items;
-	while (@TOKENS && peek()->{values}[0] ne '}') {
+	while (@TOKENS) {
+		last if (try_expect('Symbol', '}'));
 		push @items, parse_block_item();
 	}
-	expect('Symbol', '}');
 	return ::Block(\@items);
 }
 
@@ -63,17 +64,15 @@ sub parse_block_item {
 }
 
 sub try_parse_declaration {
-	my $res;
-	if (peek() eq ::Keyword('int')) {
-		if (peek(2) eq ::Symbol('(')) {
-			$res = parse_function();
-		} else {
-			expect('Keyword', 'int');
-			$res = ::VarDeclaration(parse_identifier(), try_expect('Operator', '=') ? parse_expr(0) : undef);
-			expect('Symbol', ';');
-		}
-	}	
-	return $res;
+	return undef if (peek() ne ::Keyword('int'));
+	if (peek(2) eq ::Symbol('(')) {
+		return parse_function();
+	} else {
+		expect('Keyword', 'int');
+		my $decl = ::VarDeclaration(parse_identifier(), try_expect('Operator', '=') ? parse_expr(0) : undef);
+		expect('Symbol', ';');
+		return $decl;
+	}
 }
 
 sub parse_statement {
@@ -106,9 +105,9 @@ sub parse_statement {
 		return ::While($cond, $body, 'dummy');
 	} elsif (try_expect('Keyword', 'do')) {
 		my $body = parse_statement();
-		expect('Keyword', 'while', 'Symbol', '(');
+		expect('Keyword', 'while') && expect('Symbol', '(');
 		my $cond = parse_expr(0);
-		expect('Symbol', ')', ';');
+		expect('Symbol', ')') && expect('Symbol', ';');
 		return ::DoWhile($body, $cond, 'dummy');
 	} elsif (try_expect('Keyword', 'for')) {
 		expect('Symbol', '(');
@@ -125,11 +124,10 @@ sub parse_statement {
 }
 
 sub parse_for_init {
+	return undef if (try_expect('Symbol', ';'));
 	my $res;
 	if (try_expect('Keyword', 'int')) {
 		$res = ::VarDeclaration(parse_identifier(), try_expect('Operator', '=') ? parse_expr(0) : undef);
-	} elsif (try_expect('Symbol', ';')) {
-		return undef;
 	} else {
 		$res = parse_expr(0);
 	}
@@ -206,12 +204,12 @@ sub parse_factor {
 }
 
 sub parse_identifier {
-	my $iden = expect("Identifier");
-	return $iden->{values}[0];
+	my ($name) = ::extract_or_die(shift @TOKENS, 'Identifier');
+	return $name;
 }
 
 sub parse_unop {
-	my ($op) = ::extract_or_die(shift, "Operator");
+	my ($op) = ::extract_or_die(shift(), "Operator");
 	state $map = {
 		'-' => ::Negate(),
 		'~' => ::Complement(),
@@ -253,41 +251,26 @@ sub precedence {
 	die "no precedence defined for $op";
 }
 
-sub peek {
-	return $TOKENS[shift() // 0];
-}
 
-sub expect {
-	my ($found, $expected_tag, $expected_value);
-	state $next_arg_is_tag = sub {
-		return $_[0] =~ /^[A-Z]/;
-	}; 
-	die "args: [tag, [values]?], ..." unless $next_arg_is_tag->(@_); 
-	while (@_) {
-		if ($next_arg_is_tag->(@_)) {
-			$expected_tag = shift @_;
-			undef $expected_value;
-		}
-		if (!$next_arg_is_tag->(@_)) {
-			$expected_value = shift @_;
-		}
-		$found = shift @TOKENS // die "no tokens";
-		if ($found->{tag} ne $expected_tag || (defined $expected_value && $found->{values}[0] ne $expected_value)) {
-			die "syntax err -> expected: $expected_tag '$expected_value', but found: $found";
-		}
-	}
-	return $found;
+sub peek {	
+	return $TOKENS[shift() // 0] // die 'no more tokens';
 }
 
 sub try_expect {
-	my ($tag, $value) = @_;
-	my $found = peek();
-	if ($found->{tag} eq $tag && $found->{values}[0] eq $value) {
-		shift @TOKENS;
-		return 1;
-	}
+	my ($tag, $val) = @_;
+	if (peek()->{tag} eq $tag && (!defined $val || peek()->{values}[0] eq $val)) {
+		return shift @TOKENS;
+	}	
 	return 0;
 }
 
+sub expect {
+	my ($tag, $val) = @_;
+	my $found = shift @TOKENS // die 'no more tokens';
+	if ($found->{tag} eq $tag && (!defined $val || $found->{values}[0] eq $val)) {
+		return $found;
+	}	
+	die "syntax err -> expected: $tag '$val', but found: $found";
+}
 
 1;
