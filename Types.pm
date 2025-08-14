@@ -45,6 +45,10 @@ data _Expression =
 data UnaryOperator = Complement | Negate | Not;
 data BinaryOperator = Add | Subtract | Multiply | Divide | Modulo | And | Or | Equal | NotEqual | LessThan | LessOrEqual | GreaterThan | GreaterOrEqual; 
 
+# Types
+data Type = 
+	Int
+	| FunType :param_count;
 
 # TAC AST
 data TAC_Program = 

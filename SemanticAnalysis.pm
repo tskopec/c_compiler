@@ -5,10 +5,14 @@ use warnings;
 use feature qw(say state isa);
 use Types::Algebraic;
 
+our $symbol_table;
+
 sub run {
+	$symbol_table = {};
 	my $ast = shift;
 	resolve_ids($ast);
-	label_loops($ast, undef);
+	check_types($ast);
+	label_loops($ast);
 }
 
 ### IDENTIFIER RESOLUTION ###
@@ -30,11 +34,11 @@ sub resolve_fun_declaration_ids {
 	my ($name, $params, $body) = ::extract_or_die($fun, 'FunDeclaration');
 	if (exists $ids_map->{$name}) {
 		my $previous_entry = $ids_map->{$name};
-		if ($previous_entry->{from_current_scope} && !$previous_entry->{has_linkage}) {
+		if ($previous_entry->{from_this_scope} && !$previous_entry->{has_linkage}) {
 			die "duplicate function declaration $name";
 		}
 	}
-	$ids_map->{$name} = { uniq_name => $name, from_current_scope => 1, has_linkage => 1 };
+	$ids_map->{$name} = { uniq_name => $name, from_this_scope => 1, has_linkage => 1 };
 	my $inner_ids_map = make_inner_scope_map($ids_map);
 	resolve_var_declaration_ids($_, $inner_ids_map) for @$params;
    	if (defined $body) {
@@ -84,7 +88,7 @@ sub resolve_statement_ids {
 		with (Compound $block) {
 			my ($items) = ::extract_or_die($block, 'Block');
 			my $new_idents = make_inner_scope_map($ids_map);
-			resolve_body_ids($_, $new_idents) for @$items; 
+			resolve_block_item_ids($_, $new_idents) for @$items; 
 		}
 		with (While $cond $body $label) {
 			resolve_expr_ids($cond, $ids_map);
@@ -96,8 +100,8 @@ sub resolve_statement_ids {
 		}
 		with (For $init $cond $post $body $label) {
 			my $new_idents = make_inner_scope_map($ids_map);
-			if (defined $init && $init->{tag} eq 'Declaration') {
-				resolve_declaration_ids($init, $new_idents);
+			if (defined $init && $init->{tag} eq 'VarDeclaration') {
+				resolve_var_declaration_ids($init, $new_idents);
 			} else {
 				resolve_opt_expr_ids($init, $new_idents);
 			}
@@ -151,6 +155,52 @@ sub make_inner_scope_map {
 	};
 	return $result;
 }
+
+
+
+### TYPE CHECKING ###
+sub check_types {
+	my ($node) = @_;
+	if ($node isa Types::Algebraic::ADT) {
+		match ($node) {
+			with (VarDeclaration $name $init) {
+				$symbol_table->{$name} = { type => ::Int() };
+			}
+			with (FunDeclaration $name $params $body) {
+				my $type = ::FunType(scalar @$params);
+				my $has_body = defined $body;
+				my $already_defined = 0;
+
+				if (exists $symbol_table->{$name}) {
+					$already_defined = $symbol_table->{$name}{defined};
+					die "incompatible fun declarations: $name" if ($symbol_table->{$name}{type} ne $type);
+					die "fun defined multiple times: $name" if ($already_defined && $has_body);
+				}
+				$symbol_table->{$name} = { 
+					type => ::FunType(scalar @$params),
+					defined => ($already_defined || $has_body) 
+				};
+				if ($has_body) {
+					$symbol_table->{$_} = ::Int() for @$params;
+				}
+			}
+			with (FunctionCall $name $args) {
+				my $type = $symbol_table->{$name}{type};
+				die "is not function: $name" if ($type->{tag} ne 'FunType');
+				die "wrong number of args: $name" if ($type->{values}[0] ne (scalar @$args));
+				check_types($_) for @$args;	
+			}
+			with (Var $name) {
+				die "is not var: $name" if ($symbol_table->{$name}{type} ne ::Int());
+			}
+		}	
+		check_types($_) for $node->{values}->@*;
+	} elsif (ref($node) eq 'ARRAY') {
+		check_types($_) for $node->@*;
+	}
+}
+
+
 
 ### LOOP LABELING ###
 sub label_loops {
