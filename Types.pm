@@ -54,7 +54,7 @@ data Type =
 data TAC_Program = 
 	TAC_Program :Declarations;
 data TAC_Declaration = 
-	TAC_Function :identifier :Instructions;
+	TAC_Function :identifier :params :Instructions;
 data TAC_Instruction =
 	TAC_Return :Value
 	| TAC_Unary :UnaryOperator :Value_src :Value_dst
@@ -63,7 +63,8 @@ data TAC_Instruction =
 	| TAC_Jump :target
 	| TAC_JumpIfZero :Value_cond :target
 	| TAC_JumpIfNotZero :Value_cond :target
-	| TAC_Label :ident;
+	| TAC_Label :ident
+	| TAC_FunCall :name :Value_params :Value_dst;
 data TAC_Value =
 	TAC_Constant :int
 	| TAC_Variable :name;

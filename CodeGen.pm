@@ -13,7 +13,7 @@ sub translate_to_ASM {
 		with (TAC_Program $declarations) {
 			return ::ASM_Program([map { translate_to_ASM($_) } @$declarations]);
 		}
-		with (TAC_Function $ident $instructions) {
+		with (TAC_Function $ident $params $instructions) {
 			return ::ASM_Function(
 				$ident,
 				[ map { translate_to_ASM($_) } @$instructions ]);
