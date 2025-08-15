@@ -2,7 +2,7 @@ package CodeGen;
 
 use strict;
 use warnings;
-use feature qw(say isa);
+use feature qw(say isa state);
 use List::Util qw(min);
 use Types::Algebraic;
 
@@ -14,9 +14,20 @@ sub translate_to_ASM {
 			return ::ASM_Program([map { translate_to_ASM($_) } @$declarations]);
 		}
 		with (TAC_Function $ident $params $instructions) {
+			state @arg_regs = (::DI(), ::SI(), ::DX(), ::CX(), ::R8(), ::R9());
+			state $mov_param = sub {
+				my ($param, $param_i) = @_;
+				my $dst = ($param_i >= @arg_regs)
+					? ::ASM_Stack(16 + ($param_i - 6))
+					: ::ASM_Reg($arg_regs[$param_i]); 
+				::ASM_Mov($dst, translate_to_ASM($param));
+			};
+			my $i = 0;
 			return ::ASM_Function(
-				$ident,
-				[ map { translate_to_ASM($_) } @$instructions ]);
+				$ident,[ 
+					map { $mov_param->($_, $i++) } @$params,
+					map { translate_to_ASM($_) } @$instructions
+				]);
 		}
 		with (TAC_Return $value) {
 			return (::ASM_Mov(translate_to_ASM($value), ::ASM_Reg(::AX())),
@@ -65,6 +76,35 @@ sub translate_to_ASM {
 		with (TAC_Copy $src $dst) {
 			return ::ASM_Mov(translate_to_ASM($src), translate_to_ASM($dst));
 		}
+		with (TAC_FunCall $name $args $dst) {
+			state @arg_regs = (::DI(), ::SI(), ::DX(), ::CX(), ::R8(), ::R9());
+			my (@instructions, @reg_args, @stack_args);
+			(@reg_args[0..5], @stack_args) = @$args;
+			my $padding = ((@stack_args % 2) == 1) ? 8 : 0;
+			if ($stack_padding) {
+				push(@instructions, ::ASM_AllocateStack($stack_padding));
+			}	
+			while (my ($i, $tac_arg) = each @$reg_args) {
+				my $reg = $arg_regs[$i];
+				push(@instructions, ::ASM_Mov(translate_to_ASM($tac_arg), ::ASM_Reg($r)));
+			}
+			for my $tac_arg (reverse @stack_args) {
+				my $asm_arg = translate_to_ASM($tac_arg);
+				if (::index_of($asm_arg, qw(ASM_Imm ASM_Reg)) != -1) {
+					push(@instructions, ::ASM_Push($asm_arg));
+				} else {
+					push(@instructions, (::ASM_Mov($asm_arg, ::ASM_Reg(::AX())),
+										 ::ASM_Push(::ASM_Reg(::AX()))));
+				}
+			}
+			push(@instructions, ::ASM_Call($name));
+			my $remove_bytes = 8 * @stack_args + $padding;
+			if ($remove_bytes) {
+				push(@instructions, ::ASM_DeallocateStack($remove_bytes));
+			}
+			push(@instructions, ::ASM_Mov(::ASM_Reg(::AX()), translate_to_ASM($dst)));
+			return \@instructions;
+		}
 		with (TAC_Constant $int) {
 			return ::ASM_Imm($int);
 		}
@@ -104,7 +144,7 @@ sub fix_up {
 				replace_pseudo($declaration);
 				fix_instr($declaration);
 			}
-			default { die "unknown declaration $declaration" }
+			default { die "not a function declaration: $declaration" }
 		}
 	}
 }

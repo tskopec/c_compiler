@@ -50,8 +50,9 @@ data Type =
 	Int
 	| FunType :param_count;
 
+
 # TAC AST
-data TAC_Program = 
+data _TAC_Program = 
 	TAC_Program :Declarations;
 data TAC_Declaration = 
 	TAC_Function :identifier :params :Instructions;
@@ -91,6 +92,9 @@ data ASM_Instruction =
 	| ASM_SetCC :Cond :Operand
 	| ASM_Label :ident
 	| ASM_AllocateStack :bytes
+	| ASM_DeallocteStack :bytes
+	| ASM_Push :Operand
+	| ASM_Call :ident
 	| ASM_Ret;
 data ASM_UnaryOperator = 
 	ASM_Neg | ASM_Not;
@@ -104,7 +108,7 @@ data ASM_Operand =
 data AMS_CondCode = 
 	E | NE | G | GE | L | LE;
 data ASM_Register =
-	AX | DX | R10 | R11;
+	AX | CX | DX | DI | SI | R8 | R9 | R10 | R11;
 
 
 
