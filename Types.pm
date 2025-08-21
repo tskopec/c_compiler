@@ -105,7 +105,7 @@ data ASM_Operand =
 	| ASM_Reg :Reg
 	| ASM_Pseudo :id
 	| ASM_Stack :offset;
-data AMS_CondCode = 
+data ASM_CondCode = 
 	E | NE | G | GE | L | LE;
 data ASM_Register =
 	AX | CX | DX | DI | SI | R8 | R9 | R10 | R11;

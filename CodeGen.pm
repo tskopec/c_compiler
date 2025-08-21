@@ -6,6 +6,8 @@ use feature qw(say isa state);
 use List::Util qw(min);
 use Types::Algebraic;
 
+my @arg_regs = (::DI(), ::SI(), ::DX(), ::CX(), ::R8(), ::R9());
+
 ### FIRST PASS ###
 sub translate_to_ASM {
 	my $node = shift;
@@ -14,20 +16,18 @@ sub translate_to_ASM {
 			return ::ASM_Program([map { translate_to_ASM($_) } @$declarations]);
 		}
 		with (TAC_Function $ident $params $instructions) {
-			state @arg_regs = (::DI(), ::SI(), ::DX(), ::CX(), ::R8(), ::R9());
-			state $mov_param = sub {
-				my ($param, $param_i) = @_;
-				my $dst = ($param_i >= @arg_regs)
-					? ::ASM_Stack(16 + ($param_i - 6))
-					: ::ASM_Reg($arg_regs[$param_i]); 
-				::ASM_Mov($dst, translate_to_ASM($param));
+			my $move_to_stack = sub {
+				my $param_i = shift;
+				my $src = ($param_i <= $#arg_regs) 
+					? ::ASM_Reg($arg_regs[$param_i])
+					: ::ASM_Stack(16 + ($param_i - @arg_regs));
+				::ASM_Mov($src, ::ASM_Pseudo($params->[$param_i]));
 			};
-			my $i = 0;
 			return ::ASM_Function(
-				$ident,[ 
-					map { $mov_param->($_, $i++) } @$params,
-					map { translate_to_ASM($_) } @$instructions
-				]);
+				$ident,
+				[ (map { $move_to_stack->($_) } (keys @$params)),
+				  (map { translate_to_ASM($_) } @$instructions)	]
+			);
 		}
 		with (TAC_Return $value) {
 			return (::ASM_Mov(translate_to_ASM($value), ::ASM_Reg(::AX())),
@@ -77,20 +77,19 @@ sub translate_to_ASM {
 			return ::ASM_Mov(translate_to_ASM($src), translate_to_ASM($dst));
 		}
 		with (TAC_FunCall $name $args $dst) {
-			state @arg_regs = (::DI(), ::SI(), ::DX(), ::CX(), ::R8(), ::R9());
 			my (@instructions, @reg_args, @stack_args);
 			(@reg_args[0..5], @stack_args) = @$args;
-			my $padding = ((@stack_args % 2) == 1) ? 8 : 0;
-			if ($stack_padding) {
-				push(@instructions, ::ASM_AllocateStack($stack_padding));
+			my $padding = (@stack_args % 2) ? 8 : 0;
+			if ($padding) {
+				push(@instructions, ::ASM_AllocateStack($padding));
 			}	
-			while (my ($i, $tac_arg) = each @$reg_args) {
-				my $reg = $arg_regs[$i];
-				push(@instructions, ::ASM_Mov(translate_to_ASM($tac_arg), ::ASM_Reg($r)));
+			while (my ($i, $tac_arg) = each @reg_args) {
+				my $asm_arg = translate_to_ASM($tac_arg);
+				push(@instructions, ::ASM_Mov($asm_arg, ::ASM_Reg($arg_regs[$i])));
 			}
 			for my $tac_arg (reverse @stack_args) {
 				my $asm_arg = translate_to_ASM($tac_arg);
-				if (::index_of($asm_arg, qw(ASM_Imm ASM_Reg)) != -1) {
+				if (::is_one_of($asm_arg, qw(ASM_Imm ASM_Reg))) {
 					push(@instructions, ::ASM_Push($asm_arg));
 				} else {
 					push(@instructions, (::ASM_Mov($asm_arg, ::ASM_Reg(::AX())),
@@ -144,29 +143,26 @@ sub fix_up {
 				replace_pseudo($declaration);
 				fix_instr($declaration);
 			}
-			default { die "not a function declaration: $declaration" }
+			default { die "not a declaration: $declaration" }
 		}
 	}
 }
 
 sub replace_pseudo {
-	my $function = shift;
-	my $offsets = {}, my $process_node;
-	$process_node = sub {
+	my ($function, $offsets) = (shift(), {});
+	my $process_node = sub {
 		my $node = shift;
 		match ($node) {
-			with (ASM_Pseudo $id) {
-				unless (exists $offsets->{$id}) {
-					$offsets->{$id} = -4 * (scalar(%$offsets) + 1);
-				}
-				return ::ASM_Stack($offsets->{$id});
+			with (ASM_Pseudo $ident) {
+				$offsets->{$ident} //= -4 * (scalar(%$offsets) + 1);
+				return ::ASM_Stack($offsets->{$ident});
 			}
 			default { 
 				for my $val ($node->{values}->@*) {
 					if ($val isa Types::Algebraic::ADT) {
-						$val = $process_node->($val);
+						$val = $__SUB__->($val);
 					} elsif (ref($val) eq 'ARRAY') {
-						$val = [ map { $process_node->($_) } @$val ];
+						$val = [ map { $__SUB__->($_) } @$val ];
 					}
 				}
 				return $node;
@@ -218,7 +214,7 @@ sub fix_instr {
 		return $instruction;
 	};
 	my ($name, $instructions) = ::extract_or_die($function, 'ASM_Function');
-	splice(@$instructions, 0, @$instructions, (map { $fix->($_) } @$instructions));
+	splice(@$instructions, 0, $#$instructions + 1, ( map { $fix->($_) } @$instructions ));
 }
 
 1;
