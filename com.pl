@@ -79,6 +79,7 @@ sub compile {
 
 	# ASSEMBLY GEN
 	my $asm = CodeGen::translate_to_ASM($tac);
+	print_AST($asm) if $debug;
 	CodeGen::fix_up($asm);
 	print_AST($asm) if $debug;
 	next if ($target_phase eq 'codegen');

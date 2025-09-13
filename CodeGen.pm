@@ -2,7 +2,7 @@ package CodeGen;
 
 use strict;
 use warnings;
-use feature qw(say isa state);
+use feature qw(say isa state current_sub);
 use List::Util qw(min);
 use Types::Algebraic;
 
@@ -20,7 +20,7 @@ sub translate_to_ASM {
 				my $param_i = shift;
 				my $src = ($param_i <= $#arg_regs) 
 					? ::ASM_Reg($arg_regs[$param_i])
-					: ::ASM_Stack(16 + ($param_i - @arg_regs));
+					: ::ASM_Stack(16 + 8 * ($param_i - @arg_regs));
 				::ASM_Mov($src, ::ASM_Pseudo($params->[$param_i]));
 			};
 			return ::ASM_Function(
@@ -76,12 +76,12 @@ sub translate_to_ASM {
 		with (TAC_Copy $src $dst) {
 			return ::ASM_Mov(translate_to_ASM($src), translate_to_ASM($dst));
 		}
-		with (TAC_FunCall $name $args $dst) {
+		with (TAC_FunCall $ident $args $dst) {
 			my (@instructions, @reg_args, @stack_args);
-			(@reg_args[0..5], @stack_args) = @$args;
-			my $padding = (@stack_args % 2) ? 8 : 0;
-			if ($padding) {
-				push(@instructions, ::ASM_AllocateStack($padding));
+			(@reg_args[0..($#$args < 5 ? $#$args : 5)], @stack_args) = @$args;
+			my $stack_padding = 8 * (@stack_args % 2);
+			if ($stack_padding) {
+				push(@instructions, ::ASM_AllocateStack($stack_padding));
 			}	
 			while (my ($i, $tac_arg) = each @reg_args) {
 				my $asm_arg = translate_to_ASM($tac_arg);
@@ -96,13 +96,13 @@ sub translate_to_ASM {
 										 ::ASM_Push(::ASM_Reg(::AX()))));
 				}
 			}
-			push(@instructions, ::ASM_Call($name));
-			my $remove_bytes = 8 * @stack_args + $padding;
+			push(@instructions, ::ASM_Call($ident));
+			my $remove_bytes = 8 * @stack_args + $stack_padding;
 			if ($remove_bytes) {
 				push(@instructions, ::ASM_DeallocateStack($remove_bytes));
 			}
 			push(@instructions, ::ASM_Mov(::ASM_Reg(::AX()), translate_to_ASM($dst)));
-			return \@instructions;
+			return @instructions;
 		}
 		with (TAC_Constant $int) {
 			return ::ASM_Imm($int);
@@ -150,19 +150,20 @@ sub fix_up {
 
 sub replace_pseudo {
 	my ($function, $offsets) = (shift(), {});
-	my $process_node = sub {
+	my $process_node;
+	$process_node = sub {
 		my $node = shift;
 		match ($node) {
 			with (ASM_Pseudo $ident) {
-				$offsets->{$ident} //= -4 * (scalar(%$offsets) + 1);
+				$offsets->{$ident} //= -8 * scalar(%$offsets); # bacha, //= zpusobi autovivifikaci -> scalar na prave strane vrati velikost uz vcetne noveho prvku
 				return ::ASM_Stack($offsets->{$ident});
 			}
 			default { 
 				for my $val ($node->{values}->@*) {
 					if ($val isa Types::Algebraic::ADT) {
-						$val = $__SUB__->($val);
+						$val = $process_node->($val);
 					} elsif (ref($val) eq 'ARRAY') {
-						$val = [ map { $__SUB__->($_) } @$val ];
+						$val = [ map { $process_node->($_) } @$val ];
 					}
 				}
 				return $node;
@@ -171,7 +172,8 @@ sub replace_pseudo {
 	};
 	$process_node->($function);
 	my ($name, $instructions) = ::extract_or_die($function, 'ASM_Function');
-	unshift(@$instructions, ::ASM_AllocateStack(abs min(values %$offsets)));
+	my $max_offset = abs(min(values %$offsets));
+	unshift(@$instructions, ::ASM_AllocateStack($max_offset + ($max_offset % 16))); # 16 byte aligned
 }
 
 sub fix_instr {

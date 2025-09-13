@@ -92,7 +92,7 @@ data ASM_Instruction =
 	| ASM_SetCC :Cond :Operand
 	| ASM_Label :ident
 	| ASM_AllocateStack :bytes
-	| ASM_DeallocteStack :bytes
+	| ASM_DeallocateStack :bytes
 	| ASM_Push :Operand
 	| ASM_Call :ident
 	| ASM_Ret;

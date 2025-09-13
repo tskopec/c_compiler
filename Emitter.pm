@@ -1,15 +1,16 @@
 package Emitter;
 use strict;
 use warnings;
-use feature qw(say);
+use feature qw(say state);
 use Types::Algebraic;
 
 
 sub emit_code {
-	my ($node, $parent) = @_;
+	my $node = shift;
+	my $register_width = shift // 4;
 	match ($node) {
-		with (ASM_Program $declarations) {
-			my $code = join "", map { emit_code($_) } @$declarations;
+		with (ASM_Program $definitions) {
+			my $code = join "", map { emit_code($_) } @$definitions;
 			$code .= '.section .note.GNU-stack,"",@progbits' . "\n"; 
 			return $code;
 		}
@@ -45,6 +46,9 @@ sub emit_code {
 		with (ASM_AllocateStack $bytes) {
 			return "\tsubq \$$bytes, %rsp\n";
 		}
+		with (ASM_DeallocateStack $bytes) {
+			return "\taddq \$$bytes, %rsp";
+		}
 		with (ASM_Cmp $a $b) {
 			return "\tcmpl " . emit_code($a) . ", " . emit_code($b) . "\n";
 		}
@@ -55,7 +59,7 @@ sub emit_code {
 			return "\tj" . lc($cond->{tag}) . " .L$label\n";
 		}
 		with (ASM_SetCC $cond $operand) {
-			return "\tset" . lc($cond->{tag}) . " " . emit_code($operand, $node) . "\n";
+			return "\tset" . lc($cond->{tag}) . " " . emit_code($operand, 1) . "\n";
 		}
 		with (ASM_Label $ident) {
 			return ".L$ident:\n";
@@ -76,18 +80,30 @@ sub emit_code {
 			return "\timull";
 		}
 		with (ASM_Reg $reg) {
-			my $one_byte = $parent->{tag} eq 'ASM_SetCC';
-			if	  ($reg->{tag} eq 'AX')	 { return $one_byte ? "%al"   : "%eax"; }
-			elsif ($reg->{tag} eq 'DX')  { return $one_byte ? "%dl"   : "%edx"; }
-			elsif ($reg->{tag} eq 'R10') { return $one_byte ? "%r10b" : "%r10d"; }
-			elsif ($reg->{tag} eq 'R11') { return $one_byte ? "%r11b" : "%r11d"; }
-			else { die "unknown register $reg"; }
+			state $register_names = {
+				AX =>  { 1 => "%al",   4 => "%eax",  8 => "%rax" },
+				CX =>  { 1 => "%cl",   4 => "%ecx",  8 => "%rcx" },
+				DX =>  { 1 => "%dl",   4 => "%edx",  8 => "%rdx" },
+				DI =>  { 1 => "%dil",  4 => "%edi",  8 => "%rdi" },
+				SI =>  { 1 => "%sil",  4 => "%esi",  8 => "%rsi" },
+				R8 =>  { 1 => "%r8b",  4 => "%r8d",  8 => "%r8"  },
+				R9 =>  { 1 => "%r9b",  4 => "%r9d",  8 => "%r9"  },
+				R10 => { 1 => "%r10b", 4 => "%r10d", 8 => "%r10" },
+				R11 => { 1 => "%r11b", 4 => "%r11d", 8 => "%r11" },
+			};
+			return $register_names->{$reg->{tag}}->{$register_width} // die "unknown register $reg w: $register_width";
 		}
 		with (ASM_Stack $offset) {
 			return "$offset(%rbp)";
 		}
 		with (ASM_Imm $val) {
 			return "\$$val";
+		}
+		with (ASM_Push $op) {
+			return "\tpushq " . emit_code($op, 8);
+		}
+		with (ASM_Call $label) {
+			return "\tcall $label;" # @PLT? TODO
 		}
 		default { die "unknown asm node $node"; }
 	}
