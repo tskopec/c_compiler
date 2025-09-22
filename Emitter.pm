@@ -47,7 +47,7 @@ sub emit_code {
 			return "\tsubq \$$bytes, %rsp\n";
 		}
 		with (ASM_DeallocateStack $bytes) {
-			return "\taddq \$$bytes, %rsp";
+			return "\taddq \$$bytes, %rsp\n";
 		}
 		with (ASM_Cmp $a $b) {
 			return "\tcmpl " . emit_code($a) . ", " . emit_code($b) . "\n";
@@ -100,10 +100,10 @@ sub emit_code {
 			return "\$$val";
 		}
 		with (ASM_Push $op) {
-			return "\tpushq " . emit_code($op, 8);
+			return "\tpushq " . emit_code($op, 8) . "\n";
 		}
 		with (ASM_Call $label) {
-			return "\tcall $label;" # @PLT? TODO
+			return "\tcall $label" . ($SemanticAnalysis::symbol_table->{$label}{defined} ? "" : '@PLT') . "\n";
 		}
 		default { die "unknown asm node $node"; }
 	}

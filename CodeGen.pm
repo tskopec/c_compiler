@@ -13,7 +13,7 @@ sub translate_to_ASM {
 	my $node = shift;
 	match ($node) {
 		with (TAC_Program $declarations) {
-			return ::ASM_Program([map { translate_to_ASM($_) } @$declarations]);
+			return ::ASM_Program([ map { translate_to_ASM($_) } @$declarations]);
 		}
 		with (TAC_Function $ident $params $instructions) {
 			my $move_to_stack = sub {

@@ -9,7 +9,7 @@ sub emit_TAC {
 	my ($node, $instructions) = @_;
 	match ($node) {
 		with (Program $declarations) {
-			return ::TAC_Program([ map { emit_TAC($_) } @$declarations ]);
+			return ::TAC_Program([ grep { defined } map { emit_TAC($_) } @$declarations ]);
 		}
 		with (FunDeclaration $name $params $body) {
 			if (defined $body) {
@@ -20,6 +20,8 @@ sub emit_TAC {
 				}
 				push @$instructions, ::TAC_Return(::TAC_Constant(0));
 				return ::TAC_Function($name, [ map { $_->{values}[0] } @$params ], $instructions);
+			} else {
+				return undef;
 			}	
 		}
 		with (VarDeclaration $name $init) { 
