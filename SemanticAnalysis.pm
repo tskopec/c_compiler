@@ -21,7 +21,7 @@ sub resolve_ids {
 	my $ids_map = {};
 	for my $decl (@$declarations) {
 		match ($decl) {
-			with (FunDeclaration $name $params $body) {
+			with (FunDeclaration $name $params $body $storage) {
 				resolve_fun_declaration_ids($decl, $ids_map);
 			}
 			default { die "unknown declaration: $decl" }
@@ -31,7 +31,7 @@ sub resolve_ids {
 
 sub resolve_fun_declaration_ids {
 	my ($fun, $ids_map) = @_;
-	my ($name, $params, $body) = ::extract_or_die($fun, 'FunDeclaration');
+	my ($name, $params, $body, $storage) = ::extract_or_die($fun, 'FunDeclaration');
 	if (exists $ids_map->{$name}) {
 		my $previous_entry = $ids_map->{$name};
 		if ($previous_entry->{from_this_scope} && !$previous_entry->{has_linkage}) {
@@ -49,7 +49,7 @@ sub resolve_fun_declaration_ids {
 
 sub resolve_var_declaration_ids {
 	my ($declaration, $ids_map) = @_;
-	my ($name, $init) = ::extract_or_die($declaration, 'VarDeclaration');
+	my ($name, $init, $storage) = ::extract_or_die($declaration, 'VarDeclaration');
 	if (exists($ids_map->{$name}) && $ids_map->{$name}{from_this_scope}) {
 		die "duplicate var $name";
 	}
@@ -61,10 +61,10 @@ sub resolve_var_declaration_ids {
 sub resolve_block_item_ids {
 	my ($item, $ids_map) = @_;
 	match ($item) {
-		with (VarDeclaration $name $init) {
+		with (VarDeclaration $name $init $storage) {
 			resolve_var_declaration_ids($item, $ids_map);
 		}
-		with (FunDeclaration $name $params $body) {
+		with (FunDeclaration $name $params $body $storage) {
 			die "local fun definition: $name" if defined $body;
 			resolve_fun_declaration_ids($item, $ids_map);
 		}
@@ -163,10 +163,10 @@ sub check_types {
 	my ($node) = @_;
 	if ($node isa Types::Algebraic::ADT) {
 		match ($node) {
-			with (VarDeclaration $name $init) {
+			with (VarDeclaration $name $init $storage) {
 				$symbol_table->{$name} = { type => ::Int() };
 			}
-			with (FunDeclaration $name $params $body) {
+			with (FunDeclaration $name $params $body $storage) {
 				my $type = ::FunType(scalar @$params);
 				my $has_body = defined $body;
 				my $already_defined = 0;

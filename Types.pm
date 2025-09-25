@@ -19,8 +19,10 @@ data Token =
 data _Program = 
 	Program :Declarations;
 data Declaration =
-	VarDeclaration :name :OptExpression_initializer
-	| FunDeclaration :name :Identifier_params :OptBlock_body;
+	VarDeclaration :name :OptExpression_initializer :OptStorageClass
+	| FunDeclaration :name :Identifier_params :OptBlock_body :OptStorageClass;
+data StorageClass =
+	Static | Extern;
 data _Block = 
 	Block :StatementOrDeclaration_blockItems;
 data Statement = 

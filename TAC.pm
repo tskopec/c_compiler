@@ -11,7 +11,7 @@ sub emit_TAC {
 		with (Program $declarations) {
 			return ::TAC_Program([ grep { defined } map { emit_TAC($_) } @$declarations ]);
 		}
-		with (FunDeclaration $name $params $body) {
+		with (FunDeclaration $name $params $body $storage) {
 			if (defined $body) {
 				my ($items) = ::extract_or_die($body, 'Block');
 				my $instructions = [];
@@ -24,7 +24,7 @@ sub emit_TAC {
 				return undef;
 			}	
 		}
-		with (VarDeclaration $name $init) { 
+		with (VarDeclaration $name $init $storage) { 
 			if (defined $init) {
 				emit_TAC(::Assignment(::Var($name), $init), $instructions);
 			}

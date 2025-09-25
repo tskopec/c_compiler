@@ -13,25 +13,58 @@ sub parse {
 }
 
 sub parse_program {
-	my @fns;
+	my @declarations;
 	while (@TOKENS) {
-		push @fns, parse_function();
+		push @declarations, parse_declaration(1);
 	}
-	return ::Program(\@fns);
+	return ::Program(\@declarations);
 }
 
-sub parse_function {
-	expect('Keyword', 'int');
+sub parse_declaration {
+	my $is_top_level = shift;
+	my ($type, $storage_class) = parse_specifiers();
+	if (!defined $type && !defined $storage_class) {
+		return $is_top_level ? die "no specifiers"
+						     : undef; # muze byt statement
+	}
 	my $name = parse_identifier();
-	my $params = parse_params_list();
-	if (try_expect('Symbol', '{')) {
-		return ::FunDeclaration($name, $params, parse_block());
-	} else {
+	if (peek()->{values}[0] eq '(') {
+		my $params = parse_params_list();
+		if (try_expect('Symbol', '{')) {
+			return $is_top_level ? ::FunDeclaration($name, $params, parse_block(), $storage_class)
+								 : die "nested fun def";
+		} 
 		expect('Symbol', ';');
-		return ::FunDeclaration($name, $params, undef);
+		return ::FunDeclaration($name, $params, undef, $storage_class);
+	} else {
+		my $init = try_expect('Operator', '=') ? parse_expr(0) : undef;
+		expect('Symbol', ';');
+		return ::VarDeclaration($name, $init, $storage_class);
 	}
 }
 
+sub parse_specifiers {
+	my (@storage_specs, @type_specs);
+	while (my $kw = try_expect('Keyword', 'int', 'static', 'extern')) {
+		my $val = $kw->{values}[0];
+		if ($val eq 'int') {
+			push @type_specs, $val;
+		} else {
+			push @storage_specs, $val;
+		}	
+	}
+	die "too many type specs: @{[@type_specs]}" if (@type_specs > 1);
+	return (pop @type_specs, parse_storage_class(@storage_specs));
+}
+
+sub parse_storage_class {
+	my @storage_specs = @_;
+	if (not @storage_specs)				{ return undef }
+	if (@storage_specs > 1) 			{ die "too many storage specs: " . @storage_specs }
+	if ($storage_specs[0] eq 'static')	{ return ::Static() }
+	if ($storage_specs[0] eq 'extern')	{ return ::Extern() }
+	die 'unknown storage: ' . $storage_specs[0];
+}
 
 sub parse_params_list {
 	my @list;
@@ -41,7 +74,7 @@ sub parse_params_list {
 	} else {
 		while (1) {
 			expect('Keyword', 'int');
-			push(@list, ::VarDeclaration(parse_identifier(), undef));	
+			push(@list, ::VarDeclaration(parse_identifier(), undef, undef));	
 			last if try_expect('Symbol', ')');
 			expect('Symbol', ',');
 		} 
@@ -59,19 +92,7 @@ sub parse_block {
 }
 
 sub parse_block_item {
-	return try_parse_declaration() // parse_statement();
-}
-
-sub try_parse_declaration {
-	return undef if (peek() ne ::Keyword('int'));
-	if (peek(2) eq ::Symbol('(')) {
-		return parse_function();
-	} else {
-		expect('Keyword', 'int');
-		my $decl = ::VarDeclaration(parse_identifier(), try_expect('Operator', '=') ? parse_expr(0) : undef);
-		expect('Symbol', ';');
-		return $decl;
-	}
+	return parse_declaration(0) // parse_statement();
 }
 
 sub parse_statement {
@@ -256,8 +277,8 @@ sub peek {
 }
 
 sub try_expect {
-	my ($tag, $val) = @_;
-	if (peek()->{tag} eq $tag && (!defined $val || peek()->{values}[0] eq $val)) {
+	my ($tag, @possible_vals) = @_;
+	if (peek()->{tag} eq $tag && (!@possible_vals || grep { peek()->{values}[0] eq $_ } @possible_vals)) {
 		return shift @TOKENS;
 	}	
 	return 0;
