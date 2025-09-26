@@ -7,6 +7,7 @@ use Types::Algebraic;
 
 my @TOKENS;
 
+
 sub parse {
 	@TOKENS = @_;
 	return parse_program();
@@ -15,17 +16,17 @@ sub parse {
 sub parse_program {
 	my @declarations;
 	while (@TOKENS) {
-		push @declarations, parse_declaration(1);
+		push @declarations, parse_declaration();
 	}
 	return ::Program(\@declarations);
 }
 
 sub parse_declaration {
-	my $is_top_level = shift;
+	my $is_top_level = (caller(1))[3] eq 'Parser::parse_program';
 	my ($type, $storage_class) = parse_specifiers();
-	if (!defined $type && !defined $storage_class) {
-		return $is_top_level ? die "no specifiers"
-						     : undef; # muze byt statement
+	if (!defined $type) {
+		die "missing type" if ($is_top_level || defined $storage_class);
+		return undef; # muze byt statement
 	}
 	my $name = parse_identifier();
 	if (peek()->{values}[0] eq '(') {
@@ -53,17 +54,17 @@ sub parse_specifiers {
 			push @storage_specs, $val;
 		}	
 	}
-	die "too many type specs: @{[@type_specs]}" if (@type_specs > 1);
-	return (pop @type_specs, parse_storage_class(@storage_specs));
+	die "too many type specifiers: @{[@type_specs]}"	if (@type_specs > 1);
+	die "too many storage specs: @{[@storage_specs]}"	if (@storage_specs > 1);
+	return ($type_specs[0], parse_storage_class($storage_specs[0]));
 }
 
 sub parse_storage_class {
-	my @storage_specs = @_;
-	if (not @storage_specs)				{ return undef }
-	if (@storage_specs > 1) 			{ die "too many storage specs: " . @storage_specs }
-	if ($storage_specs[0] eq 'static')	{ return ::Static() }
-	if ($storage_specs[0] eq 'extern')	{ return ::Extern() }
-	die 'unknown storage: ' . $storage_specs[0];
+	my $storage_spec = shift;
+	if (!defined $storage_spec)		{ return undef }
+	if ($storage_spec eq 'static')	{ return ::Static() }
+	if ($storage_spec eq 'extern')	{ return ::Extern() }
+	die "unknown storage specifier: $storage_spec";
 }
 
 sub parse_params_list {
@@ -92,7 +93,7 @@ sub parse_block {
 }
 
 sub parse_block_item {
-	return parse_declaration(0) // parse_statement();
+	return parse_declaration() // parse_statement();
 }
 
 sub parse_statement {
@@ -147,7 +148,7 @@ sub parse_for_init {
 	return undef if (try_expect('Symbol', ';'));
 	my $res;
 	if (try_expect('Keyword', 'int')) {
-		$res = ::VarDeclaration(parse_identifier(), try_expect('Operator', '=') ? parse_expr(0) : undef);
+		$res = ::VarDeclaration(parse_identifier(), try_expect('Operator', '=') ? parse_expr(0) : undef, undef);
 	} else {
 		$res = parse_expr(0);
 	}

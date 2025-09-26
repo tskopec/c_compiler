@@ -37,8 +37,10 @@ for my $src_file (@src_files) {
 	eval { compile($src_file) };
 	if ($@) {
 		print "ERROR in src file: $src_file:\n$@";
-		say "------------------------------------------";
-	} 
+	} else {
+		say "OK, src file: $src_file";
+	}
+	say "------------------------------------------";
 } continue {
 	$global_counter = 0;
 }
@@ -60,29 +62,29 @@ sub compile {
 	unlink($prep_file); 
 	my @tokens = Lexer::tokenize($src_str);
 	say(join("\n", @tokens) . "\n") if $debug;
-	next if ($target_phase eq 'lex'); 	
+	return if ($target_phase eq 'lex'); 	
 
 	# PARSE
 	my $ast = Parser::parse(@tokens);
 	print_AST($ast) if $debug;
-	next if ($target_phase eq 'parse');
+	return if ($target_phase eq 'parse');
 
 	# SEMANTICS
 	SemanticAnalysis::run($ast);
 	print_AST($ast) if $debug;
-	next if ($target_phase eq 'validate');
+	return if ($target_phase eq 'validate');
 
 	# TAC
 	my $tac = TAC::emit_TAC($ast);
 	print_AST($tac) if $debug;
-	next if ($target_phase eq 'tac');
+	return if ($target_phase eq 'tac');
 
 	# ASSEMBLY GEN
 	my $asm = CodeGen::translate_to_ASM($tac);
 	print_AST($asm) if $debug;
 	CodeGen::fix_up($asm);
 	print_AST($asm) if $debug;
-	next if ($target_phase eq 'codegen');
+	return if ($target_phase eq 'codegen');
 
 	# EMIT CODE
 	my $asm_file = $src_file =~ s/c$/s/r;
