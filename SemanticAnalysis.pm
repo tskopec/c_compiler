@@ -22,7 +22,10 @@ sub resolve_ids {
 	for my $decl (@$declarations) {
 		match ($decl) {
 			with (FunDeclaration $name $params $body $storage) {
-				resolve_fun_declaration_ids($decl, $ids_map);
+				resolve_fun_declaration_ids($decl, $ids_map, 0);
+			}
+			with (VarDeclaration $name $init $storage) {
+				resolve_top_level_var_declaration_ids($decl, $ids_map);
 			}
 			default { die "unknown declaration: $decl" }
 		}
@@ -30,8 +33,12 @@ sub resolve_ids {
 }
 
 sub resolve_fun_declaration_ids {
-	my ($fun, $ids_map) = @_;
+	my ($fun, $ids_map, $in_block_scope) = @_;
 	my ($name, $params, $body, $storage) = ::extract_or_die($fun, 'FunDeclaration');
+	if ($in_block_scope ) {
+		die "nested fun definition" if (defined $body);
+		die "static nested fun" if ($storage eq ::Static());
+	}
 	if (exists $ids_map->{$name}) {
 		my $previous_entry = $ids_map->{$name};
 		if ($previous_entry->{from_this_scope} && !$previous_entry->{has_linkage}) {
@@ -40,33 +47,45 @@ sub resolve_fun_declaration_ids {
 	}
 	$ids_map->{$name} = { uniq_name => $name, from_this_scope => 1, has_linkage => 1 };
 	my $inner_ids_map = make_inner_scope_map($ids_map);
-	resolve_var_declaration_ids($_, $inner_ids_map) for @$params;
+	resolve_local_var_declaration_ids($_, $inner_ids_map) for @$params;
    	if (defined $body) {
 		my ($items) = ::extract($body, 'Block');
 		resolve_block_item_ids($_, $inner_ids_map) for @$items;
 	}
 }
 
-sub resolve_var_declaration_ids {
+sub resolve_top_level_var_declaration_ids {
+	my ($decl, $ids_map) = @_;
+	my ($name, $init, $storage) = ::extract_or_die($decl, 'VarDeclaration');
+	$ids_map->{$name} = { uniq_name => $name, from_this_scope => 1, has_linkage => 1};
+}
+
+sub resolve_local_var_declaration_ids {
 	my ($declaration, $ids_map) = @_;
 	my ($name, $init, $storage) = ::extract_or_die($declaration, 'VarDeclaration');
-	if (exists($ids_map->{$name}) && $ids_map->{$name}{from_this_scope}) {
-		die "duplicate var $name";
+	if (exists $ids_map->{$name}
+		&& $ids_map->{$name}{from_this_scope}
+		&& !($ids_map->{$name}{has_linkage} && $storage eq ::Extern())) {
+			die "multiple declarations of $name in this scope, some without linkage";
 	}
-	$declaration->{values}[0] = unique_var_name($name);
-	$ids_map->{$name} = { uniq_name => $declaration->{values}[0], from_this_scope => 1, has_linkage => 0 };
-	resolve_expr_ids($init, $ids_map) if defined $init;
+	if ($storage eq ::Extern()) {
+		$ids_map->{$name} = { uniq_name => $name, from_this_scope => 1, has_linkage => 1 };
+	} else {
+		$declaration->{values}[0] = unique_var_name($name);
+		$ids_map->{$name} = { uniq_name => $declaration->{values}[0], from_this_scope => 1, has_linkage => 0 };
+		resolve_expr_ids($init, $ids_map) if defined $init;
+	}
 }
 
 sub resolve_block_item_ids {
 	my ($item, $ids_map) = @_;
 	match ($item) {
 		with (VarDeclaration $name $init $storage) {
-			resolve_var_declaration_ids($item, $ids_map);
+			resolve_local_var_declaration_ids($item, $ids_map);
 		}
 		with (FunDeclaration $name $params $body $storage) {
 			die "local fun definition: $name" if defined $body;
-			resolve_fun_declaration_ids($item, $ids_map);
+			resolve_fun_declaration_ids($item, $ids_map, 1);
 		}
 		default {
 			resolve_statement_ids($item, $ids_map);
@@ -101,7 +120,7 @@ sub resolve_statement_ids {
 		with (For $init $cond $post $body $label) {
 			my $new_idents = make_inner_scope_map($ids_map);
 			if (defined $init && $init->{tag} eq 'VarDeclaration') {
-				resolve_var_declaration_ids($init, $new_idents);
+				resolve_local_var_declaration_ids($init, $new_idents);
 			} else {
 				resolve_opt_expr_ids($init, $new_idents);
 			}

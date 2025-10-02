@@ -4,11 +4,14 @@ use warnings;
 use feature qw(say);
 
 
+
 my $sym_re = qr/^([;}{)(,]).*/;
 my $op_re =	qr/^(!=|==|<=|>=|<|>|=|!|\|\||&&|--|-|\+|\*|\/|%|~|\?|:).*/;
 my $kw_re =	qr/^(int|void|return|if|else|do|while|for|break|continue|static|extern)\b.*/;
 my $const_re = qr/^([0-9]+)\b.*/;
 my $iden_re = qr/^([a-zA-Z_]\w*)\b.*/;
+
+
 
 sub tokenize {
 	my $src = shift;

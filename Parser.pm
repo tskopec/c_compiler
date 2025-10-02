@@ -16,24 +16,20 @@ sub parse {
 sub parse_program {
 	my @declarations;
 	while (@TOKENS) {
-		push @declarations, parse_declaration();
+		my $d = parse_declaration() // die "invalid declaration (missing specifiers)";
+		push @declarations, $d;
 	}
 	return ::Program(\@declarations);
 }
 
 sub parse_declaration {
-	my $is_top_level = (caller(1))[3] eq 'Parser::parse_program';
-	my ($type, $storage_class) = parse_specifiers();
-	if (!defined $type) {
-		die "missing type" if ($is_top_level || defined $storage_class);
-		return undef; # muze byt statement
-	}
+	my ($type, $storage_class) = (parse_specifiers() || return undef);
+	die "missing type" unless defined $type;
 	my $name = parse_identifier();
 	if (peek()->{values}[0] eq '(') {
 		my $params = parse_params_list();
 		if (try_expect('Symbol', '{')) {
-			return $is_top_level ? ::FunDeclaration($name, $params, parse_block(), $storage_class)
-								 : die "nested fun def";
+			return ::FunDeclaration($name, $params, parse_block(), $storage_class);
 		} 
 		expect('Symbol', ';');
 		return ::FunDeclaration($name, $params, undef, $storage_class);
@@ -54,6 +50,7 @@ sub parse_specifiers {
 			push @storage_specs, $val;
 		}	
 	}
+	return () if (!@type_specs && !@storage_specs);
 	die "too many type specifiers: @{[@type_specs]}"	if (@type_specs > 1);
 	die "too many storage specs: @{[@storage_specs]}"	if (@storage_specs > 1);
 	return ($type_specs[0], parse_storage_class($storage_specs[0]));
