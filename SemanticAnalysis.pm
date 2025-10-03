@@ -11,7 +11,7 @@ sub run {
 	$symbol_table = {};
 	my $ast = shift;
 	resolve_ids($ast);
-	check_types($ast);
+	check_types($ast, undef);
 	label_loops($ast);
 }
 
@@ -35,9 +35,9 @@ sub resolve_ids {
 sub resolve_fun_declaration_ids {
 	my ($fun, $ids_map, $in_block_scope) = @_;
 	my ($name, $params, $body, $storage) = ::extract_or_die($fun, 'FunDeclaration');
-	if ($in_block_scope ) {
+	if ($in_block_scope) {
 		die "nested fun definition" if (defined $body);
-		die "static nested fun" if ($storage eq ::Static());
+		die "static nested fun" if (::is_one_of($storage, 'Static');
 	}
 	if (exists $ids_map->{$name}) {
 		my $previous_entry = $ids_map->{$name};
@@ -65,10 +65,10 @@ sub resolve_local_var_declaration_ids {
 	my ($name, $init, $storage) = ::extract_or_die($declaration, 'VarDeclaration');
 	if (exists $ids_map->{$name}
 		&& $ids_map->{$name}{from_this_scope}
-		&& !($ids_map->{$name}{has_linkage} && $storage eq ::Extern())) {
+		&& !($ids_map->{$name}{has_linkage} && ::is_one_of($storage, 'Extern')) {
 			die "multiple declarations of $name in this scope, some without linkage";
 	}
-	if ($storage eq ::Extern()) {
+	if (::is_one_of($storage, 'Extern') {
 		$ids_map->{$name} = { uniq_name => $name, from_this_scope => 1, has_linkage => 1 };
 	} else {
 		$declaration->{values}[0] = unique_var_name($name);
@@ -179,7 +179,7 @@ sub make_inner_scope_map {
 
 ### TYPE CHECKING ###
 sub check_types {
-	my ($node) = @_;
+	my ($node, $parent_node) = @_;
 	if ($node isa Types::Algebraic::ADT) {
 		match ($node) {
 			with (VarDeclaration $name $init $storage) {
@@ -189,33 +189,56 @@ sub check_types {
 				my $type = ::FunType(scalar @$params);
 				my $has_body = defined $body;
 				my $already_defined = 0;
+				my $global = not ::is_one_of($storage, 'Static');
 
 				if (exists $symbol_table->{$name}) {
 					$already_defined = $symbol_table->{$name}{defined};
 					die "incompatible fun declarations: $name" if ($symbol_table->{$name}{type} ne $type);
 					die "fun defined multiple times: $name" if ($already_defined && $has_body);
+					die "static fun declaration after non-static" if ($symbol_table->{$name}{attrs}{global} && !$global);
+					$global = $symbol_table->{$name}{attrs}{global};
 				}
 				$symbol_table->{$name} = { 
 					type => ::FunType(scalar @$params),
-					defined => ($already_defined || $has_body) 
+					attrs => ::FunAttrs(
+						($already_defined || $has_body),
+						$global,
+					)
 				};
 				if ($has_body) {
 					$symbol_table->{$_} = ::Int() for @$params;
+				}
+			}
+			with (VarDeclaration $name $init $storage) {
+				if (::is_one_of($parent_node, 'Program')) { # file scope var
+					my $init_val;
+					if (!defined $init) {
+						$init_val = ::is_one_of($storage, 'Extern') ? ::NoInitializer() : ::Tentative();
+					} elsif ($init->{tag} eq 'ConstantExpr') {
+						$init_val = ::Initial($init->{values}[0]);
+					} else {
+						die "initializer must be constant";
+					}
+					$global = not ::is_one_of($storage, 'Static');
+					# TODO 231/5
+						
+				} else { # local var
+
 				}
 			}
 			with (FunctionCall $name $args) {
 				my $type = $symbol_table->{$name}{type};
 				die "is not function: $name" if ($type->{tag} ne 'FunType');
 				die "wrong number of args: $name" if ($type->{values}[0] ne (scalar @$args));
-				check_types($_) for @$args;	
+				check_types($_, $node) for @$args;	
 			}
 			with (Var $name) {
 				die "is not var: $name" if ($symbol_table->{$name}{type} ne ::Int());
 			}
 		}	
-		check_types($_) for $node->{values}->@*;
+		check_types($_, $node) for $node->{values}->@*;
 	} elsif (ref($node) eq 'ARRAY') {
-		check_types($_) for $node->@*;
+		check_types($_, $node) for $node->@*;
 	}
 }
 

@@ -23,7 +23,9 @@ sub parse_program {
 }
 
 sub parse_declaration {
-	my ($type, $storage_class) = (parse_specifiers() || return undef);
+	my @specs = parse_specifiers();
+	return undef unless @specs;
+	my ($type, $storage_class) = @specs;
 	die "missing type" unless defined $type;
 	my $name = parse_identifier();
 	if (peek()->{values}[0] eq '(') {
@@ -143,13 +145,12 @@ sub parse_statement {
 
 sub parse_for_init {
 	return undef if (try_expect('Symbol', ';'));
-	my $res;
-	if (try_expect('Keyword', 'int')) {
-		$res = ::VarDeclaration(parse_identifier(), try_expect('Operator', '=') ? parse_expr(0) : undef, undef);
+	my $res = parse_declaration();
+	if (!defined $res) {
+		$res = parse_opt_expr(';');
 	} else {
-		$res = parse_expr(0);
+		die "fun declaration in for init" if ($res->{tag} eq 'FunDeclaration');
 	}
-	expect('Symbol', ';');
 	return $res;
 }
 

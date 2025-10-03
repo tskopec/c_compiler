@@ -44,13 +44,21 @@ data _Expression =
 	| Assignment :LExpression :RExpression
 	| Conditional :Expression_cond :Expression_then :Expression_else
 	| FunctionCall :ident :Expression_args;
-data UnaryOperator = Complement | Negate | Not;
-data BinaryOperator = Add | Subtract | Multiply | Divide | Modulo | And | Or | Equal | NotEqual | LessThan | LessOrEqual | GreaterThan | GreaterOrEqual; 
+data UnaryOperator = 
+	Complement | Negate | Not;
+data BinaryOperator = 
+	Add | Subtract | Multiply | Divide | Modulo | And | Or | Equal | NotEqual | LessThan | LessOrEqual | GreaterThan | GreaterOrEqual; 
 
 # Types
 data Type = 
 	Int
 	| FunType :param_count;
+data IdentifierAttrs = 
+	FunAttrs :defined :gloabl
+	| StaticAttrs :InitVal :global
+	| LocalAttrs;
+data InitialValue =
+	Tentative | Initial :int | NoInitializer;
 
 
 # TAC AST
@@ -124,10 +132,12 @@ sub is_one_of {
 
 sub index_of_in {
 	my ($adt, @tags) = @_;
-	my $n = 0;
-	for my $tag (@tags) {
-		return $n if ($tag eq $adt->{tag});
-		$n++;
+	if (defined $adt) {
+		my $n = 0;
+		for my $tag (@tags) {
+			return $n if ($tag eq $adt->{tag});
+			$n++;
+		}
 	}
 	return -1;
 }
