@@ -11,8 +11,8 @@ sub run {
 	$symbol_table = {};
 	my $ast = shift;
 	resolve_ids($ast);
-	check_types($ast, undef);
-	label_loops($ast);
+	#	check_types($ast, undef);
+	#	label_loops($ast);
 }
 
 ### IDENTIFIER RESOLUTION ###
@@ -37,7 +37,7 @@ sub resolve_fun_declaration_ids {
 	my ($name, $params, $body, $storage) = ::extract_or_die($fun, 'FunDeclaration');
 	if ($in_block_scope) {
 		die "nested fun definition" if (defined $body);
-		die "static nested fun" if (::is_one_of($storage, 'Static');
+		die "static nested fun" if ($storage->{tag} eq 'Static');
 	}
 	if (exists $ids_map->{$name}) {
 		my $previous_entry = $ids_map->{$name};
@@ -65,10 +65,10 @@ sub resolve_local_var_declaration_ids {
 	my ($name, $init, $storage) = ::extract_or_die($declaration, 'VarDeclaration');
 	if (exists $ids_map->{$name}
 		&& $ids_map->{$name}{from_this_scope}
-		&& !($ids_map->{$name}{has_linkage} && ::is_one_of($storage, 'Extern')) {
+		&& !($ids_map->{$name}{has_linkage} && $storage->{tag} eq 'Extern')) {
 			die "multiple declarations of $name in this scope, some without linkage";
 	}
-	if (::is_one_of($storage, 'Extern') {
+	if ($storage->{tag} eq 'Extern') {
 		$ids_map->{$name} = { uniq_name => $name, from_this_scope => 1, has_linkage => 1 };
 	} else {
 		$declaration->{values}[0] = unique_var_name($name);
@@ -182,21 +182,18 @@ sub check_types {
 	my ($node, $parent_node) = @_;
 	if ($node isa Types::Algebraic::ADT) {
 		match ($node) {
-			with (VarDeclaration $name $init $storage) {
-				$symbol_table->{$name} = { type => ::Int() };
-			}
 			with (FunDeclaration $name $params $body $storage) {
 				my $type = ::FunType(scalar @$params);
 				my $has_body = defined $body;
 				my $already_defined = 0;
-				my $global = not ::is_one_of($storage, 'Static');
+				my $global = $storage->{tag} ne 'Static';
 
 				if (exists $symbol_table->{$name}) {
-					$already_defined = $symbol_table->{$name}{defined};
-					die "incompatible fun declarations: $name" if ($symbol_table->{$name}{type} ne $type);
+					$already_defined = getAttr($name, 'defined');
+					die "incompatible fun declarations: $name" if (getAttr($name, 'type') ne $type);
 					die "fun defined multiple times: $name" if ($already_defined && $has_body);
-					die "static fun declaration after non-static" if ($symbol_table->{$name}{attrs}{global} && !$global);
-					$global = $symbol_table->{$name}{attrs}{global};
+					die "static fun declaration after non-static" if (getAttr($name, 'global') && !$global);
+					$global = getAttr($name, 'global');
 				}
 				$symbol_table->{$name} = { 
 					type => ::FunType(scalar @$params),
@@ -206,34 +203,87 @@ sub check_types {
 					)
 				};
 				if ($has_body) {
-					$symbol_table->{$_} = ::Int() for @$params;
+					$symbol_table->{$_} = { type => ::Int(), attrs => ::LocalAttrs() } for @$params;
 				}
 			}
 			with (VarDeclaration $name $init $storage) {
-				if (::is_one_of($parent_node, 'Program')) { # file scope var
+				my $is_file_scope = $parent_node->{tag} eq 'Program';
+				if ($is_file_scope) {
 					my $init_val;
 					if (!defined $init) {
-						$init_val = ::is_one_of($storage, 'Extern') ? ::NoInitializer() : ::Tentative();
+						$init_val = $storage->{tag} eq 'Extern' ? ::NoInitializer() : ::Tentative();
 					} elsif ($init->{tag} eq 'ConstantExpr') {
 						$init_val = ::Initial($init->{values}[0]);
 					} else {
 						die "initializer must be constant";
 					}
-					$global = not ::is_one_of($storage, 'Static');
-					# TODO 231/5
-						
-				} else { # local var
+					my $global = $storage->{tag} ne 'Static';
+					
+					if (exists $symbol_table->{$name}) {
+						die "already declared as fun" if (getAttr($name, 'type') ne ::Int());
+						if ($storage->{tag} eq 'Extern') {
+							$global = getAttr($name, 'global');
+						} elsif (not getAttr($name, 'global')) {
+							die "conflicting linkage, var $name";
+						}
 
+						my $prev_init = getAttr($name, 'init_value');
+						if ($prev_init->{tag} eq 'Initial') {
+							die "conflicting file scope var definitions: $name " if ($init_val->{tag} eq 'Initial');
+							$init_val = $prev_init;
+						} elsif ($init_val->{tag} ne 'Initial' && $prev_init->{tag} eq 'Tentative') {
+							$init_val = ::Tentative();
+
+						}
+
+					}
+					$symbol_table->{$name} = { 
+						type => ::Int(),
+						attrs => ::StaticAttrs($init_val, $global)
+					};	
+				} else { # local var
+					if ($storage->{tag} eq 'Extern') {
+						die "initalizing local extern variable" if (defined $init);
+						if (exists $symbol_table->{$name}) {
+							die "fun redeclared as var" if (getAttr($name, 'type') ne ::Int());
+						} else {
+							$symbol_table->{$name} = {
+								type => ::Int(),
+								attrs => ::StaticAttrs(::NoInitializer(), 1)
+							};
+						}
+					} elsif ($storage->{tag} eq 'Static') {
+						my $init_val;
+						if ($init->{tag} eq 'ConstantExp') {
+							$init_val = ::Initial($init->{values}[0]);
+						} elsif (not defined $init) {
+							$init_val = ::Initial(0);
+						} else {
+							die "non-constant initializer on local static var";
+						}
+						$symbol_table->{$name} = {
+							type => ::Int(),
+							attrs => ::StaticAttrs($init_val, 0)
+						};
+					} else {
+						$symbol_table->{$name} = {
+							type => ::Int(),
+							attrs => ::LocalAttrs()
+						};
+						if (defined $init) {
+							check_types($init, $node);
+						}
+					}
 				}
 			}
 			with (FunctionCall $name $args) {
-				my $type = $symbol_table->{$name}{type};
+				my $type = getAttr($name, 'type');
 				die "is not function: $name" if ($type->{tag} ne 'FunType');
 				die "wrong number of args: $name" if ($type->{values}[0] ne (scalar @$args));
 				check_types($_, $node) for @$args;	
 			}
 			with (Var $name) {
-				die "is not var: $name" if ($symbol_table->{$name}{type} ne ::Int());
+				die "is not var: $name" if (getAttr($name, 'type') ne ::Int());
 			}
 		}	
 		check_types($_, $node) for $node->{values}->@*;
@@ -242,6 +292,23 @@ sub check_types {
 	}
 }
 
+sub getAttr {
+	my ($symbol, $attr_name) = @_;
+	return undef unless exists $symbol_table->{$symbol};
+	return $symbol_table->{$symbol}{type} if $attr_name eq 'type';
+	match ($symbol_table->{$symbol}{attrs}) {
+		with (FunAttrs $defined $global) {
+			return $defined if ($attr_name eq 'defined');
+			return $global if ($attr_name eq 'global');
+		}
+		with (StaticAttrs $init_val $global) {
+			return $init_val if ($attr_name eq 'init_val');
+			return $global if ($attr_name eq 'global');
+		}
+		with (LocalAttrs) {;}
+	}
+	die "cant get attribute $attr_name in " . $symbol_table->{$symbol}{attrs};
+}
 
 
 ### LOOP LABELING ###

@@ -54,7 +54,7 @@ data Type =
 	Int
 	| FunType :param_count;
 data IdentifierAttrs = 
-	FunAttrs :defined :gloabl
+	FunAttrs :defined :global
 	| StaticAttrs :InitVal :global
 	| LocalAttrs;
 data InitialValue =
