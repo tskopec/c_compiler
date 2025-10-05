@@ -37,7 +37,7 @@ data Statement =
 	| DoWhile :Statement_body :Expression_cond :label
 	| For :VarDeclOrOptExpr_init :OptExpression_cond  :OptExpression_post :Statement_body :label;
 data _Expression = 
-	ConstantExp :value
+	ConstantExpr :value
 	| Var :ident
 	| Unary :UnaryOperator :Expression
 	| Binary :BinaryOperator :Expression1 :Expression2

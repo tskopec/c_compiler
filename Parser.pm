@@ -192,7 +192,7 @@ sub parse_expr {
 sub parse_factor {
 	my $token = shift @TOKENS;
 	match ($token) {
-		with (Constant $val) { return ::ConstantExp($val); }
+		with (Constant $val) { return ::ConstantExpr($val); }
 		with (Identifier $name) { 
 			if (try_expect('Symbol', '(')) {
 				return ::FunctionCall($name, []) if (try_expect('Symbol', ')'));

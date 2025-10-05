@@ -11,8 +11,8 @@ sub run {
 	$symbol_table = {};
 	my $ast = shift;
 	resolve_ids($ast);
-	#	check_types($ast, undef);
-	#	label_loops($ast);
+	check_types($ast, undef);
+	label_loops($ast);
 }
 
 ### IDENTIFIER RESOLUTION ###
@@ -142,7 +142,7 @@ sub resolve_opt_expr_ids {
 sub resolve_expr_ids {
 	my ($expr, $ids_map) = @_;
 	match ($expr) {
-		with (ConstantExp $val) {;}
+		with (ConstantExpr $val) {;}
 		with (Var $name) { $expr->{values}[0] = ($ids_map->{$name}{uniq_name} // die "undeclared variable $name"); }
 		with (Unary $op $e) { resolve_expr_ids($e, $ids_map); }
 		with (Binary $op $e1 $e2) { resolve_expr_ids($_, $ids_map) for ($e1, $e2); }
@@ -184,7 +184,7 @@ sub check_types {
 		match ($node) {
 			with (FunDeclaration $name $params $body $storage) {
 				my $type = ::FunType(scalar @$params);
-				my $has_body = defined $body;
+				my $has_body = defined($body);
 				my $already_defined = 0;
 				my $global = $storage->{tag} ne 'Static';
 
@@ -199,7 +199,7 @@ sub check_types {
 					type => ::FunType(scalar @$params),
 					attrs => ::FunAttrs(
 						($already_defined || $has_body),
-						$global,
+						$global
 					)
 				};
 				if ($has_body) {
@@ -207,7 +207,7 @@ sub check_types {
 				}
 			}
 			with (VarDeclaration $name $init $storage) {
-				my $is_file_scope = $parent_node->{tag} eq 'Program';
+				my $is_file_scope = ($parent_node isa Types::Algebraic::ADT) && ($parent_node->{tag} eq 'Program');
 				if ($is_file_scope) {
 					my $init_val;
 					if (!defined $init) {
@@ -223,7 +223,7 @@ sub check_types {
 						die "already declared as fun" if (getAttr($name, 'type') ne ::Int());
 						if ($storage->{tag} eq 'Extern') {
 							$global = getAttr($name, 'global');
-						} elsif (not getAttr($name, 'global')) {
+						} elsif (getAttr($name, 'global') != $global) {
 							die "conflicting linkage, var $name";
 						}
 
@@ -233,15 +233,16 @@ sub check_types {
 							$init_val = $prev_init;
 						} elsif ($init_val->{tag} ne 'Initial' && $prev_init->{tag} eq 'Tentative') {
 							$init_val = ::Tentative();
-
 						}
-
 					}
 					$symbol_table->{$name} = { 
 						type => ::Int(),
 						attrs => ::StaticAttrs($init_val, $global)
 					};	
 				} else { # local var
+					if ($parent_node isa Types::Algebraic::ADT && $parent_node->{tag} eq 'For' && defined($storage)) {
+						die "for loop header var $name declaration with storage class";
+					}
 					if ($storage->{tag} eq 'Extern') {
 						die "initalizing local extern variable" if (defined $init);
 						if (exists $symbol_table->{$name}) {
@@ -254,10 +255,10 @@ sub check_types {
 						}
 					} elsif ($storage->{tag} eq 'Static') {
 						my $init_val;
-						if ($init->{tag} eq 'ConstantExp') {
-							$init_val = ::Initial($init->{values}[0]);
-						} elsif (not defined $init) {
+						if (not defined $init) {
 							$init_val = ::Initial(0);
+						} elsif ($init->{tag} eq 'ConstantExpr') {
+							$init_val = ::Initial($init->{values}[0]);
 						} else {
 							die "non-constant initializer on local static var";
 						}
@@ -288,26 +289,29 @@ sub check_types {
 		}	
 		check_types($_, $node) for $node->{values}->@*;
 	} elsif (ref($node) eq 'ARRAY') {
-		check_types($_, $node) for $node->@*;
+		check_types($_, $parent_node) for $node->@*;
 	}
 }
 
 sub getAttr {
 	my ($symbol, $attr_name) = @_;
-	return undef unless exists $symbol_table->{$symbol};
-	return $symbol_table->{$symbol}{type} if $attr_name eq 'type';
+	return $symbol_table->{$symbol}{type} if ($attr_name eq 'type');
+	my $res;
 	match ($symbol_table->{$symbol}{attrs}) {
 		with (FunAttrs $defined $global) {
-			return $defined if ($attr_name eq 'defined');
-			return $global if ($attr_name eq 'global');
+			$res = $defined if ($attr_name eq 'defined');
+			$res = $global if ($attr_name eq 'global');
 		}
 		with (StaticAttrs $init_val $global) {
-			return $init_val if ($attr_name eq 'init_val');
-			return $global if ($attr_name eq 'global');
+			$res = $init_val if ($attr_name eq 'init_value');
+			$res = $global if ($attr_name eq 'global');
 		}
 		with (LocalAttrs) {;}
+		default {
+			die "cant get attribute '$attr_name' of $symbol in " . $symbol_table->{$symbol}{attrs};
+		}
 	}
-	die "cant get attribute $attr_name in " . $symbol_table->{$symbol}{attrs};
+	return $res; 
 }
 
 
