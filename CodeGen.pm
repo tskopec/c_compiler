@@ -5,6 +5,7 @@ use warnings;
 use feature qw(say isa state current_sub);
 use List::Util qw(min);
 use Types::Algebraic;
+use SemanticAnalysis;
 
 my @arg_regs = (::DI(), ::SI(), ::DX(), ::CX(), ::R8(), ::R9());
 
@@ -15,7 +16,7 @@ sub translate_to_ASM {
 		with (TAC_Program $declarations) {
 			return ::ASM_Program([ map { translate_to_ASM($_) } @$declarations]);
 		}
-		with (TAC_Function $ident $params $instructions) {
+		with (TAC_Function $ident $global $params $instructions) {
 			my $move_to_stack = sub {
 				my $param_i = shift;
 				my $src = ($param_i <= $#arg_regs) 
@@ -25,9 +26,13 @@ sub translate_to_ASM {
 			};
 			return ::ASM_Function(
 				$ident,
+				$global,
 				[ (map { $move_to_stack->($_) } (keys @$params)),
 				  (map { translate_to_ASM($_) } @$instructions)	]
 			);
+		}
+		with (TAC_StaticVariable $name $global $init) {
+			return ::ASM_StaticVariable($name, $global, $init);
 		}
 		with (TAC_Return $value) {
 			return (::ASM_Mov(translate_to_ASM($value), ::ASM_Reg(::AX())),
@@ -139,7 +144,7 @@ sub fix_up {
 	my $program = shift;
 	for my $declaration ($program->{values}[0]->@*) {
 		match ($declaration) {
-			with (ASM_Function $name $instructions) {
+			with (ASM_Function $name $global $instructions) {
 				replace_pseudo($declaration);
 				fix_instr($declaration);
 			}
@@ -155,6 +160,10 @@ sub replace_pseudo {
 		my $node = shift;
 		match ($node) {
 			with (ASM_Pseudo $ident) {
+				if (exists $SemanticAnalysis::symbol_table->{$ident}
+				   	&& $SemantiAnalysis::symbol_table->{$ident}{attrs}{tag} eq 'StaticAttrs') {
+					return ::ASM_Data($ident);
+				}
 				$offsets->{$ident} //= -8 * scalar(%$offsets); # bacha, //= zpusobi autovivifikaci -> scalar na prave strane vrati velikost uz vcetne noveho prvku
 				return ::ASM_Stack($offsets->{$ident});
 			}
@@ -182,24 +191,24 @@ sub fix_instr {
 		my $instruction = shift;
 		if (my ($op, $src, $dst) = ::extract($instruction, 'ASM_Binary')) {
 			if ($op->{tag} eq 'ASM_Mult') {
-				if ($dst->{tag} eq 'ASM_Stack') {
+				if (is_mem_addr($dst)) {
 					return (::ASM_Mov($dst, ::ASM_Reg(::R11())),
 							::ASM_Binary($op, $src, ::ASM_Reg(::R11())),
 							::ASM_Mov(::ASM_Reg(::R11()), $dst));
 				}
 			} elsif ($op->{tag} eq 'ASM_Add' || $op->{tag} eq 'ASM_Sub') {
-				if ($src->{tag} eq 'ASM_Stack' && $dst->{tag} eq 'ASM_Stack') {
+				if (is_mem_addr($src) && is_mem_addr($dst)) {
 					return (::ASM_Mov($src, ::ASM_Reg(::R10())),
 							::ASM_Binary($op, ::ASM_Reg(::R10()), $dst));
 				}
 			}
 		} elsif (my ($src, $dst) = ::extract($instruction, 'ASM_Mov')) {
-			if ($src->{tag} eq 'ASM_Stack' && $dst->{tag} eq 'ASM_Stack') {
+			if (is_mem_addr($src) && is_mem_addr($dst)) {
 				return (::ASM_Mov($src, ::ASM_Reg(::R10())),
 						::ASM_Mov(::ASM_Reg(::R10()), $dst));
 			}
 		} elsif (my ($src, $dst) = ::extract($instruction, 'ASM_Cmp')) {
-			if ($src->{tag} eq 'ASM_Stack' && $dst->{tag} eq 'ASM_Stack') {
+			if (is_mem_addr($src) && is_mem_addr($dst)) {
 				return (::ASM_Mov($src, ::ASM_Reg(::R10())),
 						::ASM_Cmp(::ASM_Reg(::R10()), $dst));
 			} elsif ($dst->{tag} eq 'ASM_Imm') {
@@ -217,6 +226,10 @@ sub fix_instr {
 	};
 	my ($name, $instructions) = ::extract_or_die($function, 'ASM_Function');
 	splice(@$instructions, 0, $#$instructions + 1, ( map { $fix->($_) } @$instructions ));
+}
+
+sub is_mem_addr {
+	return ::is_one_of(shift(), 'ASM_Stack', 'ASM_Data');
 }
 
 1;

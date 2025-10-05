@@ -3,13 +3,21 @@ use strict;
 use warnings;
 use feature qw(say state);
 use Types::Algebraic;
+use SemanticAnalysis;
 
 
 sub emit_TAC {
 	my ($node, $instructions) = @_;
 	match ($node) {
 		with (Program $declarations) {
-			return ::TAC_Program([ grep { defined } map { emit_TAC($_) } @$declarations ]);
+			my (@tac_funs, @tac_vars);
+			for my $d (@$declarations) {
+				next if ($d->{tag} ne 'FunDeclaration');
+				my $tac_fun = emit_TAC($d);
+				push(@tac_funs, $tac_fun) if (defined $tac_fun);
+			}
+			@tac_vars = covert_symbols_to_TAC();
+			return ::TAC_Program([@tac_vars, @tac_funs]);
 		}
 		with (FunDeclaration $name $params $body $storage) {
 			if (defined $body) {
@@ -19,7 +27,10 @@ sub emit_TAC {
 					emit_TAC($item, $instructions);
 				}
 				push @$instructions, ::TAC_Return(::TAC_Constant(0));
-				return ::TAC_Function($name, [ map { $_->{values}[0] } @$params ], $instructions);
+				return ::TAC_Function($name, 
+									  SemanticAnalysis::getAttr($name, 'global'),
+									  [ map { $_->{values}[0] } @$params ],
+									  $instructions);
 			} else {
 				return undef;
 			}	
@@ -204,6 +215,26 @@ sub labels {
 	$::global_counter++;
 	return @res;
 }
+
+sub covert_symbols_to_TAC {
+	my @tac_vars;
+	while (my ($name, $entry) = each %$SemanticAnalysis::symbol_table) {
+		if ($entry->{attrs}{tag} eq 'StaticAttrs') {
+			my ($init, $global) = ::extract_or_die($entry->{attrs}, 'StaticAttrs');
+			match (SemanticAnalysis::getAttr($name, 'init_value')) {
+				with (Initial $i) {
+					push(@tac_vars, ::TAC_StaticVariable($name, $global, $i));
+				}
+				with (Tentative) {
+					push(@tac_vars, ::TAC_StaticVariable($name, $global, 0));
+				}
+				with (NoInitializer) {;}
+			}
+		}
+	}
+	return @tac_vars;
+}
+
 
 1;
 

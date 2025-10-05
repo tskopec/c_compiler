@@ -14,14 +14,29 @@ sub emit_code {
 			$code .= '.section .note.GNU-stack,"",@progbits' . "\n"; 
 			return $code;
 		}
-		with (ASM_Function $name $instructions) {
-			my $code = "\t.globl $name\n";
+		with (ASM_Function $name $global $instructions) {
+			my $code = "\t" . ($global ? ".globl" : "") . " $name\n";
+			$code .= "\t.text\n";
 			$code .= "$name:\n";
 			$code .= "\tpushq %rbp\n";
 			$code .= "\tmovq %rsp, %rbp\n";
 			$code .= join "", map { emit_code($_) } @$instructions;
 			return $code;
 		} 
+		with (ASM_StaticVariable $name $global $init) {
+			my $code = "\t" . ($global ? ".globl" : "") . " $name\n";
+			if ($init == 0) {
+				$code .= "\t.bss\n";
+				$code .= "\t.align 4\n";
+				$code .= "$name:\n";
+				$code .= "\t.zero 4\n";	
+			} else {
+				$code .= "\t.data\n";
+				$code .= "\t.align 4\n";
+				$code .= "$name:\n";
+				$code .= "\t.long $init\n";	
+			}
+		}
 		with (ASM_Mov $src $dst) {
 			return "\tmovl " . emit_code($src) . ", " . emit_code($dst) . "\n";
 		}
@@ -95,6 +110,9 @@ sub emit_code {
 		}
 		with (ASM_Stack $offset) {
 			return "$offset(%rbp)";
+		}
+		with (ASM_Data $ident) {
+			return "$ident(%rip)";
 		}
 		with (ASM_Imm $val) {
 			return "\$$val";

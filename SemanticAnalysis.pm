@@ -207,6 +207,7 @@ sub check_types {
 				}
 			}
 			with (VarDeclaration $name $init $storage) {
+				say "var decl $name";
 				my $is_file_scope = ($parent_node isa Types::Algebraic::ADT) && ($parent_node->{tag} eq 'Program');
 				if ($is_file_scope) {
 					my $init_val;
@@ -220,6 +221,7 @@ sub check_types {
 					my $global = $storage->{tag} ne 'Static';
 					
 					if (exists $symbol_table->{$name}) {
+						say "exists";
 						die "already declared as fun" if (getAttr($name, 'type') ne ::Int());
 						if ($storage->{tag} eq 'Extern') {
 							$global = getAttr($name, 'global');
@@ -237,7 +239,7 @@ sub check_types {
 					}
 					$symbol_table->{$name} = { 
 						type => ::Int(),
-						attrs => ::StaticAttrs($init_val, $global)
+						attrs => ::StaticAttrs($init_val, 0+$global)
 					};	
 				} else { # local var
 					if ($parent_node isa Types::Algebraic::ADT && $parent_node->{tag} eq 'For' && defined($storage)) {
@@ -299,6 +301,7 @@ sub getAttr {
 	my $res;
 	match ($symbol_table->{$symbol}{attrs}) {
 		with (FunAttrs $defined $global) {
+			# TODO zkusit znova rovnou return
 			$res = $defined if ($attr_name eq 'defined');
 			$res = $global if ($attr_name eq 'global');
 		}

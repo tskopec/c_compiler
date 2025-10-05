@@ -61,11 +61,12 @@ data InitialValue =
 	Tentative | Initial :int | NoInitializer;
 
 
-# TAC AST
+# TAC
 data _TAC_Program = 
-	TAC_Program :Declarations;
-data TAC_Declaration = 
-	TAC_Function :identifier :params :Instructions;
+	TAC_Program :TopLvlDeclarations;
+data TAC_TopLevelDeclaration = 
+	TAC_StaticVariable :identifier :global :init
+	| TAC_Function :identifier :global :params :Instructions;
 data TAC_Instruction =
 	TAC_Return :Value
 	| TAC_Unary :UnaryOperator :Value_src :Value_dst
@@ -85,11 +86,12 @@ data TAC_BinaryOperator =
 	TAC_Add | TAC_Subtract | TAC_Multiply | TAC_Divide | TAC_Modulo | TAC_And | TAC_Or | TAC_Equal | TAC_NotEqual | TAC_LessThan | TAC_LessOrEqual | TAC_GreaterThan | TAC_GreaterOrEqual;
 
 
-# Assembly AST
+# Assembly
 data ASM_Program =
-	ASM_Program :Declarations;
-data ASM_Declaration =
-	ASM_Function :name :Instructions;
+	ASM_Program :TopLvlDeclarations;
+data ASM_TopLevelDeclaration =
+	ASM_StaticVariable :name :global :init
+	| ASM_Function :name :global :Instructions;
 data ASM_Instruction =
 	ASM_Mov :Operand_src :Operand_dst
 	| ASM_Unary :UnaryOperator :Operand
@@ -114,7 +116,8 @@ data ASM_Operand =
 	ASM_Imm :int 
 	| ASM_Reg :Reg
 	| ASM_Pseudo :id
-	| ASM_Stack :offset;
+	| ASM_Stack :offset
+	| ASM_Data :ident;
 data ASM_CondCode = 
 	E | NE | G | GE | L | LE;
 data ASM_Register =
