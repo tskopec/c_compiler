@@ -148,6 +148,7 @@ sub fix_up {
 				replace_pseudo($declaration);
 				fix_instr($declaration);
 			}
+			with (ASM_StaticVariable $name $global $init) {;}
 			default { die "not a declaration: $declaration" }
 		}
 	}
@@ -161,7 +162,7 @@ sub replace_pseudo {
 		match ($node) {
 			with (ASM_Pseudo $ident) {
 				if (exists $SemanticAnalysis::symbol_table->{$ident}
-				   	&& $SemantiAnalysis::symbol_table->{$ident}{attrs}{tag} eq 'StaticAttrs') {
+				   	&& $SemanticAnalysis::symbol_table->{$ident}{attrs}{tag} eq 'StaticAttrs') {
 					return ::ASM_Data($ident);
 				}
 				$offsets->{$ident} //= -8 * scalar(%$offsets); # bacha, //= zpusobi autovivifikaci -> scalar na prave strane vrati velikost uz vcetne noveho prvku
@@ -180,7 +181,7 @@ sub replace_pseudo {
 		}
 	};
 	$process_node->($function);
-	my ($name, $instructions) = ::extract_or_die($function, 'ASM_Function');
+	my ($name, $global, $instructions) = ::extract_or_die($function, 'ASM_Function');
 	my $max_offset = abs(min(values %$offsets));
 	unshift(@$instructions, ::ASM_AllocateStack($max_offset + ($max_offset % 16))); # 16 byte aligned
 }
@@ -224,7 +225,7 @@ sub fix_instr {
 		}
 		return $instruction;
 	};
-	my ($name, $instructions) = ::extract_or_die($function, 'ASM_Function');
+	my ($name, $global, $instructions) = ::extract_or_die($function, 'ASM_Function');
 	splice(@$instructions, 0, $#$instructions + 1, ( map { $fix->($_) } @$instructions ));
 }
 

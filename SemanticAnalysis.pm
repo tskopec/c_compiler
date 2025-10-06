@@ -199,7 +199,7 @@ sub check_types {
 					type => ::FunType(scalar @$params),
 					attrs => ::FunAttrs(
 						($already_defined || $has_body),
-						$global
+						0+$global
 					)
 				};
 				if ($has_body) {
@@ -207,7 +207,6 @@ sub check_types {
 				}
 			}
 			with (VarDeclaration $name $init $storage) {
-				say "var decl $name";
 				my $is_file_scope = ($parent_node isa Types::Algebraic::ADT) && ($parent_node->{tag} eq 'Program');
 				if ($is_file_scope) {
 					my $init_val;
@@ -221,7 +220,6 @@ sub check_types {
 					my $global = $storage->{tag} ne 'Static';
 					
 					if (exists $symbol_table->{$name}) {
-						say "exists";
 						die "already declared as fun" if (getAttr($name, 'type') ne ::Int());
 						if ($storage->{tag} eq 'Extern') {
 							$global = getAttr($name, 'global');

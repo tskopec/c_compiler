@@ -10,12 +10,12 @@ sub emit_code {
 	my $register_width = shift // 4;
 	match ($node) {
 		with (ASM_Program $definitions) {
-			my $code = join "", map { emit_code($_) } @$definitions;
+			my $code = join "\n", map { emit_code($_) } @$definitions;
 			$code .= '.section .note.GNU-stack,"",@progbits' . "\n"; 
 			return $code;
 		}
 		with (ASM_Function $name $global $instructions) {
-			my $code = "\t" . ($global ? ".globl" : "") . " $name\n";
+			my $code = $global ? "\t.global $name\n" : "";
 			$code .= "\t.text\n";
 			$code .= "$name:\n";
 			$code .= "\tpushq %rbp\n";
@@ -24,7 +24,7 @@ sub emit_code {
 			return $code;
 		} 
 		with (ASM_StaticVariable $name $global $init) {
-			my $code = "\t" . ($global ? ".globl" : "") . " $name\n";
+			my $code = $global ? "\t.global $name\n" : "";
 			if ($init == 0) {
 				$code .= "\t.bss\n";
 				$code .= "\t.align 4\n";
@@ -36,6 +36,7 @@ sub emit_code {
 				$code .= "$name:\n";
 				$code .= "\t.long $init\n";	
 			}
+			return $code;
 		}
 		with (ASM_Mov $src $dst) {
 			return "\tmovl " . emit_code($src) . ", " . emit_code($dst) . "\n";
@@ -121,7 +122,7 @@ sub emit_code {
 			return "\tpushq " . emit_code($op, 8) . "\n";
 		}
 		with (ASM_Call $label) {
-			return "\tcall $label" . ($SemanticAnalysis::symbol_table->{$label}{defined} ? "" : '@PLT') . "\n";
+			return "\tcall $label" . (SemanticAnalysis::getAttr($label, 'defined') ? "" : '@PLT') . "\n";
 		}
 		default { die "unknown asm node $node"; }
 	}
