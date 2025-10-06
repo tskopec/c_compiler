@@ -31,31 +31,41 @@ sub parse_declaration {
 	if (peek()->{values}[0] eq '(') {
 		my $params = parse_params_list();
 		if (try_expect('Symbol', '{')) {
-			return ::FunDeclaration($name, $params, parse_block(), $storage_class);
+			return ::FunDeclaration($name, $params, parse_block(), $type, $storage_class);
 		} 
 		expect('Symbol', ';');
-		return ::FunDeclaration($name, $params, undef, $storage_class);
+		return ::FunDeclaration($name, $params, undef, $type, $storage_class);
 	} else {
 		my $init = try_expect('Operator', '=') ? parse_expr(0) : undef;
 		expect('Symbol', ';');
-		return ::VarDeclaration($name, $init, $storage_class);
+		return ::VarDeclaration($name, $init, $type, $storage_class);
 	}
 }
 
 sub parse_specifiers {
 	my (@storage_specs, @type_specs);
-	while (my $kw = try_expect('Keyword', 'int', 'static', 'extern')) {
+	while (my $kw = try_expect('Keyword', 'int', 'long', 'static', 'extern')) {
 		my $val = $kw->{values}[0];
-		if ($val eq 'int') {
+		if ($val =~ /^(int|long)$/) {
 			push @type_specs, $val;
 		} else {
 			push @storage_specs, $val;
 		}	
 	}
 	return () if (!@type_specs && !@storage_specs);
-	die "too many type specifiers: @{[@type_specs]}"	if (@type_specs > 1);
 	die "too many storage specs: @{[@storage_specs]}"	if (@storage_specs > 1);
-	return ($type_specs[0], parse_storage_class($storage_specs[0]));
+	return (parse_type(@type_specs), parse_storage_class(@storage_specs));
+}
+
+sub parse_type {
+	my $specs = join(" ", @_);
+	if ($specs eq 'int') {
+		return ::Int();
+	} elsif ($specs =~ /^(long|int long|long int)$/) {
+		return ::Long();
+	} else {
+		die "invalid type specifier '$specs'";
+	}
 }
 
 sub parse_storage_class {
@@ -73,8 +83,9 @@ sub parse_params_list {
 		expect('Symbol', ')');
 	} else {
 		while (1) {
-			expect('Keyword', 'int');
-			push(@list, ::VarDeclaration(parse_identifier(), undef, undef));	
+			my ($type, $storage) = parse_specifiers();
+			die "invalid specifiers for fun param: $type $storage" if (!defined $type || defined $storage);
+			push(@list, ::VarDeclaration(parse_identifier(), undef, $type, undef));	
 			last if try_expect('Symbol', ')');
 			expect('Symbol', ',');
 		} 
@@ -192,7 +203,8 @@ sub parse_expr {
 sub parse_factor {
 	my $token = shift @TOKENS;
 	match ($token) {
-		with (Constant $val) { return ::ConstantExpr($val); }
+		with (IntConstant $val)  { return parse_constant('int', $val); }
+		with (LongConstant $val) { return parse_constant('long', $val); }
 		with (Identifier $name) { 
 			if (try_expect('Symbol', '(')) {
 				return ::FunctionCall($name, []) if (try_expect('Symbol', ')'));
@@ -220,6 +232,17 @@ sub parse_factor {
 		}
 	}
 	die "cant parse $token as factor";
+}
+
+sub parse_constant {
+	my ($type, $val) = @_;
+	if ($val > 2**63 - 1) {
+		die "constant too large for long $val";
+	} elsif ($type eq 'int' && $val < 2**31 - 1) {
+		return ::ConstInt($val);
+	} else {
+		return ::ConstLong($val);
+	}
 }
 
 sub parse_identifier {

@@ -7,7 +7,8 @@ use feature qw(say);
 
 my $sym_re = qr/^([;}{)(,]).*/;
 my $op_re =	qr/^(!=|==|<=|>=|<|>|=|!|\|\||&&|--|-|\+|\*|\/|%|~|\?|:).*/;
-my $kw_re =	qr/^(int|void|return|if|else|do|while|for|break|continue|static|extern)\b.*/;
+my $kw_re =	qr/^(int|long|void|return|if|else|do|while|for|break|continue|static|extern)\b.*/;
+my $long_const_re = qr/^(([0-9]+)[lL])\b.*/;
 my $const_re = qr/^([0-9]+)\b.*/;
 my $iden_re = qr/^([a-zA-Z_]\w*)\b.*/;
 
@@ -29,8 +30,11 @@ sub tokenize {
 		elsif ($src =~ $kw_re) {
 			push(@tokens, ::Keyword($1));
 		}	
+		elsif ($src =~ $long_const_re) {
+			push(@tokens, ::LongConstant($2));
+		}
 		elsif ($src =~ $const_re) {
-			push(@tokens, ::Constant($1));
+			push(@tokens, ::IntConstant($1));
 		}
 		elsif ($src =~ $iden_re) {
 			push(@tokens, ::Identifier($1));

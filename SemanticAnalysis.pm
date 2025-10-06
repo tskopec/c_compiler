@@ -21,10 +21,10 @@ sub resolve_ids {
 	my $ids_map = {};
 	for my $decl (@$declarations) {
 		match ($decl) {
-			with (FunDeclaration $name $params $body $storage) {
+			with (FunDeclaration $name $params $body $type $storage) {
 				resolve_fun_declaration_ids($decl, $ids_map, 0);
 			}
-			with (VarDeclaration $name $init $storage) {
+			with (VarDeclaration $name $init $type $storage) {
 				resolve_top_level_var_declaration_ids($decl, $ids_map);
 			}
 			default { die "unknown declaration: $decl" }
@@ -34,7 +34,7 @@ sub resolve_ids {
 
 sub resolve_fun_declaration_ids {
 	my ($fun, $ids_map, $in_block_scope) = @_;
-	my ($name, $params, $body, $storage) = ::extract_or_die($fun, 'FunDeclaration');
+	my ($name, $params, $body, $type, $storage) = ::extract_or_die($fun, 'FunDeclaration');
 	if ($in_block_scope) {
 		die "nested fun definition" if (defined $body);
 		die "static nested fun" if ($storage->{tag} eq 'Static');
@@ -56,13 +56,13 @@ sub resolve_fun_declaration_ids {
 
 sub resolve_top_level_var_declaration_ids {
 	my ($decl, $ids_map) = @_;
-	my ($name, $init, $storage) = ::extract_or_die($decl, 'VarDeclaration');
+	my ($name, $init, $type, $storage) = ::extract_or_die($decl, 'VarDeclaration');
 	$ids_map->{$name} = { uniq_name => $name, from_this_scope => 1, has_linkage => 1};
 }
 
 sub resolve_local_var_declaration_ids {
 	my ($declaration, $ids_map) = @_;
-	my ($name, $init, $storage) = ::extract_or_die($declaration, 'VarDeclaration');
+	my ($name, $init, $type, $storage) = ::extract_or_die($declaration, 'VarDeclaration');
 	if (exists $ids_map->{$name}
 		&& $ids_map->{$name}{from_this_scope}
 		&& !($ids_map->{$name}{has_linkage} && $storage->{tag} eq 'Extern')) {
@@ -80,10 +80,10 @@ sub resolve_local_var_declaration_ids {
 sub resolve_block_item_ids {
 	my ($item, $ids_map) = @_;
 	match ($item) {
-		with (VarDeclaration $name $init $storage) {
+		with (VarDeclaration $name $init $type $storage) {
 			resolve_local_var_declaration_ids($item, $ids_map);
 		}
-		with (FunDeclaration $name $params $body $storage) {
+		with (FunDeclaration $name $params $body $type $storage) {
 			die "local fun definition: $name" if defined $body;
 			resolve_fun_declaration_ids($item, $ids_map, 1);
 		}
@@ -182,7 +182,7 @@ sub check_types {
 	my ($node, $parent_node) = @_;
 	if ($node isa Types::Algebraic::ADT) {
 		match ($node) {
-			with (FunDeclaration $name $params $body $storage) {
+			with (FunDeclaration $name $params $body $type $storage) {
 				my $type = ::FunType(scalar @$params);
 				my $has_body = defined($body);
 				my $already_defined = 0;
@@ -206,7 +206,7 @@ sub check_types {
 					$symbol_table->{$_} = { type => ::Int(), attrs => ::LocalAttrs() } for @$params;
 				}
 			}
-			with (VarDeclaration $name $init $storage) {
+			with (VarDeclaration $name $init $type $storage) {
 				my $is_file_scope = ($parent_node isa Types::Algebraic::ADT) && ($parent_node->{tag} eq 'Program');
 				if ($is_file_scope) {
 					my $init_val;

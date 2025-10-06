@@ -19,7 +19,7 @@ sub emit_TAC {
 			@tac_vars = covert_symbols_to_TAC();
 			return ::TAC_Program([@tac_vars, @tac_funs]);
 		}
-		with (FunDeclaration $name $params $body $storage) {
+		with (FunDeclaration $name $params $body $type $storage) {
 			if (defined $body) {
 				my ($items) = ::extract_or_die($body, 'Block');
 				my $instructions = [];
@@ -35,7 +35,7 @@ sub emit_TAC {
 				return undef;
 			}	
 		}
-		with (VarDeclaration $name $init $storage) { 
+		with (VarDeclaration $name $init $type $storage) { 
 			if (defined $init) {
 				emit_TAC(::Assignment(::Var($name), $init), $instructions);
 			}

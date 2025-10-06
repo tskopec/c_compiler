@@ -10,7 +10,8 @@ use Types::Algebraic;
 # Tokens
 data Token = 
 	Identifier :name
-	| Constant :val
+	| IntConstant :val
+	| LongConstant :val
 	| Keyword :word
 	| Symbol :char
 	| Operator :op;
@@ -19,8 +20,8 @@ data Token =
 data _Program = 
 	Program :Declarations;
 data Declaration =
-	VarDeclaration :name :OptExpression_initializer :OptStorageClass
-	| FunDeclaration :name :Identifier_params :OptBlock_body :OptStorageClass;
+	VarDeclaration :name :OptExpression_initializer :Type :OptStorageClass
+	| FunDeclaration :name :Identifier_params :OptBlock_body :Type :OptStorageClass;
 data StorageClass =
 	Static | Extern;
 data _Block = 
@@ -37,8 +38,9 @@ data Statement =
 	| DoWhile :Statement_body :Expression_cond :label
 	| For :VarDeclOrOptExpr_init :OptExpression_cond  :OptExpression_post :Statement_body :label;
 data _Expression = 
-	ConstantExpr :value
+	ConstantExpr :Constant
 	| Var :ident
+	| Cast :Type_target :Expression
 	| Unary :UnaryOperator :Expression
 	| Binary :BinaryOperator :Expression1 :Expression2
 	| Assignment :LExpression :RExpression
@@ -48,11 +50,13 @@ data UnaryOperator =
 	Complement | Negate | Not;
 data BinaryOperator = 
 	Add | Subtract | Multiply | Divide | Modulo | And | Or | Equal | NotEqual | LessThan | LessOrEqual | GreaterThan | GreaterOrEqual; 
+data Constant = ConstInt :int | ConstLong :int;
 
 # Types
 data Type = 
 	Int
-	| FunType :param_count;
+	| Long
+	| FunType :Type_params :Type_ret;
 data IdentifierAttrs = 
 	FunAttrs :defined :global
 	| StaticAttrs :InitVal :global
