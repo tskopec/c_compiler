@@ -143,16 +143,16 @@ sub resolve_expr_ids {
 	my ($expr, $ids_map) = @_;
 	match ($expr) {
 		with (ConstantExpr $val) {;}
-		with (Cast $type $expr) { resolve_expr_ids($expr, $ids_map); }
-		with (Var $name) { $expr->{values}[0] = ($ids_map->{$name}{uniq_name} // die "undeclared variable $name"); }
-		with (Unary $op $e) { resolve_expr_ids($e, $ids_map); }
-		with (Binary $op $e1 $e2) { resolve_expr_ids($_, $ids_map) for ($e1, $e2); }
-		with (Assignment $le $re) { 
+		with (Cast $expr $type) { resolve_expr_ids($expr, $ids_map); }
+		with (Var $name $type) { $expr->{values}[0] = ($ids_map->{$name}{uniq_name} // die "undeclared variable $name"); }
+		with (Unary $op $e $type) { resolve_expr_ids($e, $ids_map); }
+		with (Binary $op $e1 $e2 $type) { resolve_expr_ids($_, $ids_map) for ($e1, $e2); }
+		with (Assignment $le $re $type) { 
 			die "not a variable $le" if ($le->{tag} ne 'Var');
 		   	resolve_expr_ids($_, $ids_map) for ($le, $re);
 	   	}
-		with (Conditional $cond $then $else) { resolve_expr_ids($_, $ids_map) for ($cond, $then, $else); }
-		with (FunctionCall $name $args) {
+		with (Conditional $cond $then $else $type) { resolve_expr_ids($_, $ids_map) for ($cond, $then, $else); }
+		with (FunctionCall $name $args $type) {
 			$expr->{values}[0] = ($ids_map->{$name}{uniq_name} // die "calling undeclared function $name");
 			resolve_expr_ids($_, $ids_map) for @$args;
 		}
@@ -278,13 +278,13 @@ sub check_types {
 					}
 				}
 			}
-			with (FunctionCall $name $args) {
+			with (FunctionCall $name $args $type) {
 				my $type = getAttr($name, 'type');
 				die "is not function: $name" if ($type->{tag} ne 'FunType');
 				die "wrong number of args: $name" if ($type->{values}[0] ne (scalar @$args));
 				check_types($_, $node) for @$args;	
 			}
-			with (Var $name) {
+			with (Var $name $type) {
 				die "is not var: $name" if (getAttr($name, 'type') ne ::Int());
 			}
 		}	
@@ -314,6 +314,11 @@ sub getAttr {
 		}
 	}
 	return $res; 
+}
+
+sub set_type {
+	my ($expr, $type) = @_;
+	$expr->{values}[-1] = $type;	
 }
 
 

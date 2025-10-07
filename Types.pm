@@ -37,18 +37,18 @@ data Statement =
 	| While :Expression_cond :Statement_body :label
 	| DoWhile :Statement_body :Expression_cond :label
 	| For :VarDeclOrOptExpr_init :OptExpression_cond  :OptExpression_post :Statement_body :label;
-data _Expression = 
+data _Expression = # SemantiAnalysis::set_type counts on :Type being the last param of expression
 	ConstantExpr :Constant
-	| Var :ident
-	| Cast :Type_target :Expression
-	| Unary :UnaryOperator :Expression
-	| Binary :BinaryOperator :Expression1 :Expression2
-	| Assignment :LExpression :RExpression
-	| Conditional :Expression_cond :Expression_then :Expression_else
-	| FunctionCall :ident :Expression_args;
+	| Var :ident :Type
+	| Cast :Expression :Type_target
+	| Unary :UnaryOperator :Expression :Type
+	| Binary :BinaryOperator :Expression1 :Expression2 :Type
+	| Assignment :LExpression :RExpression :Type
+	| Conditional :Expression_cond :Expression_then :Expression_else :Type
+	| FunctionCall :ident :Expression_args :Type;
 data UnaryOperator = 
 	Complement | Negate | Not;
-data BinaryOperator = 
+data BinaryOperator=  
 	Add | Subtract | Multiply | Divide | Modulo | And | Or | Equal | NotEqual | LessThan | LessOrEqual | GreaterThan | GreaterOrEqual; 
 data Constant = ConstInt :int | ConstLong :int;
 

@@ -178,17 +178,17 @@ sub parse_expr {
 		if ($op eq '=') {
 			shift @TOKENS;
 			my $right = parse_expr(precedence($op));
-			$left = ::Assignment($left, $right);
+			$left = ::Assignment($left, $right, "dummy_type");
 		} elsif ($op eq '?') {
 			shift @TOKENS;
 			my $then = parse_expr(0);
 			expect('Operator', ':');
 			my $else = parse_expr(precedence($op));
-			$left = ::Conditional($left, $then, $else);
+			$left = ::Conditional($left, $then, $else, "dummy_type");
 		} else {
 			my $op_node = parse_binop(shift @TOKENS);
 			my $right = parse_expr(precedence($op) + 1);
-			$left = ::Binary($op_node, $left, $right);
+			$left = ::Binary($op_node, $left, $right, "dummy_type");
 		}
 	}
 	return $left;
@@ -201,21 +201,21 @@ sub parse_factor {
 		with (LongConstant $val) { return parse_constant('long', $val); }
 		with (Identifier $name) { 
 			if (try_expect('Symbol', '(')) {
-				return ::FunctionCall($name, []) if (try_expect('Symbol', ')'));
+				return ::FunctionCall($name, [], "dummy_type") if (try_expect('Symbol', ')'));
 				my @args;
 				while (1) {
 					push(@args, parse_expr(0));
 					last if (try_expect('Symbol', ')'));
 					expect('Symbol', ',');
 				}
-				return ::FunctionCall($name, \@args);
+				return ::FunctionCall($name, \@args, "dummy_type");
 			} else {
-				return ::Var($name);
+				return ::Var($name, "dummy_type");
 			}
 	   	}
 		with (Operator $op) {
 			my $op_node = parse_unop($token);
-			return ::Unary($op_node, parse_factor());
+			return ::Unary($op_node, parse_factor(), "dummy_type");
 		}
 		with (Symbol $char) {
 			if ($char eq '(') {
@@ -224,7 +224,7 @@ sub parse_factor {
 				if (defined $type) {
 					expect("Symbol", ")");
 					my $expr = parse_expr(0);
-					return ::Cast($type, $expr);
+					return ::Cast($expr, $type,);
 				} else {
 					my $inner = parse_expr(0);
 					expect("Symbol", ")");
@@ -241,9 +241,9 @@ sub parse_constant {
 	if ($val > 2**63 - 1) {
 		die "constant too large for long $val";
 	} elsif ($type eq 'int' && $val < 2**31 - 1) {
-		return ::ConstInt($val);
+		return ::ConstantExpr(::ConstInt($val));
 	} else {
-		return ::ConstLong($val);
+		return ::ConstantExpr(::ConstLong($val));
 	}
 }
 

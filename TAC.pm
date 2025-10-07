@@ -102,17 +102,17 @@ sub emit_TAC {
 		with (ConstantExpr $val) {
 			return ::TAC_Constant($val);
 		}
-		with (Var $ident) {
+		with (Var $ident $type) {
 			return ::TAC_Variable($ident);
 		}
-		with (Unary $op $exp) {
+		with (Unary $op $exp $type) {
 			my $unop = convert_unop($op);
 			my $src = emit_TAC($exp, $instructions);
 			my $dst = ::TAC_Variable(temp_name());
 			push @$instructions, ::TAC_Unary($unop, $src, $dst);	
 			return $dst;
 		}
-		with (Binary $op $exp1 $exp2) {
+		with (Binary $op $exp1 $exp2 $type) {
 			my $dst = ::TAC_Variable(temp_name());
 			if ($op->{tag} eq 'And') {
 				my ($false_label, $end_label) = labels(qw(false end));
@@ -144,13 +144,13 @@ sub emit_TAC {
 			}
 			return $dst;
 		}
-		with (Assignment $var $expr) {
+		with (Assignment $var $expr $type) {
 			my $tac_var = emit_TAC($var, $instructions);
 			my $value = emit_TAC($expr, $instructions);
 			push @$instructions, ::TAC_Copy($value, $tac_var);
 			return $tac_var;
 		}
-		with (Conditional $cond $then $else) {
+		with (Conditional $cond $then $else $type) {
 			my $res = ::TAC_Variable(temp_name());
 			my ($e2_label, $end_label) = labels(qw(e2 end));
 			my $cond_res = emit_TAC($cond, $instructions);
@@ -164,7 +164,7 @@ sub emit_TAC {
 								  ::TAC_Label($end_label)); 
 			return $res;
 		}
-		with (FunctionCall $name $args) {
+		with (FunctionCall $name $args $type) {
 			my $dst = ::TAC_Variable(temp_name());
 			my $arg_vals = [ map { emit_TAC($_, $instructions) } @$args ];
 			push(@$instructions, (::TAC_FunCall($name, $arg_vals, $dst)));
