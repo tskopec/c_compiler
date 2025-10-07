@@ -143,6 +143,7 @@ sub resolve_expr_ids {
 	my ($expr, $ids_map) = @_;
 	match ($expr) {
 		with (ConstantExpr $val) {;}
+		with (Cast $type $expr) { resolve_expr_ids($expr, $ids_map); }
 		with (Var $name) { $expr->{values}[0] = ($ids_map->{$name}{uniq_name} // die "undeclared variable $name"); }
 		with (Unary $op $e) { resolve_expr_ids($e, $ids_map); }
 		with (Binary $op $e1 $e2) { resolve_expr_ids($_, $ids_map) for ($e1, $e2); }

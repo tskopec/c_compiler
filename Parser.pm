@@ -16,8 +16,7 @@ sub parse {
 sub parse_program {
 	my @declarations;
 	while (@TOKENS) {
-		my $d = parse_declaration() // die "invalid declaration (missing specifiers)";
-		push @declarations, $d;
+		push(@declarations, parse_declaration() // die "not a declaration");
 	}
 	return ::Program(\@declarations);
 }
@@ -44,16 +43,15 @@ sub parse_declaration {
 
 sub parse_specifiers {
 	my (@storage_specs, @type_specs);
-	while (my $kw = try_expect('Keyword', 'int', 'long', 'static', 'extern')) {
-		my $val = $kw->{values}[0];
-		if ($val =~ /^(int|long)$/) {
-			push @type_specs, $val;
-		} else {
-			push @storage_specs, $val;
-		}	
+	while (1) {
+		if (my $kw = try_expect('Keyword', 'int', 'long')) {
+			push @type_specs, $kw->{values}[0];
+		} elsif (my $kw = try_expect('Keyword', 'static', 'extern')) {
+			push @storage_specs, $kw->{values}[0];
+		} else { last }
 	}
+	die "too many storage specs: @{[@storage_specs]}" if (@storage_specs > 1);
 	return () if (!@type_specs && !@storage_specs);
-	die "too many storage specs: @{[@storage_specs]}"	if (@storage_specs > 1);
 	return (parse_type(@type_specs), parse_storage_class(@storage_specs));
 }
 
@@ -156,12 +154,8 @@ sub parse_statement {
 
 sub parse_for_init {
 	return undef if (try_expect('Symbol', ';'));
-	my $res = parse_declaration();
-	if (!defined $res) {
-		$res = parse_opt_expr(';');
-	} else {
-		die "fun declaration in for init" if ($res->{tag} eq 'FunDeclaration');
-	}
+	my $res = parse_declaration() // parse_opt_expr(';');
+	die "fun declaration in for init" if ($res->{tag} eq 'FunDeclaration');
 	return $res;
 }
 
@@ -225,9 +219,17 @@ sub parse_factor {
 		}
 		with (Symbol $char) {
 			if ($char eq '(') {
-				my $inner = parse_expr(0);
-				expect("Symbol", ")");
-				return $inner;
+				my ($type, $storage) = parse_specifiers();
+				die "storage specifier in cast" if (defined $storage);
+				if (defined $type) {
+					expect("Symbol", ")");
+					my $expr = parse_expr(0);
+					return ::Cast($type, $expr);
+				} else {
+					my $inner = parse_expr(0);
+					expect("Symbol", ")");
+					return $inner;
+				}
 			}
 		}
 	}
