@@ -37,7 +37,7 @@ data Statement =
 	| While :Expression_cond :Statement_body :label
 	| DoWhile :Statement_body :Expression_cond :label
 	| For :VarDeclOrOptExpr_init :OptExpression_cond  :OptExpression_post :Statement_body :label;
-data _Expression = # SemantiAnalysis::set_type counts on :Type being the last param of expression
+data _Expression = # SemanticAnalysis::[gs]et_type count on :Type being the last param of expression
 	ConstantExpr :Constant
 	| Var :ident :Type
 	| Cast :Expression :Type_target

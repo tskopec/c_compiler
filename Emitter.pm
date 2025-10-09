@@ -122,7 +122,7 @@ sub emit_code {
 			return "\tpushq " . emit_code($op, 8) . "\n";
 		}
 		with (ASM_Call $label) {
-			return "\tcall $label" . (SemanticAnalysis::getAttr($label, 'defined') ? "" : '@PLT') . "\n";
+			return "\tcall $label" . (SemanticAnalysis::get_attr($label, 'defined') ? "" : '@PLT') . "\n";
 		}
 		default { die "unknown asm node $node"; }
 	}
