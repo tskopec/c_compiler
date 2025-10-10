@@ -28,7 +28,7 @@ sub emit_TAC {
 				}
 				push @$instructions, ::TAC_Return(::TAC_Constant(0));
 				return ::TAC_Function($name, 
-									  SemanticAnalysis::get_attr($name, 'global'),
+									  SemanticAnalysis::get_symbol_attr($name, 'global'),
 									  [ map { $_->{values}[0] } @$params ],
 									  $instructions);
 			} else {
@@ -221,7 +221,7 @@ sub covert_symbols_to_TAC {
 	while (my ($name, $entry) = each %$SemanticAnalysis::symbol_table) {
 		if ($entry->{attrs}{tag} eq 'StaticAttrs') {
 			my ($init, $global) = ::extract_or_die($entry->{attrs}, 'StaticAttrs');
-			match (SemanticAnalysis::get_attr($name, 'init_value')) {
+			match (SemanticAnalysis::get_symbol_attr($name, 'init_value')) {
 				with (Initial $i) {
 					push(@tac_vars, ::TAC_StaticVariable($name, $global, $i));
 				}

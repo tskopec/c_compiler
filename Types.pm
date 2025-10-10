@@ -62,7 +62,8 @@ data IdentifierAttrs =
 	| StaticAttrs :InitVal :global
 	| LocalAttrs;
 data InitialValue =
-	Tentative | Initial :int | NoInitializer;
+	Tentative | Initial :StaticInit | NoInitializer;
+data StaticInit = IntInit :int | LongInit :int;
 
 
 # TAC

@@ -180,21 +180,23 @@ sub make_inner_scope_map {
 
 ### TYPE CHECKING ###
 sub check_types {
-	my ($node, $parent_node, $containing_fun_ret_type) = @_;
+	state $current_fun_ret_type;
+	my ($node, $parent_node) = @_;
 	if ($node isa Types::Algebraic::ADT) {
 		match ($node) {
 			with (FunDeclaration $name $params $body $ret_type $storage) {
+				$current_fun_ret_type = $ret_type;
 				my $f_type = ::FunType([ map { my ($name, $init, $p_type, $storage) = ::extract_or_die($_, 'VarDeclaration'); $p_type } @$params ], $ret_type);
 				my $has_body = defined($body);
 				my $already_defined = 0;
 				my $global = $storage->{tag} ne 'Static';
 
 				if (exists $symbol_table->{$name}) {
-					$already_defined = get_attr($name, 'defined');
-					die "incompatible fun declarations: $name" if (get_attr($name, 'type') ne $f_type);
+					$already_defined = get_symbol_attr($name, 'defined');
+					die "incompatible fun declarations: $name" if (get_symbol_attr($name, 'type') ne $f_type);
 					die "fun defined multiple times: $name" if ($already_defined && $has_body);
-					die "static fun declaration after non-static" if (get_attr($name, 'global') && !$global);
-					$global = get_attr($name, 'global');
+					die "static fun declaration after non-static" if (get_symbol_attr($name, 'global') && !$global);
+					$global = get_symbol_attr($name, 'global');
 				}
 				$symbol_table->{$name} = { 
 					type => $f_type,
@@ -217,22 +219,22 @@ sub check_types {
 					my $init_val;
 					if (!defined $init) {
 						$init_val = $storage->{tag} eq 'Extern' ? ::NoInitializer() : ::Tentative();
-					} elsif ($init->{tag} eq 'ConstantExpr') {
-						$init_val = ::Initial($init->{values}[0]);
+					} elsif (my $const = ::extract($init, 'ConstantExpr')) {
+						$init_val = const_to_initval($const, $type);
 					} else {
 						die "initializer must be constant";
 					}
 					my $global = $storage->{tag} ne 'Static';
 					
 					if (exists $symbol_table->{$name}) {
-						die "already declared as fun" if (get_attr($name, 'type') ne ::Int());
+						die "already declared as other type" if (get_symbol_attr($name, 'type') ne $type);
 						if ($storage->{tag} eq 'Extern') {
-							$global = get_attr($name, 'global');
-						} elsif (get_attr($name, 'global') != $global) {
+							$global = get_symbol_attr($name, 'global');
+						} elsif (get_symbol_attr($name, 'global') != $global) {
 							die "conflicting linkage, var $name";
 						}
 
-						my $prev_init = get_attr($name, 'init_value');
+						my $prev_init = get_symbol_attr($name, 'init_value');
 						if ($prev_init->{tag} eq 'Initial') {
 							die "conflicting file scope var definitions: $name " if ($init_val->{tag} eq 'Initial');
 							$init_val = $prev_init;
@@ -241,7 +243,7 @@ sub check_types {
 						}
 					}
 					$symbol_table->{$name} = { 
-						type => ::Int(),
+						type => $type,
 						attrs => ::StaticAttrs($init_val, 0+$global)
 					};	
 				} else { # local var
@@ -251,10 +253,10 @@ sub check_types {
 					if ($storage->{tag} eq 'Extern') {
 						die "initalizing local extern variable" if (defined $init);
 						if (exists $symbol_table->{$name}) {
-							die "fun redeclared as var" if (get_attr($name, 'type') ne ::Int());
+							die "fun redeclared as var" if (get_symbol_attr($name, 'type') ne $type);
 						} else {
 							$symbol_table->{$name} = {
-								type => ::Int(),
+								type => $type,
 								attrs => ::StaticAttrs(::NoInitializer(), 1)
 							};
 						}
@@ -262,39 +264,39 @@ sub check_types {
 						my $init_val;
 						if (not defined $init) {
 							$init_val = ::Initial(0);
-						} elsif ($init->{tag} eq 'ConstantExpr') {
-							$init_val = ::Initial($init->{values}[0]);
+						} elsif (my $const = ::extract($init, 'ConstantExpr')) {
+							$init_val = const_to_initval($const, $type);
 						} else {
 							die "non-constant initializer on local static var";
 						}
 						$symbol_table->{$name} = {
-							type => ::Int(),
+							type => $type,
 							attrs => ::StaticAttrs($init_val, 0)
 						};
 					} else {
 						$symbol_table->{$name} = {
-							type => ::Int(),
+							type => $type,
 							attrs => ::LocalAttrs()
 						};
 						if (defined $init) {
-							check_types($init, $node, $containing_fun_ret_type);
+							check_types($init, $node);
 						}
 					}
 				}
 			}
 			with (FunctionCall $name $args $type) {
-				my ($param_types, $ret_type) = ::extract_or_die(get_attr($name, 'type'), 'FunType');
+				my ($param_types, $ret_type) = ::extract_or_die(get_symbol_attr($name, 'type'), 'FunType');
 				die "wrong number of args: $name" if (@$param_types != @$args);
 				my @converted_args;
 				while (my ($i, $arg) = each @$args) {
-					check_types($arg, $node, $containing_fun_ret_type);
+					check_types($arg, $node);
 					push(@converted_args, convert_type($arg, $param_types->[$i]));
 				}	
 				$node->{values}[1] = \@converted_args;
 				set_type($node, $ret_type);
 			}
 			with (Var $name $type) {
-				my $actual_type = get_attr($name, 'type');
+				my $actual_type = get_symbol_attr($name, 'type');
 				die "is not var: $name" if ($actual_type->{tag} eq 'FunType');
 				set_type($node, $actual_type);
 			}
@@ -308,11 +310,11 @@ sub check_types {
 			   	}
 			}
 			with (Cast $expr $type) {
-				check_types($expr, $node, $containing_fun_ret_type);
+				check_types($expr, $node);
 				set_type($node, $type);
 			}
 			with (Unary $op $expr $type) {
-				check_types($expr, $node, $containing_fun_ret_type);
+				check_types($expr, $node);
 				if ($op->{tag} eq 'Not') { 
 					set_type($node, ::Int());
 			   	} else { 
@@ -320,8 +322,8 @@ sub check_types {
 				}
 			}
 			with (Binary $op $e1 $e2 $type) {
-				check_types($e1, $node, $containing_fun_ret_type);
-				check_types($e2, $node, $containing_fun_ret_type);
+				check_types($e1, $node);
+				check_types($e2, $node);
 				if (::is_one_of($op, 'And', 'Or')) {
 					set_type($node, ::Int());
 				} else {
@@ -335,30 +337,34 @@ sub check_types {
 				}
 			} 
 			with (Assignment $lhs $rhs $type) {
-				check_types($lhs, $node, $containing_fun_ret_type);
-				check_types($rhs, $node), $containing_fun_ret_type;
+				check_types($lhs, $node);
+				check_types($rhs, $node);
 				my $left_type = get_type($lhs);
 				$node->{values}[1] = convert_type($rhs, $left_type);
 				set_type($node, $left_type);
 			}
 			with (Conditional $cond $then $else $type) {
-				check_types($cond, $node, $containing_fun_ret_type);
-				check_types($then, $node, $containing_fun_ret_type);
-				check_types($else, $node, $containing_fun_ret_type);
+				check_types($cond, $node);
+				check_types($then, $node);
+				check_types($else, $node);
 				my $common_type = get_common_type(get_type($then), get_type($else));
 				$node->{values}[1,2] = (convert_type($then, $common_type), convert_type($else, $common_type));
 				set_type($node, $common_type);
 			}	
+			with (Return $expr) {
+				check_types($expr, $node);
+				$node->{values}[0] = convert_type($expr, $current_fun_ret_type);		
+			}
 		} 
 		default {
-			check_types($_, $node, $containing_fun_ret_type) for $node->{values}->@*;
+			check_types($_, $node) for $node->{values}->@*;
 		}	
 	} elsif (ref($node) eq 'ARRAY') {
-		check_types($_, $parent_node, $containing_fun_ret_type) for $node->@*;
+		check_types($_, $parent_node) for $node->@*;
 	}
 }
 
-sub get_attr {
+sub get_symbol_attr {
 	my ($symbol, $attr_name) = @_;
 	return $symbol_table->{$symbol}{type} if ($attr_name eq 'type');
 	my $res;
@@ -401,8 +407,28 @@ sub get_common_type {
 
 sub convert_type {
 	my ($expr, $type) = @_;
-	return $expr if (get_type($expr) eq $type);
-	return ::Cast($expr, $type);
+	return (get_type($expr) eq $type) ? $expr : ::Cast($expr, $type);
+}
+
+
+sub const_to_initval {
+	my ($const, $type) = @_;
+	my $val = $const->{values}[0];
+	return ::Initial(
+		($type->{tag} eq 'Int')
+			? ::IntInit(fit_integer_into($val, $type))
+			: ::LongInit(fit_integer_into($val, $type))
+	);
+}
+
+sub fit_integer_into {
+	state $max_int = 2**31 - 1;
+	state $max_uint = 2**32;
+	my ($val, $type) = @_;
+	if ($type->{tag} eq 'Int') {
+		$val -= $max_uint while ($val > $max_int);
+	}
+	return $val;
 }
 
 
