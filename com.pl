@@ -14,13 +14,12 @@ use TAC;
 use CodeGen;
 use Emitter;
 
-
 our $global_counter = 0;
 
 # ARGS
+our $debug = 0;
 my @src_files;
 my $target_phase = "";
-my $debug = 0;
 my $dont_link = 0;
 
 foreach (@ARGV) {

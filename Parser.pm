@@ -223,8 +223,8 @@ sub parse_factor {
 				die "storage specifier in cast" if (defined $storage);
 				if (defined $type) {
 					expect("Symbol", ")");
-					my $expr = parse_expr(0);
-					return ::Cast($expr, $type,);
+					my $expr = parse_expr(100);
+					return ::Cast($expr, $type);
 				} else {
 					my $inner = parse_expr(0);
 					expect("Symbol", ")");
@@ -237,13 +237,15 @@ sub parse_factor {
 }
 
 sub parse_constant {
+	state $max_long = 2**63 - 1;
+	state $max_int = 2**31 - 1;
 	my ($type, $val) = @_;
-	if ($val > 2**63 - 1) {
+	if ($val > $max_long) {
 		die "constant too large for long $val";
-	} elsif ($type eq 'int' && $val < 2**31 - 1) {
-		return ::ConstantExpr(::ConstInt($val));
+	} elsif ($type eq 'int' && $val < $max_int) {
+		return ::ConstantExpr(::ConstInt($val), ::Int());
 	} else {
-		return ::ConstantExpr(::ConstLong($val));
+		return ::ConstantExpr(::ConstLong($val), ::Long());
 	}
 }
 

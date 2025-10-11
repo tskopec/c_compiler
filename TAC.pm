@@ -99,7 +99,7 @@ sub emit_TAC {
 			push @$instructions, ::TAC_Jump("_continue$label");
 		}
 		with (Expression $expr) { emit_TAC($expr, $instructions); }
-		with (ConstantExpr $val) {
+		with (ConstantExpr $val $type) {
 			return ::TAC_Constant($val);
 		}
 		with (Var $ident $type) {

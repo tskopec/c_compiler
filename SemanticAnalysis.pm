@@ -142,7 +142,7 @@ sub resolve_opt_expr_ids {
 sub resolve_expr_ids {
 	my ($expr, $ids_map) = @_;
 	match ($expr) {
-		with (ConstantExpr $val) {;}
+		with (ConstantExpr $val $type) {;}
 		with (Cast $expr $type) { resolve_expr_ids($expr, $ids_map); }
 		with (Var $name $type) { $expr->{values}[0] = ($ids_map->{$name}{uniq_name} // die "undeclared variable $name"); }
 		with (Unary $op $e $type) { resolve_expr_ids($e, $ids_map); }
@@ -186,16 +186,19 @@ sub check_types {
 		match ($node) {
 			with (FunDeclaration $name $params $body $ret_type $storage) {
 				$current_fun_ret_type = $ret_type;
-				my $f_type = ::FunType([ map { my ($name, $init, $p_type, $storage) = ::extract_or_die($_, 'VarDeclaration'); $p_type } @$params ], $ret_type);
+				my $f_type = ::FunType([ 
+						map { my ($name, $init, $p_type, $storage) = ::extract_or_die($_, 'VarDeclaration'); $p_type } @$params 
+					],
+					$ret_type);
 				my $has_body = defined($body);
 				my $already_defined = 0;
 				my $global = $storage->{tag} ne 'Static';
 
 				if (exists $symbol_table->{$name}) {
 					$already_defined = get_symbol_attr($name, 'defined');
-					die "incompatible fun declarations: $name" if (get_symbol_attr($name, 'type') ne $f_type);
-					die "fun defined multiple times: $name" if ($already_defined && $has_body);
-					die "static fun declaration after non-static" if (get_symbol_attr($name, 'global') && !$global);
+					die "incompatible declarations: $name"			unless (types_equal(get_symbol_attr($name, 'type'), $f_type));
+					die "fun defined multiple times: $name"			if ($already_defined && $has_body);
+					die "static fun declaration after non-static"	if (get_symbol_attr($name, 'global') && !$global);
 					$global = get_symbol_attr($name, 'global');
 				}
 				$symbol_table->{$name} = { 
@@ -210,24 +213,23 @@ sub check_types {
 						my ($name, $init, $p_type, $storage) = ::extract_or_die($p, 'VarDeclaration');
 						$symbol_table->{$name} = { type => $p_type, attrs => ::LocalAttrs() };
 					}
-					check_types($body, $node, $ret_type);
+					check_types($body, $node);
 				}
 			}
 			with (VarDeclaration $name $init $type $storage) {
-				my $is_file_scope = ($parent_node isa Types::Algebraic::ADT) && ($parent_node->{tag} eq 'Program');
+				my $is_file_scope = $parent_node isa Types::Algebraic::ADT && $parent_node->{tag} eq 'Program';
 				if ($is_file_scope) {
 					my $init_val;
 					if (!defined $init) {
 						$init_val = $storage->{tag} eq 'Extern' ? ::NoInitializer() : ::Tentative();
-					} elsif (my $const = ::extract($init, 'ConstantExpr')) {
-						$init_val = const_to_initval($const, $type);
 					} else {
-						die "initializer must be constant";
-					}
+						my ($const) = ::extract_or_die($init, 'ConstantExpr');
+						$init_val = const_to_initval($const, $type);
+					} 
 					my $global = $storage->{tag} ne 'Static';
 					
 					if (exists $symbol_table->{$name}) {
-						die "already declared as other type" if (get_symbol_attr($name, 'type') ne $type);
+						die "already declared as other type: $name" unless (types_equal(get_symbol_attr($name, 'type'), $type));
 						if ($storage->{tag} eq 'Extern') {
 							$global = get_symbol_attr($name, 'global');
 						} elsif (get_symbol_attr($name, 'global') != $global) {
@@ -253,7 +255,7 @@ sub check_types {
 					if ($storage->{tag} eq 'Extern') {
 						die "initalizing local extern variable" if (defined $init);
 						if (exists $symbol_table->{$name}) {
-							die "fun redeclared as var" if (get_symbol_attr($name, 'type') ne $type);
+							die "already declared as other type: $name" unless (types_equal(get_symbol_attr($name, 'type'), $type));
 						} else {
 							$symbol_table->{$name} = {
 								type => $type,
@@ -262,12 +264,11 @@ sub check_types {
 						}
 					} elsif ($storage->{tag} eq 'Static') {
 						my $init_val;
-						if (not defined $init) {
+						if (!defined $init) {
 							$init_val = ::Initial(0);
-						} elsif (my $const = ::extract($init, 'ConstantExpr')) {
-							$init_val = const_to_initval($const, $type);
 						} else {
-							die "non-constant initializer on local static var";
+							my ($const) = ::extract_or_die($init, 'ConstantExpr');
+							$init_val = const_to_initval($const, $type);
 						}
 						$symbol_table->{$name} = {
 							type => $type,
@@ -287,12 +288,10 @@ sub check_types {
 			with (FunctionCall $name $args $type) {
 				my ($param_types, $ret_type) = ::extract_or_die(get_symbol_attr($name, 'type'), 'FunType');
 				die "wrong number of args: $name" if (@$param_types != @$args);
-				my @converted_args;
 				while (my ($i, $arg) = each @$args) {
 					check_types($arg, $node);
-					push(@converted_args, convert_type($arg, $param_types->[$i]));
+					$args->[$i] = convert_type($arg, $param_types->[$i]);
 				}	
-				$node->{values}[1] = \@converted_args;
 				set_type($node, $ret_type);
 			}
 			with (Var $name $type) {
@@ -300,15 +299,7 @@ sub check_types {
 				die "is not var: $name" if ($actual_type->{tag} eq 'FunType');
 				set_type($node, $actual_type);
 			}
-			with (ConstantExpr $const) {
-				if ($const->{tag} eq 'ConstInt') { 
-					set_type($node, ::Int());
-				} elsif ($const->{tag} eq 'ConstLong') { 
-					set_type($node, ::Long());
-			   	} else { 
-					die "unknown const type $const";
-			   	}
-			}
+			with (ConstantExpr $const $type) {;} # type set in parser
 			with (Cast $expr $type) {
 				check_types($expr, $node);
 				set_type($node, $type);
@@ -327,7 +318,7 @@ sub check_types {
 				if (::is_one_of($op, 'And', 'Or')) {
 					set_type($node, ::Int());
 				} else {
-					my $common_type = get_common_type(get_type($e1), get_type($2));
+					my $common_type = get_common_type(get_type($e1), get_type($e2));
 					$node->{values}[1,2] = (convert_type($e1, $common_type), convert_type($e2, $common_type));
 					if (::is_one_of($op, 'Add', 'Subtract', 'Multiply', 'Divide', 'Remainder')) {
 						set_type($node, $common_type);
@@ -355,10 +346,10 @@ sub check_types {
 				check_types($expr, $node);
 				$node->{values}[0] = convert_type($expr, $current_fun_ret_type);		
 			}
+			default {
+				check_types($_, $node) for $node->{values}->@*;
+			}	
 		} 
-		default {
-			check_types($_, $node) for $node->{values}->@*;
-		}	
 	} elsif (ref($node) eq 'ARRAY') {
 		check_types($_, $parent_node) for $node->@*;
 	}
@@ -410,6 +401,19 @@ sub convert_type {
 	return (get_type($expr) eq $type) ? $expr : ::Cast($expr, $type);
 }
 
+sub types_equal {
+	my ($t1, $t2) = @_;
+	if ($t1->{tag} eq $t2->{tag}) {
+		if ($t1->{tag} eq 'FunType') {
+			my ($param_types1, $ret_type1) = ::extract($t1, 'FunType');
+			my ($param_types2, $ret_type2) = ::extract($t2, 'FunType');
+			return 0 if (@$param_types1 != @$param_types2 || $ret_type1 ne $ret_type2);
+			return not grep { $param_types1->[$_] ne $param_types2->[$_] } (0..$#$param_types1);
+		}	
+		return 1;
+	} 
+	return 0;
+}
 
 sub const_to_initval {
 	my ($const, $type) = @_;

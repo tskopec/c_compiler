@@ -38,7 +38,7 @@ data Statement =
 	| DoWhile :Statement_body :Expression_cond :label
 	| For :VarDeclOrOptExpr_init :OptExpression_cond  :OptExpression_post :Statement_body :label;
 data _Expression = # SemanticAnalysis::[gs]et_type count on :Type being the last param of expression
-	ConstantExpr :Constant
+	ConstantExpr :Constant :Type
 	| Var :ident :Type
 	| Cast :Expression :Type_target
 	| Unary :UnaryOperator :Expression :Type
@@ -140,6 +140,10 @@ sub is_one_of {
 
 sub index_of_in {
 	my ($adt, @tags) = @_;
+	unless ($adt isa Types::Algebraic::ADT) {
+		say "warning (index_of_in): $adt not ADT" if ($::debug);
+		return -1;
+	}
 	if (defined $adt) {
 		my $n = 0;
 		for my $tag (@tags) {
@@ -152,6 +156,10 @@ sub index_of_in {
 
 sub extract {
 	my ($adt, @possible_tags) = @_;
+	unless ($adt isa Types::Algebraic::ADT) {
+		say "warning (extract): $adt not ADT" if ($::debug);
+		return ();
+	}
 	for my $tag (@possible_tags) {
 		return $adt->{values}->@* if ($tag eq $adt->{tag});
 	}
@@ -160,7 +168,8 @@ sub extract {
 
 sub extract_or_die {
 	my ($adt, $expected_tag) = @_;
-	die($adt->{tag} . " neni $expected_tag") unless $expected_tag eq $adt->{tag};
+	die "$adt not ADT"							unless ($adt isa Types::Algebraic::ADT);
+	die $adt->{tag} . " neni $expected_tag"		unless ($expected_tag eq $adt->{tag});
 	return $adt->{values}->@*;
 }
 
