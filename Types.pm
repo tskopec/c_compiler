@@ -52,6 +52,7 @@ data BinaryOperator=
 	Add | Subtract | Multiply | Divide | Modulo | And | Or | Equal | NotEqual | LessThan | LessOrEqual | GreaterThan | GreaterOrEqual; 
 data Constant = ConstInt :int | ConstLong :int;
 
+
 # Types
 data Type = 
 	Int
@@ -70,10 +71,12 @@ data StaticInit = IntInit :int | LongInit :int;
 data _TAC_Program = 
 	TAC_Program :TopLvlDeclarations;
 data TAC_TopLevelDeclaration = 
-	TAC_StaticVariable :identifier :global :init
+	TAC_StaticVariable :identifier :global :Type :StatiInit
 	| TAC_Function :identifier :global :params :Instructions;
 data TAC_Instruction =
 	TAC_Return :Value
+	| TAC_SignExtend :Value_src :Value_dst
+	| TAC_Truncate :Value_src :Value_dst
 	| TAC_Unary :UnaryOperator :Value_src :Value_dst
 	| TAC_Binary :BinaryOperator :Value_1 :Value_2 :Value_dst
 	| TAC_Copy :Value_src :Value_dst
@@ -83,7 +86,7 @@ data TAC_Instruction =
 	| TAC_Label :ident
 	| TAC_FunCall :name :Value_params :Value_dst;
 data TAC_Value =
-	TAC_Constant :int
+	TAC_Constant :Constant
 	| TAC_Variable :name;
 data TAC_UnaryOperator = 
 	TAC_Complement | TAC_Negate | TAC_Not;

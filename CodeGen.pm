@@ -31,7 +31,7 @@ sub translate_to_ASM {
 				  (map { translate_to_ASM($_) } @$instructions)	]
 			);
 		}
-		with (TAC_StaticVariable $name $global $init) {
+		with (TAC_StaticVariable $name $global $type $init) {
 			return ::ASM_StaticVariable($name, $global, $init);
 		}
 		with (TAC_Return $value) {

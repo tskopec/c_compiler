@@ -19,14 +19,14 @@ sub emit_TAC {
 			@tac_vars = covert_symbols_to_TAC();
 			return ::TAC_Program([@tac_vars, @tac_funs]);
 		}
-		with (FunDeclaration $name $params $body $type $storage) {
+		with (FunDeclaration $name $params $body $ret_type $storage) {
 			if (defined $body) {
 				my ($items) = ::extract_or_die($body, 'Block');
 				my $instructions = [];
 				for my $item (@$items) {
 					emit_TAC($item, $instructions);
 				}
-				push @$instructions, ::TAC_Return(::TAC_Constant(0));
+				push @$instructions, ::TAC_Return(::TAC_Constant(get_default_init($ret_type)));
 				return ::TAC_Function($name, 
 									  SemanticAnalysis::get_symbol_attr($name, 'global'),
 									  [ map { $_->{values}[0] } @$params ],
@@ -35,7 +35,7 @@ sub emit_TAC {
 				return undef;
 			}	
 		}
-		with (VarDeclaration $name $init $type $storage) { 
+		with (VarDeclaration $name $init $ret_type $storage) { 
 			if (defined $init) {
 				emit_TAC(::Assignment(::Var($name), $init), $instructions);
 			}
@@ -99,31 +99,44 @@ sub emit_TAC {
 			push @$instructions, ::TAC_Jump("_continue$label");
 		}
 		with (Expression $expr) { emit_TAC($expr, $instructions); }
-		with (ConstantExpr $val $type) {
-			return ::TAC_Constant($val);
+		with (ConstantExpr $const $type) {
+			return ::TAC_Constant($const);
 		}
 		with (Var $ident $type) {
 			return ::TAC_Variable($ident);
 		}
+		with (Cast $expr $type) {
+			my $res = emit_TAC($expr, $instructions);
+			if (SemanticAnalysis::get_type($expr) eq $type) {
+				return $res;
+			}	
+			my $dst = make_TAC_var($type);
+			if ($type->{tag} eq 'Long') {
+				push(@$instructions, ::SignExtend($res, $dst));
+			} else {
+				push(@$instructions, ::Truncate($res, $dst));
+			}
+			return $dst;
+		}
 		with (Unary $op $exp $type) {
 			my $unop = convert_unop($op);
 			my $src = emit_TAC($exp, $instructions);
-			my $dst = ::TAC_Variable(temp_name());
+			my $dst = make_TAC_var($type);
 			push @$instructions, ::TAC_Unary($unop, $src, $dst);	
 			return $dst;
 		}
 		with (Binary $op $exp1 $exp2 $type) {
-			my $dst = ::TAC_Variable(temp_name());
+			my $dst = make_TAC_var($type);
 			if ($op->{tag} eq 'And') {
 				my ($false_label, $end_label) = labels(qw(false end));
 				my $src1 = emit_TAC($exp1, $instructions);
 				push @$instructions, ::TAC_JumpIfZero($src1, $false_label);
 				my $src2 = emit_TAC($exp2, $instructions);
 				push(@$instructions, ::TAC_JumpIfZero($src2, $false_label),
-									 ::TAC_Copy(::TAC_Constant(1), $dst),
+									 ::TAC_Copy(::TAC_Constant(::ConstInt(1)), $dst),
 									 ::TAC_Jump($end_label),
 									 ::TAC_Label($false_label),
-									 ::TAC_Copy(::TAC_Constant(0), $dst),
+									 ::TAC_Copy(::TAC_Constant(::ConstInt(0)), $dst),
 									 ::TAC_Label($end_label));
 			} elsif ($op->{tag} eq 'Or') {
 				my ($true_label, $end_label) = labels(qw(true end));
@@ -131,10 +144,10 @@ sub emit_TAC {
 				push @$instructions, ::TAC_JumpIfNotZero($src1, $true_label);
 				my $src2 = emit_TAC($exp2,  $instructions);
 				push(@$instructions, ::TAC_JumpIfNotZero($src2, $true_label),
-									 ::TAC_Copy(::TAC_Constant(0), $dst),
+									 ::TAC_Copy(::TAC_Constant(::ConstInt(0)), $dst),
 									 ::TAC_Jump($end_label),
 									 ::TAC_Label($true_label),
-									 ::TAC_Copy(::TAC_Constant(1), $dst),
+									 ::TAC_Copy(::TAC_Constant(::ConstInt(1)), $dst),
 									 ::TAC_Label($end_label));
 			} else {
 				my $binop = convert_binop($op);
@@ -151,7 +164,7 @@ sub emit_TAC {
 			return $tac_var;
 		}
 		with (Conditional $cond $then $else $type) {
-			my $res = ::TAC_Variable(temp_name());
+			my $res = make_TAC_var($type);
 			my ($e2_label, $end_label) = labels(qw(e2 end));
 			my $cond_res = emit_TAC($cond, $instructions);
 			push @$instructions, ::TAC_JumpIfZero($cond_res, $e2_label);
@@ -165,7 +178,7 @@ sub emit_TAC {
 			return $res;
 		}
 		with (FunctionCall $name $args $type) {
-			my $dst = ::TAC_Variable(temp_name());
+			my $dst = make_TAC_var($type);
 			my $arg_vals = [ map { emit_TAC($_, $instructions) } @$args ];
 			push(@$instructions, (::TAC_FunCall($name, $arg_vals, $dst)));
 			return $dst;
@@ -206,6 +219,15 @@ sub convert_binop {
 	return $map->{$op->{tag}} //  die "unknown bin op $op";
 }
 
+sub make_TAC_var {
+	my $type = shift;
+	my $name = temp_name();
+	$SemanticAnalysis::symbol_table->{$name} = {
+		type => $type, attrs => ::LocalAttrs()
+	};
+	return ::TAC_Variable($name);
+}
+
 sub temp_name {
 	return "tmp." . $::global_counter++;
 }
@@ -220,19 +242,27 @@ sub covert_symbols_to_TAC {
 	my @tac_vars;
 	while (my ($name, $entry) = each %$SemanticAnalysis::symbol_table) {
 		if ($entry->{attrs}{tag} eq 'StaticAttrs') {
-			my ($init, $global) = ::extract_or_die($entry->{attrs}, 'StaticAttrs');
-			match (SemanticAnalysis::get_symbol_attr($name, 'init_value')) {
-				with (Initial $i) {
-					push(@tac_vars, ::TAC_StaticVariable($name, $global, $i));
+			my $type = $entry->{type};
+			my ($stat_init, $global) = ::extract_or_die($entry->{attrs}, 'StaticAttrs');
+			match ($stat_init) {
+				with (Initial $init) {
+					push(@tac_vars, ::TAC_StaticVariable($name, $global, $type, $init));
 				}
 				with (Tentative) {
-					push(@tac_vars, ::TAC_StaticVariable($name, $global, 0));
+					push(@tac_vars, ::TAC_StaticVariable($name, $global, $type, get_default_init($type)));
 				}
 				with (NoInitializer) {;}
 			}
 		}
 	}
 	return @tac_vars;
+}
+
+sub get_default_init {
+	my $type = shift;
+	return ::IntInit(0)	 if ($type->{tag} eq 'Int');
+	return ::LongInit(0) if ($type->{tag} eq 'Long');
+	die "unknown type $type (get_default_init)";
 }
 
 
