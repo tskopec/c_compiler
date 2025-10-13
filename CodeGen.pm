@@ -5,7 +5,7 @@ use warnings;
 use feature qw(say isa state current_sub);
 use List::Util qw(min);
 use Types::Algebraic;
-use SemanticAnalysis;
+use Semantics;
 
 my @arg_regs = (::DI(), ::SI(), ::DX(), ::CX(), ::R8(), ::R9());
 
@@ -32,7 +32,7 @@ sub translate_to_ASM {
 			);
 		}
 		with (TAC_StaticVariable $name $global $type $init) {
-			return ::ASM_StaticVariable($name, $global, $init);
+			# TODO return ::ASM_StaticVariable($name, $global, $init);
 		}
 		with (TAC_Return $value) {
 			return (::ASM_Mov(translate_to_ASM($value), ::ASM_Reg(::AX())),
@@ -50,6 +50,7 @@ sub translate_to_ASM {
 		}
 		with (TAC_Binary $op $src1 $src2 $dst) {
 			my $asm_dst = translate_to_ASM($dst);
+			my $asm_type = asm_type_of($src1);
 			if (-1 != (my $i = ::index_of_in($op, qw(TAC_Divide TAC_Modulo)))) {
 				return (::ASM_Mov(translate_to_ASM($src1), ::ASM_Reg(::AX())),
 						::ASM_Cdq(),
@@ -138,6 +139,21 @@ sub convert_binop {
 	}	
 }
 
+sub asm_type_of {
+	my $tac_val = shift;
+	match ($tac_val) {
+		with (TAC_Constant $const) {
+				
+		}
+		with (TAC_Variable $name) {
+			return $Semantics::symbol_table->{$name}{type};
+		}
+		default {
+			die "unknown val $tac_val";
+		}
+	}
+}
+
 
 ### SECOND PASS ###
 sub fix_up {
@@ -148,7 +164,7 @@ sub fix_up {
 				replace_pseudo($declaration);
 				fix_instr($declaration);
 			}
-			with (ASM_StaticVariable $name $global $init) {;}
+			with (ASM_StaticVariable $name $global $type $init) {;}
 			default { die "not a declaration: $declaration" }
 		}
 	}
@@ -161,8 +177,8 @@ sub replace_pseudo {
 		my $node = shift;
 		match ($node) {
 			with (ASM_Pseudo $ident) {
-				if (exists $SemanticAnalysis::symbol_table->{$ident}
-				   	&& $SemanticAnalysis::symbol_table->{$ident}{attrs}{tag} eq 'StaticAttrs') {
+				if (exists $Semantics::symbol_table->{$ident}
+				   	&& $Semantics::symbol_table->{$ident}{attrs}{tag} eq 'StaticAttrs') {
 					return ::ASM_Data($ident);
 				}
 				$offsets->{$ident} //= -8 * scalar(%$offsets); # bacha, //= zpusobi autovivifikaci -> scalar na prave strane vrati velikost uz vcetne noveho prvku

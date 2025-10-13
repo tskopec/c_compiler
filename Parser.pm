@@ -210,7 +210,7 @@ sub parse_factor {
 				}
 				return ::FunctionCall($name, \@args, "dummy_type");
 			} else {
-				return ::Var($name, "dummy_type");
+				return ::Var($name);
 			}
 	   	}
 		with (Operator $op) {

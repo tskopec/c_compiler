@@ -3,7 +3,7 @@ use strict;
 use warnings;
 use feature qw(say state);
 use Types::Algebraic;
-use SemanticAnalysis;
+use Semantics;
 
 
 sub emit_TAC {
@@ -26,18 +26,18 @@ sub emit_TAC {
 				for my $item (@$items) {
 					emit_TAC($item, $instructions);
 				}
-				push @$instructions, ::TAC_Return(::TAC_Constant(get_default_init($ret_type)));
+				push @$instructions, ::TAC_Return(::TAC_Constant(::ConstInt(0)));
 				return ::TAC_Function($name, 
-									  SemanticAnalysis::get_symbol_attr($name, 'global'),
+									  Semantics::get_symbol_attr($name, 'global'),
 									  [ map { $_->{values}[0] } @$params ],
 									  $instructions);
 			} else {
 				return undef;
 			}	
 		}
-		with (VarDeclaration $name $init $ret_type $storage) { 
+		with (VarDeclaration $name $init $type $storage) { 
 			if (defined $init) {
-				emit_TAC(::Assignment(::Var($name), $init), $instructions);
+				emit_TAC(::Assignment(::Var($name), $init, $type), $instructions);
 			}
 	   	}
 		with (Return $exp) {
@@ -100,14 +100,14 @@ sub emit_TAC {
 		}
 		with (Expression $expr) { emit_TAC($expr, $instructions); }
 		with (ConstantExpr $const $type) {
-			return ::TAC_Constant($const);
+			return ::TAC_Constant($const, $type);
 		}
-		with (Var $ident $type) {
+		with (Var $ident) {
 			return ::TAC_Variable($ident);
 		}
 		with (Cast $expr $type) {
 			my $res = emit_TAC($expr, $instructions);
-			if (SemanticAnalysis::get_type($expr) eq $type) {
+			if (Semantics::get_type($expr) eq $type) {
 				return $res;
 			}	
 			my $dst = make_TAC_var($type);
@@ -133,10 +133,10 @@ sub emit_TAC {
 				push @$instructions, ::TAC_JumpIfZero($src1, $false_label);
 				my $src2 = emit_TAC($exp2, $instructions);
 				push(@$instructions, ::TAC_JumpIfZero($src2, $false_label),
-									 ::TAC_Copy(::TAC_Constant(::ConstInt(1)), $dst),
+									 ::TAC_Copy(::TAC_Constant(::ConstInt(1), ::Int()), $dst),
 									 ::TAC_Jump($end_label),
 									 ::TAC_Label($false_label),
-									 ::TAC_Copy(::TAC_Constant(::ConstInt(0)), $dst),
+									 ::TAC_Copy(::TAC_Constant(::ConstInt(0), ::Int()), $dst),
 									 ::TAC_Label($end_label));
 			} elsif ($op->{tag} eq 'Or') {
 				my ($true_label, $end_label) = labels(qw(true end));
@@ -144,10 +144,10 @@ sub emit_TAC {
 				push @$instructions, ::TAC_JumpIfNotZero($src1, $true_label);
 				my $src2 = emit_TAC($exp2,  $instructions);
 				push(@$instructions, ::TAC_JumpIfNotZero($src2, $true_label),
-									 ::TAC_Copy(::TAC_Constant(::ConstInt(0)), $dst),
+									 ::TAC_Copy(::TAC_Constant(::ConstInt(0), ::Int()), $dst),
 									 ::TAC_Jump($end_label),
 									 ::TAC_Label($true_label),
-									 ::TAC_Copy(::TAC_Constant(::ConstInt(1)), $dst),
+									 ::TAC_Copy(::TAC_Constant(::ConstInt(1), ::Int()), $dst),
 									 ::TAC_Label($end_label));
 			} else {
 				my $binop = convert_binop($op);
@@ -222,7 +222,7 @@ sub convert_binop {
 sub make_TAC_var {
 	my $type = shift;
 	my $name = temp_name();
-	$SemanticAnalysis::symbol_table->{$name} = {
+	$Semantics::symbol_table->{$name} = {
 		type => $type, attrs => ::LocalAttrs()
 	};
 	return ::TAC_Variable($name);
@@ -240,7 +240,7 @@ sub labels {
 
 sub covert_symbols_to_TAC {
 	my @tac_vars;
-	while (my ($name, $entry) = each %$SemanticAnalysis::symbol_table) {
+	while (my ($name, $entry) = each %$Semantics::symbol_table) {
 		if ($entry->{attrs}{tag} eq 'StaticAttrs') {
 			my $type = $entry->{type};
 			my ($stat_init, $global) = ::extract_or_die($entry->{attrs}, 'StaticAttrs');

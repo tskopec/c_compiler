@@ -9,7 +9,7 @@ use lib ".";
 use Types;
 use Lexer;
 use Parser;
-use SemanticAnalysis;
+use Semantics;
 use TAC;
 use CodeGen;
 use Emitter;
@@ -71,7 +71,7 @@ sub compile {
 	return if ($target_phase eq 'parse');
 
 	# SEMANTICS
-	SemanticAnalysis::run($ast);
+	Semantics::run($ast);
 	print_AST($ast) if $debug;
 	return if ($target_phase eq 'validate');
 

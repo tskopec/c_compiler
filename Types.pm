@@ -37,9 +37,9 @@ data Statement =
 	| While :Expression_cond :Statement_body :label
 	| DoWhile :Statement_body :Expression_cond :label
 	| For :VarDeclOrOptExpr_init :OptExpression_cond  :OptExpression_post :Statement_body :label;
-data _Expression = # SemanticAnalysis::[gs]et_type count on :Type being the last param of expression
-	ConstantExpr :Constant :Type
-	| Var :ident :Type
+data _Expression = # Semantics::[gs]et_type count on :Type being the last param of expression
+	ConstantExpr :Constant :Type 
+	| Var :ident # type in symtable
 	| Cast :Expression :Type_target
 	| Unary :UnaryOperator :Expression :Type
 	| Binary :BinaryOperator :Expression1 :Expression2 :Type
@@ -71,7 +71,7 @@ data StaticInit = IntInit :int | LongInit :int;
 data _TAC_Program = 
 	TAC_Program :TopLvlDeclarations;
 data TAC_TopLevelDeclaration = 
-	TAC_StaticVariable :identifier :global :Type :StatiInit
+	TAC_StaticVariable :identifier :global :Type :StaticInit
 	| TAC_Function :identifier :global :params :Instructions;
 data TAC_Instruction =
 	TAC_Return :Value
@@ -86,7 +86,7 @@ data TAC_Instruction =
 	| TAC_Label :ident
 	| TAC_FunCall :name :Value_params :Value_dst;
 data TAC_Value =
-	TAC_Constant :Constant
+	TAC_Constant :Constant :Type
 	| TAC_Variable :name;
 data TAC_UnaryOperator = 
 	TAC_Complement | TAC_Negate | TAC_Not;
@@ -97,16 +97,18 @@ data TAC_BinaryOperator =
 # Assembly
 data ASM_Program =
 	ASM_Program :TopLvlDeclarations;
+data ASM_Type = Longword | Quadword;
 data ASM_TopLevelDeclaration =
-	ASM_StaticVariable :name :global :init
+	ASM_StaticVariable :name :global :int_alignment :StaticInit
 	| ASM_Function :name :global :Instructions;
 data ASM_Instruction =
-	ASM_Mov :Operand_src :Operand_dst
-	| ASM_Unary :UnaryOperator :Operand
-	| ASM_Binary :BinaryOperator :Operand1 :Operand2
-	| ASM_Cmp :Operand1 :Operand2
-	| ASM_Idiv :Operand
-	| ASM_Cdq
+	ASM_Mov :Type :Operand_src :Operand_dst
+	| AMS_Movsx :Operand_src :Operand_dst
+	| ASM_Unary :UnaryOperator :Type :Operand
+	| ASM_Binary :BinaryOperator :Type :Operand1 :Operand2
+	| ASM_Cmp :Type :Operand1 :Operand2
+	| ASM_Idiv :Type :Operand
+	| ASM_Cdq :Type
 	| ASM_Jmp :ident
 	| ASM_JmpCC :Cond :ident
 	| ASM_SetCC :Cond :Operand
@@ -129,7 +131,7 @@ data ASM_Operand =
 data ASM_CondCode = 
 	E | NE | G | GE | L | LE;
 data ASM_Register =
-	AX | CX | DX | DI | SI | R8 | R9 | R10 | R11;
+	AX | CX | DX | DI | SI | R8 | R9 | R10 | R11 | SP;
 
 
 

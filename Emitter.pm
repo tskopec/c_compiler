@@ -23,7 +23,7 @@ sub emit_code {
 			$code .= join "", map { emit_code($_) } @$instructions;
 			return $code;
 		} 
-		with (ASM_StaticVariable $name $global $init) {
+		with (ASM_StaticVariable $name $global $alignment $init) {
 			my $code = $global ? "\t.global $name\n" : "";
 			if ($init == 0) {
 				$code .= "\t.bss\n";
@@ -38,7 +38,7 @@ sub emit_code {
 			}
 			return $code;
 		}
-		with (ASM_Mov $src $dst) {
+		with (ASM_Mov $type $src $dst) {
 			return "\tmovl " . emit_code($src) . ", " . emit_code($dst) . "\n";
 		}
 		with (ASM_Ret) {
@@ -47,16 +47,16 @@ sub emit_code {
 			$code .=   "\tret\n";
 			return $code;
 		}
-		with (ASM_Unary $operator $operand) {
+		with (ASM_Unary $operator $type $operand) {
 			return emit_code($operator) . " " . emit_code($operand) . "\n";
 		}
-		with (ASM_Binary $operator $src $dst) {
+		with (ASM_Binary $operator $type $src $dst) {
 			return emit_code($operator) . " " . emit_code($src) . ", " . emit_code($dst) . "\n";
 		}
-		with (ASM_Idiv $operand) {
+		with (ASM_Idiv $type $operand) {
 			return "\tidivl " . emit_code($operand) . "\n";
 		}
-		with (ASM_Cdq) {
+		with (ASM_Cdq $type) {
 			return "\tcdq\n";
 		}
 		with (ASM_AllocateStack $bytes) {
@@ -65,7 +65,7 @@ sub emit_code {
 		with (ASM_DeallocateStack $bytes) {
 			return "\taddq \$$bytes, %rsp\n";
 		}
-		with (ASM_Cmp $a $b) {
+		with (ASM_Cmp $type $a $b) {
 			return "\tcmpl " . emit_code($a) . ", " . emit_code($b) . "\n";
 		}
 		with (ASM_Jmp $label) {
@@ -122,7 +122,7 @@ sub emit_code {
 			return "\tpushq " . emit_code($op, 8) . "\n";
 		}
 		with (ASM_Call $label) {
-			return "\tcall $label" . (SemanticAnalysis::get_symbol_attr($label, 'defined') ? "" : '@PLT') . "\n";
+			return "\tcall $label" . (Semantics::get_symbol_attr($label, 'defined') ? "" : '@PLT') . "\n";
 		}
 		default { die "unknown asm node $node"; }
 	}
