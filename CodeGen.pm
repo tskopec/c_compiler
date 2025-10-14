@@ -22,7 +22,8 @@ sub translate_to_ASM {
 				my $src = ($param_i <= $#arg_regs) 
 					? ::ASM_Reg($arg_regs[$param_i])
 					: ::ASM_Stack(16 + 8 * ($param_i - @arg_regs));
-				::ASM_Mov($src, ::ASM_Pseudo($params->[$param_i]));
+				my $param_type = asm_type_of(Semantics::get_symbol_attr($params->[$param_i], 'type'));
+				::ASM_Mov($param_type, $src, ::ASM_Pseudo($params->[$param_i]));
 			};
 			return ::ASM_Function(
 				$ident,
@@ -32,45 +33,46 @@ sub translate_to_ASM {
 			);
 		}
 		with (TAC_StaticVariable $name $global $type $init) {
-			# TODO return ::ASM_StaticVariable($name, $global, $init);
+			return ::ASM_StaticVariable($name, $global, alignment_of($type), $init);
 		}
 		with (TAC_Return $value) {
-			return (::ASM_Mov(translate_to_ASM($value), ::ASM_Reg(::AX())),
+			return (::ASM_Mov($asm_type_of($val), translate_to_ASM($value), ::ASM_Reg(::AX())),
 					::ASM_Ret());
 		}
 		with (TAC_Unary $op $src $dst) {
 			my $asm_dst = translate_to_ASM($dst);
 			if ($op->{tag} eq 'TAC_Not') {
-				return (::ASM_Cmp(::ASM_Imm(0), translate_to_ASM($src)),
-						::ASM_Mov(::ASM_Imm(0), $asm_dst),
+				return (::ASM_Cmp(asm_type_of($src), ::ASM_Imm(0), translate_to_ASM($src)),
+						::ASM_Mov(asm_type_of($dst), ::ASM_Imm(0), $asm_dst),
 						::ASM_SetCC(::E(), $asm_dst));
 			}
-			return (::ASM_Mov(translate_to_ASM($src), $asm_dst),
-					::ASM_Unary(convert_unop($op), $asm_dst));
+			my $src_type = asm_type_of($src);
+			return (::ASM_Mov($src_type, translate_to_ASM($src), $asm_dst),
+					::ASM_Unary(convert_unop($op), $src_type, $asm_dst));
 		}
 		with (TAC_Binary $op $src1 $src2 $dst) {
 			my $asm_dst = translate_to_ASM($dst);
-			my $asm_type = asm_type_of($src1);
+			my $src_type = asm_type_of($src1);
 			if (-1 != (my $i = ::index_of_in($op, qw(TAC_Divide TAC_Modulo)))) {
-				return (::ASM_Mov(translate_to_ASM($src1), ::ASM_Reg(::AX())),
-						::ASM_Cdq(),
-						::ASM_Idiv(translate_to_ASM($src2)),
-						::ASM_Mov(::ASM_Reg((::AX(), ::DX())[$i]), $asm_dst));
+				return (::ASM_Mov($src_type, translate_to_ASM($src1), ::ASM_Reg(::AX())),
+						::ASM_Cdq($src_type),
+						::ASM_Idiv($src_type, translate_to_ASM($src2)),
+						::ASM_Mov($src_type, ::ASM_Reg((::AX(), ::DX())[$i]), $asm_dst));
 			} elsif (-1 != (my $i = ::index_of_in($op, qw(TAC_Equal TAC_NotEqual TAC_LessThan TAC_LessOrEqual TAC_GreaterThan TAC_GreaterOrEqual)))) {
-				return (::ASM_Cmp(translate_to_ASM($src2), translate_to_ASM($src1)),
-						::ASM_Mov(::ASM_Imm(0), $asm_dst),
+				return (::ASM_Cmp($src_type, translate_to_ASM($src2), translate_to_ASM($src1)),
+						::ASM_Mov(asm_type_of($dst), ::ASM_Imm(0), $asm_dst),
 						::ASM_SetCC((::E(), ::NE(), ::L(), ::LE(), ::G(), ::GE())[$i], $asm_dst));
 			} else {
-				return (::ASM_Mov(translate_to_ASM($src1), $asm_dst),
-						::ASM_Binary(convert_binop($op), translate_to_ASM($src2), $asm_dst));
+				return (::ASM_Mov($src_type, translate_to_ASM($src1), $asm_dst),
+						::ASM_Binary(convert_binop($op), $src_type, translate_to_ASM($src2), $asm_dst));
 			}
 		}
 		with (TAC_JumpIfZero $val $target) {
-			return (::ASM_Cmp(::ASM_Imm(0), translate_to_ASM($val)),
+			return (::ASM_Cmp(asm_type_of($val), ::ASM_Imm(0), translate_to_ASM($val)),
 					::ASM_JmpCC(::E(), $target));
 		}
 		with (TAC_JumpIfNotZero $val $target) {
-			return (::ASM_Cmp(::ASM_Imm(0), translate_to_ASM($val)),
+			return (::ASM_Cmp(asm_type_of($val), ::ASM_Imm(0), translate_to_ASM($val)),
 					::ASM_JmpCC(::NE(), $target));
 		}
 		with (TAC_Jump $target) {
@@ -80,7 +82,7 @@ sub translate_to_ASM {
 			return ::ASM_Label($ident);
 		}
 		with (TAC_Copy $src $dst) {
-			return ::ASM_Mov(translate_to_ASM($src), translate_to_ASM($dst));
+			return ::ASM_Mov(asm_type_of($src), translate_to_ASM($src), translate_to_ASM($dst));
 		}
 		with (TAC_FunCall $ident $args $dst) {
 			my (@instructions, @reg_args, @stack_args);
@@ -95,10 +97,10 @@ sub translate_to_ASM {
 			}
 			for my $tac_arg (reverse @stack_args) {
 				my $asm_arg = translate_to_ASM($tac_arg);
-				if (::is_one_of($asm_arg, qw(ASM_Imm ASM_Reg))) {
+				if (::is_one_of($asm_arg, qw(ASM_Imm ASM_Reg)) || ::is_one_of(asm_type_of($asm_arg), 'ASM_Quadword')) {
 					push(@instructions, ::ASM_Push($asm_arg));
 				} else {
-					push(@instructions, (::ASM_Mov($asm_arg, ::ASM_Reg(::AX())),
+					push(@instructions, (::ASM_Mov(::ASM_Longword(), $asm_arg, ::ASM_Reg(::AX())),
 										 ::ASM_Push(::ASM_Reg(::AX()))));
 				}
 			}
@@ -107,7 +109,7 @@ sub translate_to_ASM {
 			if ($remove_bytes) {
 				push(@instructions, ::ASM_DeallocateStack($remove_bytes));
 			}
-			push(@instructions, ::ASM_Mov(::ASM_Reg(::AX()), translate_to_ASM($dst)));
+			push(@instructions, ::ASM_Mov(asm_type_of($dst), ::ASM_Reg(::AX()), translate_to_ASM($dst)));
 			return @instructions;
 		}
 		with (TAC_Constant $int) {
@@ -115,6 +117,12 @@ sub translate_to_ASM {
 		}
 		with (TAC_Variable $ident) {
 			return ::ASM_Pseudo($ident);
+		}
+		with (TAC_SignExtend $src $dst) {
+			return ::ASM_Movsx(translate_to_ASM($src), translate_to_ASM($dst));
+		}
+		with (TAC_Truncate $src $dst) {
+			return ::ASM_Mov(::ASM_Longword(), translate_to_ASM($src), translate_to_ASM($dst));
 		}
 		default { die "unknown TAC $node" }
 	}
@@ -140,18 +148,32 @@ sub convert_binop {
 }
 
 sub asm_type_of {
-	my $tac_val = shift;
-	match ($tac_val) {
-		with (TAC_Constant $const) {
-				
-		}
-		with (TAC_Variable $name) {
-			return $Semantics::symbol_table->{$name}{type};
-		}
-		default {
-			die "unknown val $tac_val";
+	my $val = shift;
+	my $type_tag;
+	if (ref($val) eq 'Type') {
+		$type_tag = $val->{tag};
+	} else {
+		match ($val) {
+			with (TAC_Constant $const) {
+				$type_tag = $const->{tag};
+			}
+			with (TAC_Variable $name) {
+				$type_tag = $Semantics::symbol_table->{$name}{type}{tag};
+			}
+			default {
+				die "unknown val $val (asm_type_of)";
+			}
 		}
 	}
+	return ::ASM_Longword() if ($type_tag =~ /Int/);
+	return ::ASM_Quadword() if ($type_tag =~ /Long/);
+}
+
+sub alignment_of {
+	my $type = shift;
+	return 4 if ($type->{tag} eq 'Int');
+	return 8 if ($type->{tag} eq 'Long');
+	die "unknown type $type (aligment_of)";
 }
 
 
@@ -202,7 +224,9 @@ sub replace_pseudo {
 	unshift(@$instructions, ::ASM_AllocateStack($max_offset + ($max_offset % 16))); # 16 byte aligned
 }
 
+# TODO
 sub fix_instr {
+	die "TODO";
 	my $function = shift;
 	my $fix = sub {
 		my $instruction = shift;

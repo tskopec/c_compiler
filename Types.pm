@@ -21,7 +21,7 @@ data _Program =
 	Program :Declarations;
 data Declaration =
 	VarDeclaration :name :OptExpression_initializer :Type :OptStorageClass
-	| FunDeclaration :name :Identifier_params :OptBlock_body :Type :OptStorageClass;
+	| FunDeclaration :name :VarDecl_params :OptBlock_body :Type :OptStorageClass;
 data StorageClass =
 	Static | Extern;
 data _Block = 
@@ -38,7 +38,7 @@ data Statement =
 	| DoWhile :Statement_body :Expression_cond :label
 	| For :VarDeclOrOptExpr_init :OptExpression_cond  :OptExpression_post :Statement_body :label;
 data _Expression = # Semantics::[gs]et_type count on :Type being the last param of expression
-	ConstantExpr :Constant :Type 
+	ConstantExpr :Constant 
 	| Var :ident # type in symtable
 	| Cast :Expression :Type_target
 	| Unary :UnaryOperator :Expression :Type
@@ -86,7 +86,7 @@ data TAC_Instruction =
 	| TAC_Label :ident
 	| TAC_FunCall :name :Value_params :Value_dst;
 data TAC_Value =
-	TAC_Constant :Constant :Type
+	TAC_Constant :Constant
 	| TAC_Variable :name;
 data TAC_UnaryOperator = 
 	TAC_Complement | TAC_Negate | TAC_Not;

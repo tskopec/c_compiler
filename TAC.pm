@@ -99,8 +99,8 @@ sub emit_TAC {
 			push @$instructions, ::TAC_Jump("_continue$label");
 		}
 		with (Expression $expr) { emit_TAC($expr, $instructions); }
-		with (ConstantExpr $const $type) {
-			return ::TAC_Constant($const, $type);
+		with (ConstantExpr $const) {
+			return ::TAC_Constant($const);
 		}
 		with (Var $ident) {
 			return ::TAC_Variable($ident);
@@ -133,10 +133,10 @@ sub emit_TAC {
 				push @$instructions, ::TAC_JumpIfZero($src1, $false_label);
 				my $src2 = emit_TAC($exp2, $instructions);
 				push(@$instructions, ::TAC_JumpIfZero($src2, $false_label),
-									 ::TAC_Copy(::TAC_Constant(::ConstInt(1), ::Int()), $dst),
+									 ::TAC_Copy(::TAC_Constant(::ConstInt(1)), $dst),
 									 ::TAC_Jump($end_label),
 									 ::TAC_Label($false_label),
-									 ::TAC_Copy(::TAC_Constant(::ConstInt(0), ::Int()), $dst),
+									 ::TAC_Copy(::TAC_Constant(::ConstInt(0)), $dst),
 									 ::TAC_Label($end_label));
 			} elsif ($op->{tag} eq 'Or') {
 				my ($true_label, $end_label) = labels(qw(true end));
@@ -144,10 +144,10 @@ sub emit_TAC {
 				push @$instructions, ::TAC_JumpIfNotZero($src1, $true_label);
 				my $src2 = emit_TAC($exp2,  $instructions);
 				push(@$instructions, ::TAC_JumpIfNotZero($src2, $true_label),
-									 ::TAC_Copy(::TAC_Constant(::ConstInt(0), ::Int()), $dst),
+									 ::TAC_Copy(::TAC_Constant(::ConstInt(0)), $dst),
 									 ::TAC_Jump($end_label),
 									 ::TAC_Label($true_label),
-									 ::TAC_Copy(::TAC_Constant(::ConstInt(1), ::Int()), $dst),
+									 ::TAC_Copy(::TAC_Constant(::ConstInt(1)), $dst),
 									 ::TAC_Label($end_label));
 			} else {
 				my $binop = convert_binop($op);

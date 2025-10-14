@@ -243,9 +243,9 @@ sub parse_constant {
 	if ($val > $max_long) {
 		die "constant too large for long $val";
 	} elsif ($type eq 'int' && $val < $max_int) {
-		return ::ConstantExpr(::ConstInt($val), ::Int());
+		return ::ConstantExpr(::ConstInt($val));
 	} else {
-		return ::ConstantExpr(::ConstLong($val), ::Long());
+		return ::ConstantExpr(::ConstLong($val));
 	}
 }
 
