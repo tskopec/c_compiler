@@ -97,24 +97,22 @@ data TAC_BinaryOperator =
 # Assembly
 data ASM_Program =
 	ASM_Program :TopLvlDeclarations;
-data ASM_Type = Longword | Quadword;
+data ASM_OperandSize = ASM_Longword | ASM_Quadword;
 data ASM_TopLevelDeclaration =
 	ASM_StaticVariable :name :global :int_alignment :StaticInit
 	| ASM_Function :name :global :Instructions;
 data ASM_Instruction =
-	ASM_Mov :Type :Operand_src :Operand_dst
+	ASM_Mov :OpSize :Operand_src :Operand_dst
 	| AMS_Movsx :Operand_src :Operand_dst
-	| ASM_Unary :UnaryOperator :Type :Operand
-	| ASM_Binary :BinaryOperator :Type :Operand1 :Operand2
-	| ASM_Cmp :Type :Operand1 :Operand2
-	| ASM_Idiv :Type :Operand
-	| ASM_Cdq :Type
+	| ASM_Unary :UnaryOperator :OpSize :Operand
+	| ASM_Binary :BinaryOperator :OpSize :Operand1 :Operand2
+	| ASM_Cmp :OpSize :Operand1 :Operand2
+	| ASM_Idiv :OpSize :Operand
+	| ASM_Cdq :OpSize
 	| ASM_Jmp :ident
 	| ASM_JmpCC :Cond :ident
 	| ASM_SetCC :Cond :Operand
 	| ASM_Label :ident
-	| ASM_AllocateStack :bytes
-	| ASM_DeallocateStack :bytes
 	| ASM_Push :Operand
 	| ASM_Call :ident
 	| ASM_Ret;
@@ -132,8 +130,6 @@ data ASM_CondCode =
 	E | NE | G | GE | L | LE;
 data ASM_Register =
 	AX | CX | DX | DI | SI | R8 | R9 | R10 | R11 | SP;
-
-
 
 
 ### UTILS

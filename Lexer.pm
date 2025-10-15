@@ -16,10 +16,6 @@ my $iden_re = qr/^([a-zA-Z_]\w*)\b.*/;
 
 sub tokenize {
 
-# TODO
-die "TODO";
-# TODO ConstantExpr :Constant :Type -> :val :Type
-
 	my $src = shift;
 	my @tokens;
 

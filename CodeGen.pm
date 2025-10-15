@@ -7,7 +7,35 @@ use List::Util qw(min);
 use Types::Algebraic;
 use Semantics;
 
+our %asm_symbol_table;
+
 my @arg_regs = (::DI(), ::SI(), ::DX(), ::CX(), ::R8(), ::R9());
+
+sub generate {
+	my $tac = shift;
+	my $asm = translate_to_ASM($tac);
+	fill_asm_symtable();
+	fix_up($asm);
+	return $asm;
+}
+
+sub fill_asm_symtable {
+	%asm_symbol_table = ();
+	while (my ($name, $entry) = each %Semantics::symbol_table) {
+		if ($entry->{type}{tag} eq 'FunType') {
+			$asm_symbol_table{$name} = { 
+				entry_type => 'Fun',
+			   	defined => $entry->{attrs}{defined}
+		   	};
+		} else {
+			$asm_symbol_table{$name} = { 
+				entry_type => 'Obj',
+			   	op_size => operand_size_of($entry->{type}),
+			   	static => 0+($entry->{attrs}{tag} eq 'StaticAttrs') 
+			};
+		}
+	}	 
+}
 
 ### FIRST PASS ###
 sub translate_to_ASM {
@@ -22,8 +50,8 @@ sub translate_to_ASM {
 				my $src = ($param_i <= $#arg_regs) 
 					? ::ASM_Reg($arg_regs[$param_i])
 					: ::ASM_Stack(16 + 8 * ($param_i - @arg_regs));
-				my $param_type = asm_type_of(Semantics::get_symbol_attr($params->[$param_i], 'type'));
-				::ASM_Mov($param_type, $src, ::ASM_Pseudo($params->[$param_i]));
+				my $op_size = operand_size_of(Semantics::get_symbol_attr($params->[$param_i], 'type'));
+				::ASM_Mov($op_size, $src, ::ASM_Pseudo($params->[$param_i]));
 			};
 			return ::ASM_Function(
 				$ident,
@@ -36,43 +64,43 @@ sub translate_to_ASM {
 			return ::ASM_StaticVariable($name, $global, alignment_of($type), $init);
 		}
 		with (TAC_Return $value) {
-			return (::ASM_Mov($asm_type_of($val), translate_to_ASM($value), ::ASM_Reg(::AX())),
+			return (::ASM_Mov(operand_size_of($value), translate_to_ASM($value), ::ASM_Reg(::AX())),
 					::ASM_Ret());
 		}
 		with (TAC_Unary $op $src $dst) {
 			my $asm_dst = translate_to_ASM($dst);
 			if ($op->{tag} eq 'TAC_Not') {
-				return (::ASM_Cmp(asm_type_of($src), ::ASM_Imm(0), translate_to_ASM($src)),
-						::ASM_Mov(asm_type_of($dst), ::ASM_Imm(0), $asm_dst),
+				return (::ASM_Cmp(operand_size_of($src), ::ASM_Imm(0), translate_to_ASM($src)),
+						::ASM_Mov(operand_size_of($dst), ::ASM_Imm(0), $asm_dst),
 						::ASM_SetCC(::E(), $asm_dst));
 			}
-			my $src_type = asm_type_of($src);
-			return (::ASM_Mov($src_type, translate_to_ASM($src), $asm_dst),
-					::ASM_Unary(convert_unop($op), $src_type, $asm_dst));
+			my $src_op_size = operand_size_of($src);
+			return (::ASM_Mov($src_op_size, translate_to_ASM($src), $asm_dst),
+					::ASM_Unary(convert_unop($op), $src_op_size, $asm_dst));
 		}
 		with (TAC_Binary $op $src1 $src2 $dst) {
 			my $asm_dst = translate_to_ASM($dst);
-			my $src_type = asm_type_of($src1);
+			my $src_op_size = operand_size_of($src1);
 			if (-1 != (my $i = ::index_of_in($op, qw(TAC_Divide TAC_Modulo)))) {
-				return (::ASM_Mov($src_type, translate_to_ASM($src1), ::ASM_Reg(::AX())),
-						::ASM_Cdq($src_type),
-						::ASM_Idiv($src_type, translate_to_ASM($src2)),
-						::ASM_Mov($src_type, ::ASM_Reg((::AX(), ::DX())[$i]), $asm_dst));
+				return (::ASM_Mov($src_op_size, translate_to_ASM($src1), ::ASM_Reg(::AX())),
+						::ASM_Cdq($src_op_size),
+						::ASM_Idiv($src_op_size, translate_to_ASM($src2)),
+						::ASM_Mov($src_op_size, ::ASM_Reg((::AX(), ::DX())[$i]), $asm_dst));
 			} elsif (-1 != (my $i = ::index_of_in($op, qw(TAC_Equal TAC_NotEqual TAC_LessThan TAC_LessOrEqual TAC_GreaterThan TAC_GreaterOrEqual)))) {
-				return (::ASM_Cmp($src_type, translate_to_ASM($src2), translate_to_ASM($src1)),
-						::ASM_Mov(asm_type_of($dst), ::ASM_Imm(0), $asm_dst),
+				return (::ASM_Cmp($src_op_size, translate_to_ASM($src2), translate_to_ASM($src1)),
+						::ASM_Mov(operand_size_of($dst), ::ASM_Imm(0), $asm_dst),
 						::ASM_SetCC((::E(), ::NE(), ::L(), ::LE(), ::G(), ::GE())[$i], $asm_dst));
 			} else {
-				return (::ASM_Mov($src_type, translate_to_ASM($src1), $asm_dst),
-						::ASM_Binary(convert_binop($op), $src_type, translate_to_ASM($src2), $asm_dst));
+				return (::ASM_Mov($src_op_size, translate_to_ASM($src1), $asm_dst),
+						::ASM_Binary(convert_binop($op), $src_op_size, translate_to_ASM($src2), $asm_dst));
 			}
 		}
 		with (TAC_JumpIfZero $val $target) {
-			return (::ASM_Cmp(asm_type_of($val), ::ASM_Imm(0), translate_to_ASM($val)),
+			return (::ASM_Cmp(operand_size_of($val), ::ASM_Imm(0), translate_to_ASM($val)),
 					::ASM_JmpCC(::E(), $target));
 		}
 		with (TAC_JumpIfNotZero $val $target) {
-			return (::ASM_Cmp(asm_type_of($val), ::ASM_Imm(0), translate_to_ASM($val)),
+			return (::ASM_Cmp(operand_size_of($val), ::ASM_Imm(0), translate_to_ASM($val)),
 					::ASM_JmpCC(::NE(), $target));
 		}
 		with (TAC_Jump $target) {
@@ -82,22 +110,22 @@ sub translate_to_ASM {
 			return ::ASM_Label($ident);
 		}
 		with (TAC_Copy $src $dst) {
-			return ::ASM_Mov(asm_type_of($src), translate_to_ASM($src), translate_to_ASM($dst));
+			return ::ASM_Mov(operand_size_of($src), translate_to_ASM($src), translate_to_ASM($dst));
 		}
 		with (TAC_FunCall $ident $args $dst) {
 			my (@instructions, @reg_args, @stack_args);
 			(@reg_args[0..($#$args < 5 ? $#$args : 5)], @stack_args) = @$args;
 			my $stack_padding = 8 * (@stack_args % 2);
 			if ($stack_padding) {
-				push(@instructions, ::ASM_AllocateStack($stack_padding));
+				push(@instructions, allocate_stack($stack_padding));
 			}	
 			while (my ($i, $tac_arg) = each @reg_args) {
 				my $asm_arg = translate_to_ASM($tac_arg);
-				push(@instructions, ::ASM_Mov($asm_arg, ::ASM_Reg($arg_regs[$i])));
+				push(@instructions, ::ASM_Mov(operand_size_of($asm_arg), $asm_arg, ::ASM_Reg($arg_regs[$i])));
 			}
 			for my $tac_arg (reverse @stack_args) {
 				my $asm_arg = translate_to_ASM($tac_arg);
-				if (::is_one_of($asm_arg, qw(ASM_Imm ASM_Reg)) || ::is_one_of(asm_type_of($asm_arg), 'ASM_Quadword')) {
+				if (::is_one_of($asm_arg, qw(ASM_Imm ASM_Reg)) || ::is_one_of(operand_size_of($asm_arg), 'ASM_Quadword')) {
 					push(@instructions, ::ASM_Push($asm_arg));
 				} else {
 					push(@instructions, (::ASM_Mov(::ASM_Longword(), $asm_arg, ::ASM_Reg(::AX())),
@@ -107,9 +135,9 @@ sub translate_to_ASM {
 			push(@instructions, ::ASM_Call($ident));
 			my $remove_bytes = 8 * @stack_args + $stack_padding;
 			if ($remove_bytes) {
-				push(@instructions, ::ASM_DeallocateStack($remove_bytes));
+				push(@instructions, deallocate_stack($remove_bytes));
 			}
-			push(@instructions, ::ASM_Mov(asm_type_of($dst), ::ASM_Reg(::AX()), translate_to_ASM($dst)));
+			push(@instructions, ::ASM_Mov(operand_size_of($dst), ::ASM_Reg(::AX()), translate_to_ASM($dst)));
 			return @instructions;
 		}
 		with (TAC_Constant $int) {
@@ -147,7 +175,7 @@ sub convert_binop {
 	}	
 }
 
-sub asm_type_of {
+sub operand_size_of {
 	my $val = shift;
 	my $type_tag;
 	if (ref($val) eq 'Type') {
@@ -158,10 +186,10 @@ sub asm_type_of {
 				$type_tag = $const->{tag};
 			}
 			with (TAC_Variable $name) {
-				$type_tag = $Semantics::symbol_table->{$name}{type}{tag};
+				$type_tag = $Semantics::symbol_table{$name}->{type}{tag};
 			}
 			default {
-				die "unknown val $val (asm_type_of)";
+				die "unknown val $val (operand_size_of)";
 			}
 		}
 	}
@@ -176,6 +204,13 @@ sub alignment_of {
 	die "unknown type $type (aligment_of)";
 }
 
+sub allocate_stack {
+	return ::ASM_Binary(::ASM_Sub(), ::ASM_Quadword(), ::ASM_Imm(shift()), ::ASM_Reg(::SP()));
+}
+sub deallocate_stack {
+	return ::ASM_Binary(::ASM_Add(), ::ASM_Quadword(), ::ASM_Imm(shift()), ::ASM_Reg(::SP()));
+}
+
 
 ### SECOND PASS ###
 sub fix_up {
@@ -186,7 +221,7 @@ sub fix_up {
 				replace_pseudo($declaration);
 				fix_instr($declaration);
 			}
-			with (ASM_StaticVariable $name $global $type $init) {;}
+			with (ASM_StaticVariable $name $global $alignment $init) {;}
 			default { die "not a declaration: $declaration" }
 		}
 	}
@@ -199,8 +234,7 @@ sub replace_pseudo {
 		my $node = shift;
 		match ($node) {
 			with (ASM_Pseudo $ident) {
-				if (exists $Semantics::symbol_table->{$ident}
-				   	&& $Semantics::symbol_table->{$ident}{attrs}{tag} eq 'StaticAttrs') {
+				if (exists $asm_symbol_table{$ident} && $asm_symbol_table{$ident}->{static}) {
 					return ::ASM_Data($ident);
 				}
 				$offsets->{$ident} //= -8 * scalar(%$offsets); # bacha, //= zpusobi autovivifikaci -> scalar na prave strane vrati velikost uz vcetne noveho prvku
@@ -221,46 +255,44 @@ sub replace_pseudo {
 	$process_node->($function);
 	my ($name, $global, $instructions) = ::extract_or_die($function, 'ASM_Function');
 	my $max_offset = abs(min(values %$offsets));
-	unshift(@$instructions, ::ASM_AllocateStack($max_offset + ($max_offset % 16))); # 16 byte aligned
+	unshift(@$instructions, allocate_stack($max_offset + ($max_offset % 16))); # 16 byte aligned
 }
 
-# TODO
 sub fix_instr {
-	die "TODO";
 	my $function = shift;
 	my $fix = sub {
 		my $instruction = shift;
-		if (my ($op, $src, $dst) = ::extract($instruction, 'ASM_Binary')) {
+		if (my ($op, $op_size, $src, $dst) = ::extract($instruction, 'ASM_Binary')) {
 			if ($op->{tag} eq 'ASM_Mult') {
 				if (is_mem_addr($dst)) {
-					return (::ASM_Mov($dst, ::ASM_Reg(::R11())),
-							::ASM_Binary($op, $src, ::ASM_Reg(::R11())),
-							::ASM_Mov(::ASM_Reg(::R11()), $dst));
+					return (::ASM_Mov($op_size, $dst, ::ASM_Reg(::R11())),
+							::ASM_Binary($op, $op_size, $src, ::ASM_Reg(::R11())),
+							::ASM_Mov($op_size, ::ASM_Reg(::R11()), $dst));
 				}
 			} elsif ($op->{tag} eq 'ASM_Add' || $op->{tag} eq 'ASM_Sub') {
 				if (is_mem_addr($src) && is_mem_addr($dst)) {
-					return (::ASM_Mov($src, ::ASM_Reg(::R10())),
-							::ASM_Binary($op, ::ASM_Reg(::R10()), $dst));
+					return (::ASM_Mov($op_size, $src, ::ASM_Reg(::R10())),
+							::ASM_Binary($op, $op_size, ::ASM_Reg(::R10()), $dst));
 				}
 			}
-		} elsif (my ($src, $dst) = ::extract($instruction, 'ASM_Mov')) {
+		} elsif (my ($op_size, $src, $dst) = ::extract($instruction, 'ASM_Mov')) {
 			if (is_mem_addr($src) && is_mem_addr($dst)) {
-				return (::ASM_Mov($src, ::ASM_Reg(::R10())),
-						::ASM_Mov(::ASM_Reg(::R10()), $dst));
+				return (::ASM_Mov($op_size, $src, ::ASM_Reg(::R10())),
+						::ASM_Mov($op_size, ::ASM_Reg(::R10()), $dst));
 			}
-		} elsif (my ($src, $dst) = ::extract($instruction, 'ASM_Cmp')) {
+		} elsif (my ($op_size, $src, $dst) = ::extract($instruction, 'ASM_Cmp')) {
 			if (is_mem_addr($src) && is_mem_addr($dst)) {
-				return (::ASM_Mov($src, ::ASM_Reg(::R10())),
-						::ASM_Cmp(::ASM_Reg(::R10()), $dst));
+				return (::ASM_Mov($op_size, $src, ::ASM_Reg(::R10())),
+						::ASM_Cmp($op_size, ::ASM_Reg(::R10()), $dst));
 			} elsif ($dst->{tag} eq 'ASM_Imm') {
-				return (::ASM_Mov($dst, ::ASM_Reg(::R11())),
-						::ASM_Cmp($src, ::ASM_Reg(::R11())));
+				return (::ASM_Mov($op_size, $dst, ::ASM_Reg(::R11())),
+						::ASM_Cmp($op_size, $src, ::ASM_Reg(::R11())));
 			}
 		}
-		elsif (my ($operand) = ::extract($instruction, 'ASM_Idiv')) {
+		elsif (my ($op_size, $operand) = ::extract($instruction, 'ASM_Idiv')) {
 			if ($operand->{tag} eq 'ASM_Imm') {
-				return (::ASM_Mov($operand, ::ASM_Reg(::R10())),
-						::ASM_Idiv(::ASM_Reg(::R10())));
+				return (::ASM_Mov($op_size, $operand, ::ASM_Reg(::R10())),
+						::ASM_Idiv($op_size, ::ASM_Reg(::R10())));
 			}
 		}
 		return $instruction;

@@ -81,9 +81,7 @@ sub compile {
 	return if ($target_phase eq 'tac');
 
 	# ASSEMBLY GEN
-	my $asm = CodeGen::translate_to_ASM($tac);
-	print_AST($asm) if $debug;
-	CodeGen::fix_up($asm);
+	my $asm = CodeGen::generate($tac);
 	print_AST($asm) if $debug;
 	return if ($target_phase eq 'codegen');
 

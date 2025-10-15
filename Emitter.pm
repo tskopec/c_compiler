@@ -59,12 +59,6 @@ sub emit_code {
 		with (ASM_Cdq $type) {
 			return "\tcdq\n";
 		}
-		with (ASM_AllocateStack $bytes) {
-			return "\tsubq \$$bytes, %rsp\n";
-		}
-		with (ASM_DeallocateStack $bytes) {
-			return "\taddq \$$bytes, %rsp\n";
-		}
 		with (ASM_Cmp $type $a $b) {
 			return "\tcmpl " . emit_code($a) . ", " . emit_code($b) . "\n";
 		}
