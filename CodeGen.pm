@@ -61,7 +61,7 @@ sub translate_to_ASM {
 			);
 		}
 		with (TAC_StaticVariable $name $global $type $init) {
-			return ::ASM_StaticVariable($name, $global, alignment_of($type), $init);
+			return ::ASM_StaticVariable($name, $global, size_in_bytes(operand_size_of($type)), $init);
 		}
 		with (TAC_Return $value) {
 			return (::ASM_Mov(operand_size_of($value), translate_to_ASM($value), ::ASM_Reg(::AX())),
@@ -197,11 +197,11 @@ sub operand_size_of {
 	return ::ASM_Quadword() if ($type_tag =~ /Long/);
 }
 
-sub alignment_of {
+sub size_in_bytes {
 	my $type = shift;
-	return 4 if ($type->{tag} eq 'Int');
-	return 8 if ($type->{tag} eq 'Long');
-	die "unknown type $type (aligment_of)";
+	return 4 if ($type->{tag} eq 'ASM_Longword');
+	return 8 if ($type->{tag} eq 'ASM_Quadword');
+	die "unknown type $type (size_in_bytes)";
 }
 
 sub allocate_stack {
@@ -228,7 +228,8 @@ sub fix_up {
 }
 
 sub replace_pseudo {
-	my ($function, $offsets) = (shift(), {});
+	my ($function, %offsets) = (shift(), ());
+	my $current_offset = 0;
 	my $process_node;
 	$process_node = sub {
 		my $node = shift;
@@ -236,9 +237,13 @@ sub replace_pseudo {
 			with (ASM_Pseudo $ident) {
 				if (exists $asm_symbol_table{$ident} && $asm_symbol_table{$ident}->{static}) {
 					return ::ASM_Data($ident);
+				} else {
+					unless (exists $offsets{$ident}) {
+						my $size = size_in_bytes($asm_symbol_table{$ident}{op_size});
+						$offsets{$ident} = ($current_offset -= $size + $current_offset % $size);				
+					}	
+					return ::ASM_Stack($offsets{$ident});
 				}
-				$offsets->{$ident} //= -8 * scalar(%$offsets); # bacha, //= zpusobi autovivifikaci -> scalar na prave strane vrati velikost uz vcetne noveho prvku
-				return ::ASM_Stack($offsets->{$ident});
 			}
 			default { 
 				for my $val ($node->{values}->@*) {
@@ -254,7 +259,7 @@ sub replace_pseudo {
 	};
 	$process_node->($function);
 	my ($name, $global, $instructions) = ::extract_or_die($function, 'ASM_Function');
-	my $max_offset = abs(min(values %$offsets));
+	my $max_offset = -$current_offset;
 	unshift(@$instructions, allocate_stack($max_offset + ($max_offset % 16))); # 16 byte aligned
 }
 
@@ -264,41 +269,82 @@ sub fix_instr {
 		my $instruction = shift;
 		if (my ($op, $op_size, $src, $dst) = ::extract($instruction, 'ASM_Binary')) {
 			if ($op->{tag} eq 'ASM_Mult') {
+				my @res = ($instruction);
+				if (check_imm_too_large($src, $op_size)) {
+					@res = relocate_src_operand($instruction, ::R10(); $op_size);
+				}
 				if (is_mem_addr($dst)) {
-					return (::ASM_Mov($op_size, $dst, ::ASM_Reg(::R11())),
-							::ASM_Binary($op, $op_size, $src, ::ASM_Reg(::R11())),
-							::ASM_Mov($op_size, ::ASM_Reg(::R11()), $dst));
+					unshift(@res, ::ASM_Mov($op_size, $dst, ::ASM_Reg(::R11())));
+					my $bin = $res[-1];
+					$bin->{values}[-1] = ::ASM_Reg(::R11());
+					push(@res, ::ASM_Mov($op_size, ::ASM_Reg(::R11()), $dst))
 				}
+				return @res;
 			} elsif ($op->{tag} eq 'ASM_Add' || $op->{tag} eq 'ASM_Sub') {
-				if (is_mem_addr($src) && is_mem_addr($dst)) {
-					return (::ASM_Mov($op_size, $src, ::ASM_Reg(::R10())),
-							::ASM_Binary($op, $op_size, ::ASM_Reg(::R10()), $dst));
-				}
+				if ((is_mem_addr($src) && is_mem_addr($dst)) || check_imm_too_large($src, $op_size)) {
+					return relocate_src_operand($instruction, ::R10(), $op_size);
+				} 
 			}
 		} elsif (my ($op_size, $src, $dst) = ::extract($instruction, 'ASM_Mov')) {
 			if (is_mem_addr($src) && is_mem_addr($dst)) {
-				return (::ASM_Mov($op_size, $src, ::ASM_Reg(::R10())),
-						::ASM_Mov($op_size, ::ASM_Reg(::R10()), $dst));
+				return relocate_src_operand($instruction, ::R10(), $op_size);
 			}
 		} elsif (my ($op_size, $src, $dst) = ::extract($instruction, 'ASM_Cmp')) {
-			if (is_mem_addr($src) && is_mem_addr($dst)) {
-				return (::ASM_Mov($op_size, $src, ::ASM_Reg(::R10())),
-						::ASM_Cmp($op_size, ::ASM_Reg(::R10()), $dst));
-			} elsif ($dst->{tag} eq 'ASM_Imm') {
-				return (::ASM_Mov($op_size, $dst, ::ASM_Reg(::R11())),
-						::ASM_Cmp($op_size, $src, ::ASM_Reg(::R11())));
+			my @res = ($instruction);
+			if ((is_mem_addr($src) && is_mem_addr($dst)) || check_imm_too_large($src, $op_size)) {
+				@res = relocate_src_operand($instruction, ::R10(), $op_size);
 			}
+			if ($dst->{tag} eq 'ASM_Imm') {
+				unshift(@res, ::ASM_Mov($op_size, $dst, ::ASM_Reg(::R11())));
+				my $cmp = $res[-1];
+				$cmp->{values}[-1] = ::ASM_Reg(::R11());
+			}
+			return @res;
 		}
 		elsif (my ($op_size, $operand) = ::extract($instruction, 'ASM_Idiv')) {
 			if ($operand->{tag} eq 'ASM_Imm') {
 				return (::ASM_Mov($op_size, $operand, ::ASM_Reg(::R10())),
 						::ASM_Idiv($op_size, ::ASM_Reg(::R10())));
 			}
+		} elsif (my ($src, $dst) = ::extract($instruction, 'ASM_Movsx')) {
+			my $invalid_src = $src->{tag} eq 'ASM_Imm';
+			my $invalid_dst = is_mem_addr($dst);
+			if ($invalid_src && $invalid_dst) {
+				return (::ASM_Mov(::ASM_Longword(), $src, ::ASM_Reg(::R10())),
+						::ASM_Movsx(::ASM_Reg(::R10()), ::ASM_Reg(::R11())),
+						::ASM_Mov(::ASM_Quadword(), ::ASM_Reg(::R11()), $dst));
+			} elsif ($invalid_src) {
+				return (::ASM_Mov(::ASM_Longword(), $src, ::ASM_Reg(::R10())),
+						::ASM_Movsx(::ASM_Reg(::R10()), $dst));
+			} elsif ($invalid_dst) {
+						::ASM_Mov(::ASM_Quadword(), ::ASM_Reg(::R11()), $dst));
+			} else {
+				return ($instruction);
+			}
+		} elsif (my ($operand) = ::extract($instruction, 'ASM_Push')) {
+			if (check_imm_too_large($operand, ::ASM_Quadword())) {
+				return (::ASM_Mov(::ASM_Quadword(), $operand, ::ASM_Reg(::R10())),
+						::ASM_Push(::ASM_Reg(::R10())));
+			}
 		}
 		return $instruction;
 	};
 	my ($name, $global, $instructions) = ::extract_or_die($function, 'ASM_Function');
 	splice(@$instructions, 0, $#$instructions + 1, ( map { $fix->($_) } @$instructions ));
+}
+
+# The assembler permits an immediate value in addq, imulq, subq, cmpq, or pushq only if it can be represented as a signed 32-bit integer (page 268)
+sub check_imm_too_large {
+	my ($src, $op_size) = @_;
+	return ($op_size->{tag} eq 'ASM_Quadword' && $src->{tag} eq 'ASM_Imm' && $src->{values}[0] > (2**31 - 1));
+}
+
+sub relocate_src_operand {
+	my ($instr, $into_reg, $op_size) = @_;
+	my $reg = ::ASM_Reg($into_reg);
+	my $mov = ::AMS_Mov($op_size, $instr->{values}[-2], $reg);
+	$instr->{values}[-2] = $reg;
+	return ($mov, $instr);
 }
 
 sub is_mem_addr {

@@ -7,7 +7,6 @@ use Types::Algebraic;
 
 my @TOKENS;
 
-
 sub parse {
 	@TOKENS = @_;
 	return parse_program();
