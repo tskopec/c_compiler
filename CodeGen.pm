@@ -267,70 +267,57 @@ sub fix_instr {
 	my $function = shift;
 	my $fix = sub {
 		my $instruction = shift;
+		my $res = [$instruction];
 		if (my ($op, $op_size, $src, $dst) = ::extract($instruction, 'ASM_Binary')) {
 			if ($op->{tag} eq 'ASM_Mult') {
-				my @res = ($instruction);
-				if (check_imm_too_large($src, $op_size)) {
-					@res = relocate_src_operand($instruction, ::R10(); $op_size);
+				if (check_too_large($src, $op_size)) {
+					$res = relocate($res, { when => 'before', from => $src, to => ::R10(), op_size => $op_size });
 				}
 				if (is_mem_addr($dst)) {
-					unshift(@res, ::ASM_Mov($op_size, $dst, ::ASM_Reg(::R11())));
-					my $bin = $res[-1];
-					$bin->{values}[-1] = ::ASM_Reg(::R11());
-					push(@res, ::ASM_Mov($op_size, ::ASM_Reg(::R11()), $dst))
+					$res = relocate($res, { when => 'both', from => $dst, to => ::R11(), op_size => $op_size });
 				}
-				return @res;
 			} elsif ($op->{tag} eq 'ASM_Add' || $op->{tag} eq 'ASM_Sub') {
 				if ((is_mem_addr($src) && is_mem_addr($dst)) || check_imm_too_large($src, $op_size)) {
-					return relocate_src_operand($instruction, ::R10(), $op_size);
+					$res = relocate($res, { when => 'before', from => $src, to => ::R10(), op_size => $op_size });
 				} 
 			}
 		} elsif (my ($op_size, $src, $dst) = ::extract($instruction, 'ASM_Mov')) {
 			if (is_mem_addr($src) && is_mem_addr($dst)) {
-				return relocate_src_operand($instruction, ::R10(), $op_size);
+				$res = relocate($res, { when => 'before', from => $src, to => ::R10(), op_size => $op_size });
 			}
 		} elsif (my ($op_size, $src, $dst) = ::extract($instruction, 'ASM_Cmp')) {
-			my @res = ($instruction);
 			if ((is_mem_addr($src) && is_mem_addr($dst)) || check_imm_too_large($src, $op_size)) {
-				@res = relocate_src_operand($instruction, ::R10(), $op_size);
+				$res = relocate($res, { when => 'before', from => $src, to => ::R10(), op_size => $op_size });
 			}
 			if ($dst->{tag} eq 'ASM_Imm') {
-				unshift(@res, ::ASM_Mov($op_size, $dst, ::ASM_Reg(::R11())));
-				my $cmp = $res[-1];
-				$cmp->{values}[-1] = ::ASM_Reg(::R11());
+				$res = relocate($res, { when => 'before', from => $dst, to => ::R11(), op_size => $op_size });
 			}
-			return @res;
 		}
 		elsif (my ($op_size, $operand) = ::extract($instruction, 'ASM_Idiv')) {
 			if ($operand->{tag} eq 'ASM_Imm') {
-				return (::ASM_Mov($op_size, $operand, ::ASM_Reg(::R10())),
-						::ASM_Idiv($op_size, ::ASM_Reg(::R10())));
+				$res = relocate($res, { when => 'before', from => $operand, to => ::R10(), op_size => $op_size });
 			}
 		} elsif (my ($src, $dst) = ::extract($instruction, 'ASM_Movsx')) {
-			my $invalid_src = $src->{tag} eq 'ASM_Imm';
-			my $invalid_dst = is_mem_addr($dst);
-			if ($invalid_src && $invalid_dst) {
-				return (::ASM_Mov(::ASM_Longword(), $src, ::ASM_Reg(::R10())),
-						::ASM_Movsx(::ASM_Reg(::R10()), ::ASM_Reg(::R11())),
-						::ASM_Mov(::ASM_Quadword(), ::ASM_Reg(::R11()), $dst));
-			} elsif ($invalid_src) {
-				return (::ASM_Mov(::ASM_Longword(), $src, ::ASM_Reg(::R10())),
-						::ASM_Movsx(::ASM_Reg(::R10()), $dst));
-			} elsif ($invalid_dst) {
-						::ASM_Mov(::ASM_Quadword(), ::ASM_Reg(::R11()), $dst));
-			} else {
-				return ($instruction);
+			if ($src->{tag} eq 'ASM_Imm') {
+				$res = relocate($res, { when => 'before', from => $src, to => ::R10(), op_size => ::ASM_Longword() });
+			}
+			if (is_mem_addr($dst)) {
+				$res = relocate($res, { when => 'after', from => ::R11(), to => $dst, op_size => ::ASM_Quadword() });
 			}
 		} elsif (my ($operand) = ::extract($instruction, 'ASM_Push')) {
 			if (check_imm_too_large($operand, ::ASM_Quadword())) {
-				return (::ASM_Mov(::ASM_Quadword(), $operand, ::ASM_Reg(::R10())),
-						::ASM_Push(::ASM_Reg(::R10())));
+				$res = relocate($res, { when => 'before', from => $operand, to => ::R10(), op_size => ::ASM_Quadword() });
 			}
 		}
-		return $instruction;
+		return @$res;
 	};
 	my ($name, $global, $instructions) = ::extract_or_die($function, 'ASM_Function');
 	splice(@$instructions, 0, $#$instructions + 1, ( map { $fix->($_) } @$instructions ));
+}
+
+# FIX utils
+sub is_mem_addr {
+	return ::is_one_of(shift(), 'ASM_Stack', 'ASM_Data');
 }
 
 # The assembler permits an immediate value in addq, imulq, subq, cmpq, or pushq only if it can be represented as a signed 32-bit integer (page 268)
@@ -339,16 +326,31 @@ sub check_imm_too_large {
 	return ($op_size->{tag} eq 'ASM_Quadword' && $src->{tag} eq 'ASM_Imm' && $src->{values}[0] > (2**31 - 1));
 }
 
-sub relocate_src_operand {
-	my ($instr, $into_reg, $op_size) = @_;
-	my $reg = ::ASM_Reg($into_reg);
-	my $mov = ::AMS_Mov($op_size, $instr->{values}[-2], $reg);
-	$instr->{values}[-2] = $reg;
-	return ($mov, $instr);
-}
-
-sub is_mem_addr {
-	return ::is_one_of(shift(), 'ASM_Stack', 'ASM_Data');
+sub relocate {
+	my ($instructions, $move) = @_;
+	if (%$move) {
+		my $instruction = $instructions->[-1];
+		my $from = ref($move->{from}) eq 'ASM_Register' ? ::ASM_Reg($move->{from}) : $move->{from};
+		my $to = ref($move->{to}) eq 'ASM_Register' ? ::ASM_Reg($move->{to}) : $move->{to};
+		if ($move->{when} eq 'before') {
+			unshift(@$instructions, ::ASM_Mov($move->{op_size}, $from, $to));
+			for my $val ($instruction->{values}->@*) {
+				$val = $to if ($val eq $from);
+			}
+		} elsif ($move->{when} eq 'after') {
+			push(@$instructions, ::ASM_Mov($move->{op_size}, $from, $to));
+			for my $val ($instruction->{values}->@*) {
+				$val = $from if ($val eq $to);
+			}
+		} elsif ($move->{when} eq 'both') {
+			unshift(@$instructions, ::ASM_Mov($move->{op_size}, $from, $to));
+			for my $val ($instruction->{values}->@*) {
+				$val = $to if ($val eq $from);
+			}
+			push(@$instructions, ::ASM_Mov($move->{op_size}, $to, $from));
+		}
+	}
+	return $instructions;
 }
 
 1;
