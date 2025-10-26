@@ -37,7 +37,7 @@ sub emit_TAC {
 		}
 		with (VarDeclaration $name $init $type $storage) { 
 			if (defined $init) {
-				emit_TAC(::Assignment(::Var($name), $init, $type), $instructions);
+				emit_TAC(::Assignment(::Var($name, $type), $init, $type), $instructions);
 			}
 	   	}
 		with (Return $exp) {
@@ -99,10 +99,10 @@ sub emit_TAC {
 			push @$instructions, ::TAC_Jump("_continue$label");
 		}
 		with (Expression $expr) { emit_TAC($expr, $instructions); }
-		with (ConstantExpr $const) {
+		with (ConstantExpr $const $type) {
 			return ::TAC_Constant($const);
 		}
-		with (Var $ident) {
+		with (Var $ident $type) {
 			return ::TAC_Variable($ident);
 		}
 		with (Cast $expr $type) {
@@ -112,9 +112,9 @@ sub emit_TAC {
 			}	
 			my $dst = make_TAC_var($type);
 			if ($type->{tag} eq 'Long') {
-				push(@$instructions, ::SignExtend($res, $dst));
+				push(@$instructions, ::TAC_SignExtend($res, $dst));
 			} else {
-				push(@$instructions, ::Truncate($res, $dst));
+				push(@$instructions, ::TAC_Truncate($res, $dst));
 			}
 			return $dst;
 		}
@@ -222,7 +222,7 @@ sub convert_binop {
 sub make_TAC_var {
 	my $type = shift;
 	my $name = temp_name();
-	$Semantics::symbol_table->{$name} = {
+	$Semantics::symbol_table{$name} = {
 		type => $type, attrs => ::LocalAttrs()
 	};
 	return ::TAC_Variable($name);
@@ -240,7 +240,7 @@ sub labels {
 
 sub covert_symbols_to_TAC {
 	my @tac_vars;
-	while (my ($name, $entry) = each %$Semantics::symbol_table) {
+	while (my ($name, $entry) = each %Semantics::symbol_table) {
 		if ($entry->{attrs}{tag} eq 'StaticAttrs') {
 			my $type = $entry->{type};
 			my ($stat_init, $global) = ::extract_or_die($entry->{attrs}, 'StaticAttrs');

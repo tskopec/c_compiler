@@ -209,7 +209,7 @@ sub parse_factor {
 				}
 				return ::FunctionCall($name, \@args, "dummy_type");
 			} else {
-				return ::Var($name);
+				return ::Var($name, "dummy_type");
 			}
 	   	}
 		with (Operator $op) {
@@ -242,9 +242,9 @@ sub parse_constant {
 	if ($val > $max_long) {
 		die "constant too large for long $val";
 	} elsif ($type eq 'int' && $val < $max_int) {
-		return ::ConstantExpr(::ConstInt($val));
+		return ::ConstantExpr(::ConstInt($val), ::Int());
 	} else {
-		return ::ConstantExpr(::ConstLong($val));
+		return ::ConstantExpr(::ConstLong($val), ::Long());
 	}
 }
 

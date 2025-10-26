@@ -38,8 +38,8 @@ data Statement =
 	| DoWhile :Statement_body :Expression_cond :label
 	| For :VarDeclOrOptExpr_init :OptExpression_cond  :OptExpression_post :Statement_body :label;
 data _Expression = # Semantics::[gs]et_type count on :Type being the last param of expression
-	ConstantExpr :Constant 
-	| Var :ident # type in symtable
+	ConstantExpr :Constant :Type
+	| Var :ident :Type
 	| Cast :Expression :Type_target
 	| Unary :UnaryOperator :Expression :Type
 	| Binary :BinaryOperator :Expression1 :Expression2 :Type
@@ -103,7 +103,7 @@ data ASM_TopLevelDeclaration =
 	| ASM_Function :name :global :Instructions;
 data ASM_Instruction =
 	ASM_Mov :OpSize :Operand_src :Operand_dst
-	| AMS_Movsx :Operand_src :Operand_dst
+	| ASM_Movsx :Operand_src :Operand_dst
 	| ASM_Unary :UnaryOperator :OpSize :Operand
 	| ASM_Binary :BinaryOperator :OpSize :Operand1 :Operand2
 	| ASM_Cmp :OpSize :Operand1 :Operand2

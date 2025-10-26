@@ -121,11 +121,11 @@ sub translate_to_ASM {
 			}	
 			while (my ($i, $tac_arg) = each @reg_args) {
 				my $asm_arg = translate_to_ASM($tac_arg);
-				push(@instructions, ::ASM_Mov(operand_size_of($asm_arg), $asm_arg, ::ASM_Reg($arg_regs[$i])));
+				push(@instructions, ::ASM_Mov(operand_size_of($tac_arg), $asm_arg, ::ASM_Reg($arg_regs[$i])));
 			}
 			for my $tac_arg (reverse @stack_args) {
 				my $asm_arg = translate_to_ASM($tac_arg);
-				if (::is_one_of($asm_arg, qw(ASM_Imm ASM_Reg)) || ::is_one_of(operand_size_of($asm_arg), 'ASM_Quadword')) {
+				if (::is_one_of($asm_arg, qw(ASM_Imm ASM_Reg)) || ::is_one_of(operand_size_of($tac_arg), 'ASM_Quadword')) {
 					push(@instructions, ::ASM_Push($asm_arg));
 				} else {
 					push(@instructions, (::ASM_Mov(::ASM_Longword(), $asm_arg, ::ASM_Reg(::AX())),
@@ -140,8 +140,8 @@ sub translate_to_ASM {
 			push(@instructions, ::ASM_Mov(operand_size_of($dst), ::ASM_Reg(::AX()), translate_to_ASM($dst)));
 			return @instructions;
 		}
-		with (TAC_Constant $int) {
-			return ::ASM_Imm($int);
+		with (TAC_Constant $const) {
+			return ::ASM_Imm($const->{values}[0]);
 		}
 		with (TAC_Variable $ident) {
 			return ::ASM_Pseudo($ident);
@@ -263,6 +263,7 @@ sub replace_pseudo {
 	unshift(@$instructions, allocate_stack($max_offset + ($max_offset % 16))); # 16 byte aligned
 }
 
+## FIX
 sub fix_instr {
 	my $function = shift;
 	my $fix = sub {
@@ -270,43 +271,47 @@ sub fix_instr {
 		my $res = [$instruction];
 		if (my ($op, $op_size, $src, $dst) = ::extract($instruction, 'ASM_Binary')) {
 			if ($op->{tag} eq 'ASM_Mult') {
-				if (check_too_large($src, $op_size)) {
-					$res = relocate($res, { when => 'before', from => $src, to => ::R10(), op_size => $op_size });
+				if (check_imm_too_large($src, $op_size)) {
+					$res = relocate_instr_operand($res, { when => 'before', from => $src, to => ::R10(), op_size => $op_size });
 				}
 				if (is_mem_addr($dst)) {
-					$res = relocate($res, { when => 'both', from => $dst, to => ::R11(), op_size => $op_size });
+					$res = relocate_instr_operand($res, { when => 'both', from => $dst, to => ::R11(), op_size => $op_size });
 				}
 			} elsif ($op->{tag} eq 'ASM_Add' || $op->{tag} eq 'ASM_Sub') {
 				if ((is_mem_addr($src) && is_mem_addr($dst)) || check_imm_too_large($src, $op_size)) {
-					$res = relocate($res, { when => 'before', from => $src, to => ::R10(), op_size => $op_size });
+					$res = relocate_instr_operand($res, { when => 'before', from => $src, to => ::R10(), op_size => $op_size });
 				} 
 			}
 		} elsif (my ($op_size, $src, $dst) = ::extract($instruction, 'ASM_Mov')) {
 			if (is_mem_addr($src) && is_mem_addr($dst)) {
-				$res = relocate($res, { when => 'before', from => $src, to => ::R10(), op_size => $op_size });
+				$res = relocate_instr_operand($res, { when => 'before', from => $src, to => ::R10(), op_size => $op_size });
+			}
+			if ($src->{tag} eq 'ASM_Imm' && $op_size->{tag} eq 'ASM_Longword') {
+				state $max_uint = 2**32;
+				$src->{values}[0] %= $max_uint;
 			}
 		} elsif (my ($op_size, $src, $dst) = ::extract($instruction, 'ASM_Cmp')) {
 			if ((is_mem_addr($src) && is_mem_addr($dst)) || check_imm_too_large($src, $op_size)) {
-				$res = relocate($res, { when => 'before', from => $src, to => ::R10(), op_size => $op_size });
+				$res = relocate_instr_operand($res, { when => 'before', from => $src, to => ::R10(), op_size => $op_size });
 			}
 			if ($dst->{tag} eq 'ASM_Imm') {
-				$res = relocate($res, { when => 'before', from => $dst, to => ::R11(), op_size => $op_size });
+				$res = relocate_instr_operand($res, { when => 'before', from => $dst, to => ::R11(), op_size => $op_size });
 			}
 		}
 		elsif (my ($op_size, $operand) = ::extract($instruction, 'ASM_Idiv')) {
 			if ($operand->{tag} eq 'ASM_Imm') {
-				$res = relocate($res, { when => 'before', from => $operand, to => ::R10(), op_size => $op_size });
+				$res = relocate_instr_operand($res, { when => 'before', from => $operand, to => ::R10(), op_size => $op_size });
 			}
 		} elsif (my ($src, $dst) = ::extract($instruction, 'ASM_Movsx')) {
 			if ($src->{tag} eq 'ASM_Imm') {
-				$res = relocate($res, { when => 'before', from => $src, to => ::R10(), op_size => ::ASM_Longword() });
+				$res = relocate_instr_operand($res, { when => 'before', from => $src, to => ::R10(), op_size => ::ASM_Longword() });
 			}
 			if (is_mem_addr($dst)) {
-				$res = relocate($res, { when => 'after', from => ::R11(), to => $dst, op_size => ::ASM_Quadword() });
+				$res = relocate_instr_operand($res, { when => 'after', from => ::R11(), to => $dst, op_size => ::ASM_Quadword() });
 			}
 		} elsif (my ($operand) = ::extract($instruction, 'ASM_Push')) {
 			if (check_imm_too_large($operand, ::ASM_Quadword())) {
-				$res = relocate($res, { when => 'before', from => $operand, to => ::R10(), op_size => ::ASM_Quadword() });
+				$res = relocate_instr_operand($res, { when => 'before', from => $operand, to => ::R10(), op_size => ::ASM_Quadword() });
 			}
 		}
 		return @$res;
@@ -326,27 +331,20 @@ sub check_imm_too_large {
 	return ($op_size->{tag} eq 'ASM_Quadword' && $src->{tag} eq 'ASM_Imm' && $src->{values}[0] > (2**31 - 1));
 }
 
-sub relocate {
+sub relocate_instr_operand {
 	my ($instructions, $move) = @_;
 	if (%$move) {
 		my $instruction = $instructions->[-1];
-		my $from = ref($move->{from}) eq 'ASM_Register' ? ::ASM_Reg($move->{from}) : $move->{from};
-		my $to = ref($move->{to}) eq 'ASM_Register' ? ::ASM_Reg($move->{to}) : $move->{to};
+		my ($from, $to) = map { ref($_) eq 'ASM_Register' ? ::ASM_Reg($_) : $_ } (@$move{'from', 'to'});
 		if ($move->{when} eq 'before') {
 			unshift(@$instructions, ::ASM_Mov($move->{op_size}, $from, $to));
-			for my $val ($instruction->{values}->@*) {
-				$val = $to if ($val eq $from);
-			}
+			$instruction->{values} = [ map { $_ eq $from ? $to : $_ } $instruction->{values}->@* ];
 		} elsif ($move->{when} eq 'after') {
 			push(@$instructions, ::ASM_Mov($move->{op_size}, $from, $to));
-			for my $val ($instruction->{values}->@*) {
-				$val = $from if ($val eq $to);
-			}
+			$instruction->{values} = [ map { $_ eq $to ? $from : $_ } $instruction->{values}->@* ];
 		} elsif ($move->{when} eq 'both') {
 			unshift(@$instructions, ::ASM_Mov($move->{op_size}, $from, $to));
-			for my $val ($instruction->{values}->@*) {
-				$val = $to if ($val eq $from);
-			}
+			$instruction->{values} = [ map { $_ eq $from ? $to : $_ } $instruction->{values}->@* ];
 			push(@$instructions, ::ASM_Mov($move->{op_size}, $to, $from));
 		}
 	}
