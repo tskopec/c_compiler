@@ -285,10 +285,13 @@ sub fix_instr {
 		} elsif (my ($op_size, $src, $dst) = ::extract($instruction, 'ASM_Mov')) {
 			if (is_mem_addr($src) && is_mem_addr($dst)) {
 				$res = relocate_instr_operand($res, { when => 'before', from => $src, to => ::R10(), op_size => $op_size });
-			}
-			if ($src->{tag} eq 'ASM_Imm' && $op_size->{tag} eq 'ASM_Longword') {
+			} elsif ($src->{tag} eq 'ASM_Imm') {
 				state $max_uint = 2**32;
-				$src->{values}[0] %= $max_uint;
+				if ($op_size->{tag} eq 'ASM_Longword') {
+					$src->{values}[0] %= $max_uint;
+				} elsif ($op_size->{tag} eq 'ASM_Quadword' && $src->{values}[0] > $max_uint) {
+					$res = relocate_instr_operand($res, { when => 'before', from => $src, to => ::R10(), op_size => $op_size });
+				}
 			}
 		} elsif (my ($op_size, $src, $dst) = ::extract($instruction, 'ASM_Cmp')) {
 			if ((is_mem_addr($src) && is_mem_addr($dst)) || check_imm_too_large($src, $op_size)) {
