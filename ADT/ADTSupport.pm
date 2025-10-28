@@ -1,7 +1,7 @@
 package ADTSupport;
 use strict;
 use warnings;
-use feature qw(say);
+use feature qw(say isa);
 
 use ADT;
 
@@ -16,15 +16,10 @@ sub import {
 	ADTSupport->export_to_level(2, @_);
 }
 
-my %constructors_info;
-
-sub get_ordered_fields {
-	my $tag = shift;
-	return $constructors_info{$tag}{param_names}->@*;
-}
+our %constructors_info;
 
 sub declare {
-	my ($base, $constructors) = @_;
+	my ($base_type, $constructors) = @_;
 	while (@$constructors) {
 		my $constr_tag = shift @$constructors;
 		my (@param_names, @param_types);
@@ -37,9 +32,9 @@ sub declare {
 		$constructors_info{$constr_tag} = { param_names => [@param_names], param_types => [@param_types] };
 
 		my $constructor_sub = sub {
-			my %adt = (tag => $constr_tag);
+			my %adt = (_base_type => $base_type, _tag => $constr_tag);
 			for my $arg (@_) {
-				die "bad value in constructor $constr_tag: $arg" unless check_type($arg, shift(@param_types));
+				check_type($arg, shift(@param_types));
 				$adt{shift @param_names} = $arg;
 			}
 			return ADT->new(%adt);
@@ -52,14 +47,40 @@ sub declare {
 
 sub check_type {
 	my ($arg, $type) = @_;
-	return 0 unless defined $type;
-	return 1;
+	die "undef type for arg $arg" unless defined $type;
+
+	if (substr($type, -1) ne '?' && !defined $arg) {
+		die "undef arg for non-optional type $type";
+	} elsif (substr($type, -1) eq '*') {
+		die "$arg not an array" if (ref($arg) ne 'ARRAY');
+		my $elem_type = substr($type, 0, -1);
+		check_type($_, $elem_type) for $arg->@*;
+	}
+
+	if (starts_with($type, "int")) {
+		die "$arg not int" if ($arg !~ /^\d+$/);
+	} elsif (starts_with($type, "string")) {
+		die "invalid string $arg" if ($arg !~ /^\w*$/);
+	} elsif (starts_with($type, 'bool')) {
+		die "$arg not bool" if ($arg != 0 && $arg != 1);
+	} else {
+		die "$arg not ADT" unless ($arg isa 'ADT');
+		unless (grep { $arg->is($_) } split(/\|/, $type)) {
+			die "$arg not $type";
+		}
+	}	
+}
+
+sub starts_with {
+	my ($str, $prefix) = @_;
+	return not rindex $str, $prefix, 0;
 }
 
 sub match {
-	my ($adt, $matched_tag) = @_;
-	if ($adt->{tag} eq $matched_tag) {
-		return map { $adt->{$_} } get_ordered_fields($matched_tag);
+	my ($adt, $tag) = @_;
+	die "not ADT $adt" unless ($adt isa 'ADT');
+	if ($adt->{_tag} eq $tag) {
+		return $adt->values_in_order() || (1);
 	} else {
 		return ();
 	}
