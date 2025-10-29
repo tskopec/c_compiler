@@ -7,10 +7,10 @@ use ADT;
 
 require Exporter;
 our @ISA = qw(Exporter);
-our @EXPORT = qw(declare match);
+our @EXPORT = qw(declare match2);
 
 BEGIN {
-	#	$Exporter::Verbose = 1;
+#	$Exporter::Verbose = 1;
 }
 sub import {
 	ADTSupport->export_to_level(2, @_);
@@ -34,6 +34,7 @@ sub declare {
 		my $constructor_sub = sub {
 			my %adt = (_base_type => $base_type, _tag => $constr_tag);
 			for my $arg (@_) {
+				# TODO kdyz je args min nez types
 				check_type($arg, shift(@param_types));
 				$adt{shift @param_names} = $arg;
 			}
@@ -42,7 +43,6 @@ sub declare {
 		{ no strict 'refs'; *{$constr_tag} = $constructor_sub; }	
 		push(@EXPORT, $constr_tag);
 	}
-	ADTSupport->export_to_level(2, 'ADTSupport');
 }
 
 sub check_type {
@@ -76,15 +76,6 @@ sub starts_with {
 	return not rindex $str, $prefix, 0;
 }
 
-sub match {
-	my ($adt, $tag) = @_;
-	die "not ADT $adt" unless ($adt isa 'ADT');
-	if ($adt->{_tag} eq $tag) {
-		return $adt->values_in_order() || (1);
-	} else {
-		return ();
-	}
-}
 
 
 
