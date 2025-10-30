@@ -7,11 +7,8 @@ use lib '.';
 use Types;
 
 
-my $i = AST_Unary(Not(), AST_ConstantExpression(AST_ConstInt(5), Int()), Int());
-if (my ($op, $e, $t) = $i->match('AST_Unary')) {
-	say $op;
-	say $e;
-	say $t;
-}
+my $x = Identifier("blemc");
+say $x;
+
 
 die "konec";

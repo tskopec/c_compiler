@@ -1,18 +1,28 @@
 package ADT;
-
+use strict;
+use warnings;
 use feature qw(say);
 
-use ADTSupport;
 use overload
 	'""' => sub {
 		my $self = shift;
-		my $fields_string = join(", ", map { $_ . ": "  . $self->{$_} } %{$self->get_info()}{param_names}->@*);
+		my $fields_string = join(", ", map { $_ . ": "  . $self->{$_} } $self->fields_order());
 		return $self->{_tag} . "(" . $fields_string . ")";
 	};
 
+
+our %type_info;
+
 sub new {
-	my ($class, %args) = @_;
-	return bless \%args, $class;
+	my ($class, $base_type, $tag, @args) = @_;
+	my %map = (
+		_tag => $tag, _base_type => $base_type
+	);
+	my @param_names = $type_info{$tag}->{param_names}->@*;
+	while (my ($i, $arg) = each @args) {
+		$map{$param_names[$i]} = $arg;
+	}
+	return bless \%map, $class;
 }
 
 sub is {
@@ -43,14 +53,14 @@ sub match {
 	}
 }
 
-sub get_info {
-	my $self = shift;
-	return $ADTSupport::constructors_info{$self->{_tag}};
-}
-
 sub values_in_order {
 	my $self = shift;
-	return map { $self->{$_} } %{$self->get_info()}{param_names}->@*;
+	return map { $self->{$_} } $self->fields_order();
+}
+
+sub fields_order {
+	my $self = shift;
+	return $type_info{$self->{_tag}}->{param_names}->@*;
 }
 
 1;
