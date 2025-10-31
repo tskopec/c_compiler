@@ -4,15 +4,16 @@ use warnings;
 use feature qw(say);
 use File::Slurp;
 
-
 use lib ".";
+use lib "./ADT";
+
 use Types;
 use Lexer;
-use Parser;
-use Semantics;
-use TAC;
-use CodeGen;
-use Emitter;
+#use Parser;
+#use Semantics;
+#use TAC;
+#use CodeGen;
+#use Emitter;
 
 our $global_counter = 0;
 
@@ -65,41 +66,41 @@ sub compile {
 	say(join("\n", @tokens) . "\n") if $debug;
 	return if ($target_phase eq 'lex'); 	
 
-	# PARSE
-	my $ast = Parser::parse(@tokens);
-	print_AST($ast) if $debug;
-	return if ($target_phase eq 'parse');
-
-	# SEMANTICS
-	Semantics::run($ast);
-	print_AST($ast) if $debug;
-	return if ($target_phase eq 'validate');
-
-	# TAC
-	my $tac = TAC::emit_TAC($ast);
-	print_AST($tac) if $debug;
-	return if ($target_phase eq 'tac');
-
-	# ASSEMBLY GEN
-	my $asm = CodeGen::generate($tac);
-	print_AST($asm) if $debug;
-	return if ($target_phase eq 'codegen');
-
-	# EMIT CODE
-	my $asm_file = $src_file =~ s/c$/s/r;
-	my $code = Emitter::emit_code($asm);
-	say($code) if $debug;
-	write_file($asm_file, $code);
-	 
-	# ASSEMBLE
-	if ($dont_link) {
-		my $obj_file = $src_file =~ s/\.c$/.o/r;
-		qx/gcc -c $asm_file -o $obj_file/;
-	} else {
-		my $bin_file = $src_file =~ s/\.c$//r;
-		qx/gcc $asm_file -o $bin_file/;
-	}
-	unlink($asm_file); 
+	#	# PARSE
+	#	my $ast = Parser::parse(@tokens);
+	#	print_AST($ast) if $debug;
+	#	return if ($target_phase eq 'parse');
+	#
+	#	# SEMANTICS
+	#	Semantics::run($ast);
+	#	print_AST($ast) if $debug;
+	#	return if ($target_phase eq 'validate');
+	#
+	#	# TAC
+	#	my $tac = TAC::emit_TAC($ast);
+	#	print_AST($tac) if $debug;
+	#	return if ($target_phase eq 'tac');
+	#
+	#	# ASSEMBLY GEN
+	#	my $asm = CodeGen::generate($tac);
+	#	print_AST($asm) if $debug;
+	#	return if ($target_phase eq 'codegen');
+	#
+	#	# EMIT CODE
+	#	my $asm_file = $src_file =~ s/c$/s/r;
+	#	my $code = Emitter::emit_code($asm);
+	#	say($code) if $debug;
+	#	write_file($asm_file, $code);
+	#	 
+	#	# ASSEMBLE
+	#	if ($dont_link) {
+	#		my $obj_file = $src_file =~ s/\.c$/.o/r;
+	#		qx/gcc -c $asm_file -o $obj_file/;
+	#	} else {
+	#		my $bin_file = $src_file =~ s/\.c$//r;
+	#		qx/gcc $asm_file -o $bin_file/;
+	#	}
+	#	unlink($asm_file); 
 }
 
 
