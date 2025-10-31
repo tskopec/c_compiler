@@ -65,14 +65,14 @@ sub validate_arg {
 	my ($arg, $type) = @_;
 	die "undef type for arg $arg" unless defined $type;
 
-	if (substr($type, -1) ne '?' && !defined $arg) {
-		die "undef arg for non-optional type $type";
-	} elsif (substr($type, -1) eq '*') {
+	if (!defined $arg) {
+		substr($type, -1) eq '?' ? return : die "undef arg for non-optional type $type";
+	}
+	if (substr($type, -1) eq '*') {
 		die "$arg not an array" if (ref($arg) ne 'ARRAY');
 		my $elem_type = substr($type, 0, -1);
 		validate_arg($_, $elem_type) for $arg->@*;
 	}
-
 	if ($type =~ /^Integer[?*]?$/) {
 		die "$arg not int" if ($arg !~ /^\d+$/);
 	} elsif ($type =~ /^String[?*]?$/) {

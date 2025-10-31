@@ -2,8 +2,8 @@ package Parser;
 use strict;
 use warnings;
 use feature qw(say state);
-use Types::Algebraic;
 
+use Types;
 
 my @TOKENS;
 
@@ -15,9 +15,9 @@ sub parse {
 sub parse_program {
 	my @declarations;
 	while (@TOKENS) {
-		push(@declarations, parse_declaration() // die "not a declaration");
+		push(@declarations, parse_declaration());
 	}
-	return ::Program(\@declarations);
+	return AST_Program(\@declarations);
 }
 
 sub parse_declaration {
@@ -26,27 +26,27 @@ sub parse_declaration {
 	my ($type, $storage_class) = @specs;
 	die "missing type" unless defined $type;
 	my $name = parse_identifier();
-	if (peek()->{values}[0] eq '(') {
+	if (try_expect('Lex_Symbol', '(')) {
 		my $params = parse_params_list();
-		if (try_expect('Symbol', '{')) {
-			return ::FunDeclaration($name, $params, parse_block(), $type, $storage_class);
+		if (try_expect('Lex_Symbol', '{')) {
+			return AST_FunDeclaration($name, $params, parse_block(), $type, $storage_class);
 		} 
-		expect('Symbol', ';');
-		return ::FunDeclaration($name, $params, undef, $type, $storage_class);
+		expect('Lex_Symbol', ';');
+		return AST_FunDeclaration($name, $params, undef, $type, $storage_class);
 	} else {
-		my $init = try_expect('Operator', '=') ? parse_expr(0) : undef;
-		expect('Symbol', ';');
-		return ::VarDeclaration($name, $init, $type, $storage_class);
+		my $init = try_expect('Lex_Operator', '=') ? parse_expr(0) : undef;
+		expect('Lex_Symbol', ';');
+		return AST_VarDeclaration($name, $init, $type, $storage_class);
 	}
 }
 
 sub parse_specifiers {
 	my (@storage_specs, @type_specs);
 	while (1) {
-		if (my $kw = try_expect('Keyword', 'int', 'long')) {
-			push @type_specs, $kw->{values}[0];
-		} elsif (my $kw = try_expect('Keyword', 'static', 'extern')) {
-			push @storage_specs, $kw->{values}[0];
+		if (my $kw = try_expect('Lex_Keyword', 'int', 'long')) {
+			push @type_specs, $kw->{word};
+		} elsif (my $kw = try_expect('Lex_Keyword', 'static', 'extern')) {
+			push @storage_specs, $kw->{word};
 		} else { last }
 	}
 	die "too many storage specs: @{[@storage_specs]}" if (@storage_specs > 1);
@@ -57,9 +57,9 @@ sub parse_specifiers {
 sub parse_type {
 	my $specs = join(" ", @_);
 	if ($specs eq 'int') {
-		return ::Int();
+		return Int();
 	} elsif ($specs =~ /^(long|int long|long int)$/) {
-		return ::Long();
+		return Long();
 	} else {
 		die "invalid type specifier '$specs'";
 	}
@@ -68,23 +68,22 @@ sub parse_type {
 sub parse_storage_class {
 	my $storage_spec = shift;
 	if (!defined $storage_spec)		{ return undef }
-	if ($storage_spec eq 'static')	{ return ::Static() }
-	if ($storage_spec eq 'extern')	{ return ::Extern() }
+	if ($storage_spec eq 'static')	{ return Static() }
+	if ($storage_spec eq 'extern')	{ return Extern() }
 	die "unknown storage specifier: $storage_spec";
 }
 
 sub parse_params_list {
 	my @list;
-	expect('Symbol', '(');
-	if (try_expect('Keyword', 'void')) {
-		expect('Symbol', ')');
+	if (try_expect('Lex_Keyword', 'void')) {
+		expect('Lex_Symbol', ')');
 	} else {
 		while (1) {
 			my ($type, $storage) = parse_specifiers();
 			die "invalid specifiers for fun param: $type $storage" if (!defined $type || defined $storage);
-			push(@list, ::VarDeclaration(parse_identifier(), undef, $type, undef));	
-			last if try_expect('Symbol', ')');
-			expect('Symbol', ',');
+			push(@list, AST_VarDeclaration(parse_identifier(), undef, $type, undef));	
+			last if try_expect('Lex_Symbol', ')');
+			expect('Lex_Symbol', ',');
 		} 
 	}
 	return \@list;
@@ -93,10 +92,10 @@ sub parse_params_list {
 sub parse_block {
 	my @items;
 	while (@TOKENS) {
-		last if (try_expect('Symbol', '}'));
+		last if (try_expect('Lex_Symbol', '}'));
 		push @items, parse_block_item();
 	}
-	return ::Block(\@items);
+	return AST_Block(\@items);
 }
 
 sub parse_block_item {
@@ -104,71 +103,72 @@ sub parse_block_item {
 }
 
 sub parse_statement {
-	if (try_expect('Keyword', 'return')) {
+	if (try_expect('Lex_Keyword', 'return')) {
 		my $ret_val = parse_expr(0);
-		expect('Symbol', ';');
-		return ::Return($ret_val);
-	} elsif (try_expect('Symbol', '{')) {
-		return ::Compound(parse_block());
-	} elsif (try_expect('Symbol', ';')){
-		return ::Null();
-	} elsif (try_expect('Keyword', 'if')) {
-		expect('Symbol', '(');
+		expect('Lex_Symbol', ';');
+		return AST_Return($ret_val);
+	} elsif (try_expect('Lex_Symbol', '{')) {
+		return AST_Compound(parse_block());
+	} elsif (try_expect('Lex_Symbol', ';')){
+		return AST_Null();
+	} elsif (try_expect('Lex_Keyword', 'if')) {
+		expect('Lex_Symbol', '(');
 		my $cond = parse_expr(0);	
-		expect('Symbol', ')');
+		expect('Lex_Symbol', ')');
 		my $then = parse_statement();
-		my $else = parse_statement() if try_expect('Keyword', 'else'); 
-		return ::If($cond, $then, $else);
-	} elsif (try_expect('Keyword', 'break')) {
-		expect('Symbol', ';');
-		return ::Break('dummy');
-	} elsif (try_expect('Keyword', 'continue')) {
-		expect('Symbol', ';');
-		return ::Continue('dummy');
-	} elsif (try_expect('Keyword', 'while')) {
-		expect('Symbol', '(');
+		my $else = parse_statement() if try_expect('Lex_Keyword', 'else'); 
+		return AST_If($cond, $then, $else);
+	} elsif (try_expect('Lex_Keyword', 'break')) {
+		expect('Lex_Symbol', ';');
+		return AST_Break('dummy');
+	} elsif (try_expect('Lex_Keyword', 'continue')) {
+		expect('Lex_Symbol', ';');
+		return AST_Continue('dummy');
+	} elsif (try_expect('Lex_Keyword', 'while')) {
+		expect('Lex_Symbol', '(');
 		my $cond = parse_expr(0);
-		expect('Symbol', ')');
+		expect('Lex_Symbol', ')');
 		my $body = parse_statement();
-		return ::While($cond, $body, 'dummy');
-	} elsif (try_expect('Keyword', 'do')) {
+		return AST_While($cond, $body, 'dummy');
+	} elsif (try_expect('Lex_Keyword', 'do')) {
 		my $body = parse_statement();
-		expect('Keyword', 'while') && expect('Symbol', '(');
+		expect('Lex_Keyword', 'while') && expect('Lex_Symbol', '(');
 		my $cond = parse_expr(0);
-		expect('Symbol', ')') && expect('Symbol', ';');
-		return ::DoWhile($body, $cond, 'dummy');
-	} elsif (try_expect('Keyword', 'for')) {
-		expect('Symbol', '(');
+		expect('Lex_Symbol', ')') && expect('Lex_Symbol', ';');
+		return AST_DoWhile($body, $cond, 'dummy');
+	} elsif (try_expect('Lex_Keyword', 'for')) {
+		expect('Lex_Symbol', '(');
 		my $init = parse_for_init();
 		my $cond = parse_opt_expr(';');
 		my $post = parse_opt_expr(')');
 		my $body = parse_statement();
-		return ::For($init, $cond, $post, $body, 'dummy');
+		return AST_For($init, $cond, $post, $body, 'dummy');
 	} else {
 		my $expr = parse_expr(0);
-		expect('Symbol', ';');
-		return ::Expression($expr);
+		expect('Lex_Symbol', ';');
+		return AST_Expression($expr);
 	}
 }
 
 sub parse_for_init {
-	return undef if (try_expect('Symbol', ';'));
+	return undef if (try_expect('AST_Symbol', ';'));
 	my $res = parse_declaration() // parse_opt_expr(';');
-	die "fun declaration in for init" if ($res->{tag} eq 'FunDeclaration');
+	die "fun declaration in for init" if ($res->is('AST_FunDeclaration'));
 	return $res;
 }
 
 sub parse_opt_expr {
 	my $end_symbol = shift;
-	unless (try_expect('Symbol', $end_symbol)) {
+	unless (try_expect('Lex_Symbol', $end_symbol)) {
 		my $expr = parse_expr(0);
-		expect('Symbol', $end_symbol);
+		expect('Lex_Symbol', $end_symbol);
 		return $expr;
 	}
 	return undef;
 }
 
 sub parse_expr {
+	# TODO 
 	my $min_prec = shift;
 	my $left = parse_factor();
 	while (my ($op) = ::extract(peek(), 'Operator')) {
@@ -303,7 +303,8 @@ sub peek {
 
 sub try_expect {
 	my ($tag, @possible_vals) = @_;
-	if (peek()->{tag} eq $tag && (!@possible_vals || grep { peek()->{values}[0] eq $_ } @possible_vals)) {
+	my $next = peek();
+	if ($next->is($tag) && (!@possible_vals || grep { $next->val_by_index(0) eq $_ } @possible_vals)) {
 		return shift @TOKENS;
 	}	
 	return 0;
@@ -311,11 +312,7 @@ sub try_expect {
 
 sub expect {
 	my ($tag, $val) = @_;
-	my $found = shift @TOKENS // die "expected: $tag '$val', but no more tokens";
-	if ($found->{tag} eq $tag && (!defined $val || $found->{values}[0] eq $val)) {
-		return $found;
-	}	
-	die "syntax err -> expected: $tag '$val', but found: $found";
+	return try_expect($tag, $val) || die("syntax err -> expected: $tag '$val', but found: " . peek());
 }
 
 1;

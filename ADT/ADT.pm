@@ -63,4 +63,9 @@ sub fields_order {
 	return $type_info{$self->{_tag}}->{param_names}->@*;
 }
 
+sub val_by_index {
+	my ($self, $i) = @_; 
+	return $self->{$type_info{$self->{_tag}}->{param_names}->[$i]};
+}
+
 1;

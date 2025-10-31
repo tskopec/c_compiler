@@ -23,6 +23,7 @@ my @src_files;
 my $target_phase = "";
 my $dont_link = 0;
 
+
 foreach (@ARGV) {
 	if (/\.c$/) {
 		push @src_files, $_;
