@@ -68,13 +68,16 @@ sub validate_arg {
 	die "undef type for arg $arg" unless defined $type;
 
 	if (!defined $arg) {
-		substr($type, -1) eq '?' ? return : die "undef arg for non-optional type $type";
+		 die "undef arg for non-optional type $type" if (substr($type, -1) ne '?');
+		 return;
 	}
 	if (substr($type, -1) eq '*') {
 		die "$arg not an array" if (ref($arg) ne 'ARRAY');
 		my $elem_type = substr($type, 0, -1);
 		validate_arg($_, $elem_type) for $arg->@*;
+		return;
 	}
+
 	if ($type =~ /^Integer[?*]?$/) {
 		die "$arg not int" if ($arg !~ /^\d+$/);
 	} elsif ($type =~ /^String[?*]?$/) {
@@ -82,8 +85,8 @@ sub validate_arg {
 	} elsif ($type =~ /^Bool[?*]?$/) {
 		die "$arg not bool" if ($arg != 0 && $arg != 1);
 	} else {
-		die "$arg not ADT" unless ($arg isa 'ADT');
-		die "$arg not $type" unless ($arg->is($type));
+		do { do '/home/tom/bin/perl/stacktracer.pl'; die "$arg not ADT"} unless ($arg isa 'ADT');
+		die "$arg not $type" unless ($arg->is($type =~ s/[*?]$//r));
 	}	
 }
 

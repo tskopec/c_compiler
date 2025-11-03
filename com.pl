@@ -67,10 +67,10 @@ sub compile {
 	say(join("\n", @tokens) . "\n") if $debug;
 	return if ($target_phase eq 'lex'); 	
 
-	#	# PARSE
-		my $ast = Parser::parse(@tokens);
-	#	print_AST($ast) if $debug;
-	#	return if ($target_phase eq 'parse');
+#	# PARSE
+	my $ast = Parser::parse(@tokens);
+	$ast->print_tree() if $debug;
+	return if ($target_phase eq 'parse');
 	#
 	#	# SEMANTICS
 	#	Semantics::run($ast);

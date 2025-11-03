@@ -1,7 +1,7 @@
 package ADT;
 use strict;
 use warnings;
-use feature qw(say);
+use feature qw(say isa current_sub);
 
 use overload
 	'""' => sub {
@@ -61,6 +61,24 @@ sub values_in_order {
 sub fields_order {
 	my $self = shift;
 	return $constructor_info{$self->{_tag}}->{param_names}->@*;
+}
+
+sub print_tree {
+	my $tab = "  ";
+	my $print_node = sub {
+		my ($node, $indent) = @_;
+		if ($node isa ADT) {
+			say(($tab x $indent) . $node->{_tag});
+			__SUB__->($_, $indent + 1) for $node->values_in_order();
+		} elsif (ref($node) eq 'ARRAY') {
+			say(($tab x $indent) . 'array:');
+			__SUB__->($_, $indent + 1) for $node->@*;
+		} else {
+			say(($tab x $indent) . ($node // 'undef'));
+		}
+	};
+	$print_node->(shift(), 0);
+	print "\n";
 }
 
 1;

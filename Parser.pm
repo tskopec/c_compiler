@@ -101,7 +101,11 @@ sub parse_block {
 }
 
 sub parse_block_item {
-	return parse_declaration() // parse_statement();
+	my $decl = parse_declaration();
+	return AST_BlockDeclaration($decl) if (defined $decl);
+	my $stat = parse_statement();
+	return AST_BlockStatement($stat) if (defined $stat);
+	die "cant parse block item";
 }
 
 sub parse_statement {
@@ -270,7 +274,7 @@ sub parse_unop {
 		'~' => AST_Complement(),
 		'!' => AST_Not(),
 	};
-	return $map->{op} // die "unknown unop $op"; 
+	return $map->{$op} // die "unknown unop $op"; 
 }
 
 sub parse_binop {
@@ -290,7 +294,7 @@ sub parse_binop {
 		'>'  => AST_GreaterThan(),
 		'>=' => AST_GreaterOrEqual(),
 	};
-	return $map->{op} // die "unknown binop $op";
+	return $map->{$op} // die "unknown binop $op";
 }
 
 sub precedence {
@@ -315,7 +319,7 @@ sub try_expect {
 	my ($tag, @possible_vals) = @_;
 	my $next = peek();
 	if ($next->is($tag)) {
-		my $val = (values %$next)[0]; 
+		my $val = ($next->values_in_order())[0]; 
 		return shift @TOKENS if (!@possible_vals || grep { $val eq $_ } @possible_vals);
 	}
 	return 0;
