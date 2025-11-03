@@ -40,7 +40,7 @@ BEGIN {
 		AST_Statement =
 			AST_Null
 			| AST_Return(AST_Expression expr)
-			| AST_AST_Expression(AST_Expression expr)
+			| AST_ExprStatement(AST_Expression expr)
 			| AST_If(AST_Expression cond, AST_Statement then, AST_Statement? else)
 			| AST_Compound(AST_Block block)
 			| AST_Break(String label)
@@ -187,7 +187,7 @@ BEGIN {
 			ASM_Add | ASM_Sub | ASM_Mult
 	});
 	declare(q{
-		ASM_ASM_Operand =
+		ASM_Operand =
 			ASM_Imm(Integer int)
 			| ASM_Reg(ASM_Register reg)
 			| ASM_Pseudo(String ident)
@@ -195,7 +195,7 @@ BEGIN {
 			| ASM_Data(String ident)
 	});
 	declare(q{
-		ASM_ASM_CondCodeCode =
+		ASM_CondCode =
 			E | NE | G | GE | L | LE
 	});
 	declare(q{

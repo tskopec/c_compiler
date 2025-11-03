@@ -34,12 +34,14 @@ sub declare {
 	
 	for my $variant (@variants) {
 		my $constr_tag = shift @$variant // die "$base_type: no tag";
+		push($ADT::type_info{$base_type}->{variants}->@*, $constr_tag);
+
 		my $i = 0;
 		my ($param_types, $param_names) = part { $i++ % 2 } @$variant;
 		$param_types //= [];
 		$param_names //= [];
 		die "$constr_tag: nums of param names/types not equal" unless (@$param_types == @$param_names);
-		$ADT::type_info{$constr_tag} = {
+		$ADT::constructor_info{$constr_tag} = {
 			param_names => $param_names,
 			param_types => $param_types,
 		};

@@ -1,7 +1,7 @@
 package Parser;
 use strict;
 use warnings;
-use feature qw(say state);
+use feature qw(say state signatures);
 
 use Types;
 
@@ -25,6 +25,7 @@ sub parse_declaration {
 	return undef unless @specs;
 	my ($type, $storage_class) = @specs;
 	die "missing type" unless defined $type;
+
 	my $name = parse_identifier();
 	if (try_expect('Lex_Symbol', '(')) {
 		my $params = parse_params_list();
@@ -43,9 +44,10 @@ sub parse_declaration {
 sub parse_specifiers {
 	my (@storage_specs, @type_specs);
 	while (1) {
-		if (my $kw = try_expect('Lex_Keyword', 'int', 'long')) {
+		my $kw;
+		if ($kw = try_expect('Lex_Keyword', 'int', 'long')) {
 			push @type_specs, $kw->{word};
-		} elsif (my $kw = try_expect('Lex_Keyword', 'static', 'extern')) {
+		} elsif ($kw = try_expect('Lex_Keyword', 'static', 'extern')) {
 			push @storage_specs, $kw->{word};
 		} else { last }
 	}
@@ -168,26 +170,27 @@ sub parse_opt_expr {
 }
 
 sub parse_expr {
-	# TODO 
 	my $min_prec = shift;
 	my $left = parse_factor();
-	while (my ($op) = ::extract(peek(), 'Operator')) {
+	while ((peek())->is('Lex_Operator')) {
+		my $op = (peek())->{op};
 		last if $op eq ':';
 		last if precedence($op) < $min_prec;
 		if ($op eq '=') {
 			shift @TOKENS;
 			my $right = parse_expr(precedence($op));
-			$left = ::Assignment($left, $right, "dummy_type");
+			$left = AST_Assignment($left, $right, DummyType());
 		} elsif ($op eq '?') {
 			shift @TOKENS;
 			my $then = parse_expr(0);
-			expect('Operator', ':');
+			expect('Lex_Operator', ':');
 			my $else = parse_expr(precedence($op));
-			$left = ::Conditional($left, $then, $else, "dummy_type");
+			$left = AST_Conditional($left, $then, $else, DummyType());
 		} else {
-			my $op_node = parse_binop(shift @TOKENS);
+			my $op_token = shift @TOKENS;
+			my $op_node = parse_binop($op_token->{op});
 			my $right = parse_expr(precedence($op) + 1);
-			$left = ::Binary($op_node, $left, $right, "dummy_type");
+			$left = AST_Binary($op_node, $left, $right, DummyType());
 		}
 	}
 	return $left;
@@ -195,44 +198,51 @@ sub parse_expr {
 
 sub parse_factor {
 	my $token = shift @TOKENS;
-	match ($token) {
-		with (IntConstant $val)  { return parse_constant('int', $val); }
-		with (LongConstant $val) { return parse_constant('long', $val); }
-		with (Identifier $name) { 
-			if (try_expect('Symbol', '(')) {
-				return ::FunctionCall($name, [], "dummy_type") if (try_expect('Symbol', ')'));
+	my $result = $token->match({
+		Lex_IntConstant => sub($val) {
+			return parse_constant('int', $val);
+		},
+		Lex_LongConstant => sub($val) {
+			return parse_constant('long', $val);
+		},
+		Lex_Identifier => sub($name) {
+			if (try_expect('Lex_Symbol', '(')) {
+				return AST_FunctionCall($name, [], DummyType()) if (try_expect('Lex_Symbol', ')'));
 				my @args;
 				while (1) {
 					push(@args, parse_expr(0));
-					last if (try_expect('Symbol', ')'));
-					expect('Symbol', ',');
+					last if (try_expect('Lex_Symbol', ')'));
+					expect('Lex_Symbol', ',');
 				}
-				return ::FunctionCall($name, \@args, "dummy_type");
+				return AST_FunctionCall($name, \@args, DummyType());
 			} else {
-				return ::Var($name, "dummy_type");
+				return AST_Var($name, DummyType());
 			}
-	   	}
-		with (Operator $op) {
-			my $op_node = parse_unop($token);
-			return ::Unary($op_node, parse_factor(), "dummy_type");
-		}
-		with (Symbol $char) {
+		},
+		Lex_Operator => sub($op) {
+			my $op_node = parse_unop($op);
+			return AST_Unary($op_node, parse_factor(), DummyType());
+		},
+		Lex_Symbol => sub($char) {
 			if ($char eq '(') {
 				my ($type, $storage) = parse_specifiers();
 				die "storage specifier in cast" if (defined $storage);
 				if (defined $type) {
 					expect("Symbol", ")");
 					my $expr = parse_expr(100);
-					return ::Cast($expr, $type);
+					return AST_Cast($expr, $type);
 				} else {
 					my $inner = parse_expr(0);
 					expect("Symbol", ")");
 					return $inner;
 				}
 			}
+		},
+		default => sub {
+			die "cant parse $token as factor";
 		}
-	}
-	die "cant parse $token as factor";
+	});
+	return $result;
 }
 
 sub parse_constant {
@@ -242,45 +252,45 @@ sub parse_constant {
 	if ($val > $max_long) {
 		die "constant too large for long $val";
 	} elsif ($type eq 'int' && $val < $max_int) {
-		return ::ConstantExpr(::ConstInt($val), ::Int());
+		return AST_ConstantExpr(AST_ConstInt($val), Int());
 	} else {
-		return ::ConstantExpr(::ConstLong($val), ::Long());
+		return AST_ConstantExpr(AST_ConstLong($val), Long());
 	}
 }
 
 sub parse_identifier {
-	my ($name) = ::extract_or_die(shift @TOKENS, 'Identifier');
-	return $name;
+	my $token = shift @TOKENS;
+	return $token->is('Lex_Identifier') ? $token->{name} : die  "$token not identifier";
 }
 
 sub parse_unop {
-	my ($op) = ::extract_or_die(shift(), "Operator");
+	my $op = shift;
 	state $map = {
-		'-' => ::Negate(),
-		'~' => ::Complement(),
-		'!' => ::Not(),
+		'-' => AST_Negate(),
+		'~' => AST_Complement(),
+		'!' => AST_Not(),
 	};
-	return $map->{$op} // die "unknown unop $op";
+	return $map->{op} // die "unknown unop $op"; 
 }
 
 sub parse_binop {
-	my ($op) = ::extract_or_die(shift, "Operator");
+	my $op = shift;
 	state $map = {
-		'+' => ::Add(),
-		'-' => ::Subtract(),
-		'*' => ::Multiply(),
-		'/' => ::Divide(),
-		'%' => ::Modulo(),
-		'&&' => ::And(),
-		'||' => ::Or(),
-		'==' => ::Equal(),
-		'!=' => ::NotEqual(),
-		'<'  => ::LessThan(),
-		'<=' => ::LessOrEqual(),
-		'>'  => ::GreaterThan(),
-		'>=' => ::GreaterOrEqual(),
+		'+' => AST_Add(),
+		'-' => AST_Subtract(),
+		'*' => AST_Multiply(),
+		'/' => AST_Divide(),
+		'%' => AST_Modulo(),
+		'&&' => AST_And(),
+		'||' => AST_Or(),
+		'==' => AST_Equal(),
+		'!=' => AST_NotEqual(),
+		'<'  => AST_LessThan(),
+		'<=' => AST_LessOrEqual(),
+		'>'  => AST_GreaterThan(),
+		'>=' => AST_GreaterOrEqual(),
 	};
-	return $map->{$op} // die "unknown binop $op";
+	return $map->{op} // die "unknown binop $op";
 }
 
 sub precedence {
@@ -304,9 +314,10 @@ sub peek {
 sub try_expect {
 	my ($tag, @possible_vals) = @_;
 	my $next = peek();
-	if ($next->is($tag) && (!@possible_vals || grep { $next->val_by_index(0) eq $_ } @possible_vals)) {
-		return shift @TOKENS;
-	}	
+	if ($next->is($tag)) {
+		my $val = (values %$next)[0]; 
+		return shift @TOKENS if (!@possible_vals || grep { $val eq $_ } @possible_vals);
+	}
 	return 0;
 }
 

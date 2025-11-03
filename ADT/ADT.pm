@@ -12,13 +12,14 @@ use overload
 
 
 our %type_info;
+our %constructor_info;
 
 sub new {
 	my ($class, $base_type, $tag, @args) = @_;
 	my %map = (
 		_tag => $tag, _base_type => $base_type
 	);
-	my @param_names = $type_info{$tag}->{param_names}->@*;
+	my @param_names = $constructor_info{$tag}->{param_names}->@*;
 	while (my ($i, $arg) = each @args) {
 		$map{$param_names[$i]} = $arg;
 	}
@@ -44,13 +45,12 @@ sub index_of_in {
 }
 
 sub match {
-	my ($self, $tag) = @_;
-	if ($self->{_tag} eq $tag) {
-		my @vals = $self->values_in_order();
-		return @vals ? @vals : (1);
-	} else {
-		return ();
+	my ($self, $cases) = @_;
+	if (!exists $cases->{default} && grep { !exists $cases->{$_} } $type_info{$self->{_base_type}}->{variants}->@*) {
+		die "cases for type " . $self->{_base_type} . " not exhausted:\n" . (join "\n", keys %$cases);
 	}
+	my $sub = $cases->{$self->{_tag}} // $cases->{default} ;
+	$sub->($self->values_in_order());
 }
 
 sub values_in_order {
@@ -60,12 +60,7 @@ sub values_in_order {
 
 sub fields_order {
 	my $self = shift;
-	return $type_info{$self->{_tag}}->{param_names}->@*;
-}
-
-sub val_by_index {
-	my ($self, $i) = @_; 
-	return $self->{$type_info{$self->{_tag}}->{param_names}->[$i]};
+	return $constructor_info{$self->{_tag}}->{param_names}->@*;
 }
 
 1;

@@ -9,7 +9,7 @@ use lib "./ADT";
 
 use Types;
 use Lexer;
-#use Parser;
+use Parser;
 #use Semantics;
 #use TAC;
 #use CodeGen;
@@ -68,7 +68,7 @@ sub compile {
 	return if ($target_phase eq 'lex'); 	
 
 	#	# PARSE
-	#	my $ast = Parser::parse(@tokens);
+		my $ast = Parser::parse(@tokens);
 	#	print_AST($ast) if $debug;
 	#	return if ($target_phase eq 'parse');
 	#
