@@ -3,8 +3,7 @@ use strict;
 use warnings;
 use feature qw(say isa);
 
-use List::MoreUtils qw(part);
-
+use lib "./ADT";
 use ADT;
 
 require Exporter;
@@ -20,12 +19,14 @@ sub import {
 
 
 sub declare {
-	my @asdl_tokens = split(/[\s)(]+/, trim(shift));
-	my $base_type = shift @asdl_tokens // die "no tokens";
-	my @variants;
+	my @asdl_tokens = split(/[\s)(,]+/, trim(shift));
+	my $base_type = valid_name(shift @asdl_tokens);
+	die "bad syntax: no '='" if (shift(@asdl_tokens) ne '=');
 
+	my @variants = ([]);
 	for my $token (@asdl_tokens) {
-		if ($token =~ /[=|]/) {
+		next if ($token eq '');
+		if ($token eq '|') {
 			push @variants, [];
 		} else {
 			push $variants[-1]->@*, $token;
@@ -33,21 +34,25 @@ sub declare {
 	}
 	
 	for my $variant (@variants) {
-		my $constr_tag = shift @$variant // die "$base_type: no tag";
+		my $constr_tag = valid_name(shift @$variant);
 		push($ADT::type_info{$base_type}->{variants}->@*, $constr_tag);
 
-		my $i = 0;
-		my ($param_types, $param_names) = part { $i++ % 2 } @$variant;
-		$param_types //= [];
-		$param_names //= [];
-		die "$constr_tag: nums of param names/types not equal" unless (@$param_types == @$param_names);
+		my (@param_types, @param_names);
+		while (my ($i, $token) = each @$variant) {
+			if ($i++ % 2 == 0) {
+				push(@param_types, to_type($token));
+			} else {
+				push(@param_names, valid_name($token));
+			}
+		}
+		die "$constr_tag: nums of param names/types not equal" if (@param_types != @param_names);
 		$ADT::constructor_info{$constr_tag} = {
-			param_names => $param_names,
-			param_types => $param_types,
+			param_names => \@param_names,
+			param_types => \@param_types,
 		};
 
 		my $constructor_sub = sub {
-			validate_args(\@_, $param_types);
+			validate_args(\@_, \@param_types);
 			return ADT->new($base_type, $constr_tag, @_);
 		};
 		{ no strict 'refs'; *{$constr_tag} = $constructor_sub; }	
@@ -55,38 +60,44 @@ sub declare {
 	}
 }
 
+sub valid_name {
+	die("bad name: " . $_[0]) if (!defined $_[0] || $_[0] !~ /^\w+$/);
+	return $_[0];
+}
+
+sub to_type {
+	my ($name, $is_opt, $is_arr) = $_[0] =~ /^(\w+)(\?)?(\*)?$/;
+	die("bad type: " . $_[0]) if (!defined $name || ($is_opt && $is_arr));
+	return { full_name => $_[0], name => $name, optional => !!$is_opt, array => !!$is_arr };
+}	
+
 sub validate_args {
 	my ($args, $types) = @_;
-	die "args/types mismatch: @$args / @$types" if (@$args != @$types);
+	die "num of args/types mismatch: @$args / @$types" if (@$args != @$types);
 	for my $i (0..$#$args) {
-		validate_arg($args->[$i], $types->[$i]);
+		my ($arg, $type) = ($args->[$i], $types->[$i]);
+		if (!defined $arg) {
+			die("undef arg for type " . $type->{full_name}) unless ($type->{optional});
+		} elsif ($type->{array}) {
+			die("non-array $arg for type " . $type->{full_name}) unless (ref($arg) eq 'ARRAY');
+			validate_arg($_, $type->{name}) for $arg->@*;
+		} else {
+			validate_arg($arg, $type->{name});
+		}
 	}
 }
 
 sub validate_arg {
-	my ($arg, $type) = @_;
-	die "undef type for arg $arg" unless defined $type;
-
-	if (!defined $arg) {
-		 die "undef arg for non-optional type $type" if (substr($type, -1) ne '?');
-		 return;
-	}
-	if (substr($type, -1) eq '*') {
-		die "$arg not an array" if (ref($arg) ne 'ARRAY');
-		my $elem_type = substr($type, 0, -1);
-		validate_arg($_, $elem_type) for $arg->@*;
-		return;
-	}
-
-	if ($type =~ /^Integer[?*]?$/) {
+	my ($arg, $type_name) = @_;
+	if ($type_name eq 'Integer') {
 		die "$arg not int" if ($arg !~ /^\d+$/);
-	} elsif ($type =~ /^String[?*]?$/) {
+	} elsif ($type_name eq 'String') {
 		;
-	} elsif ($type =~ /^Bool[?*]?$/) {
-		die "$arg not bool" if ($arg != 0 && $arg != 1);
+	} elsif ($type_name eq 'Bool') {
+		die "$arg not bool" if ($arg =~ /[^01]/);
 	} else {
-		do { do '/home/tom/bin/perl/stacktracer.pl'; die "$arg not ADT"} unless ($arg isa 'ADT');
-		die "$arg not $type" unless ($arg->is($type =~ s/[*?]$//r));
+		die "$arg not ADT"	 unless ($arg isa 'ADT');
+		die "$arg not $type_name" unless ($arg->is($type_name));
 	}	
 }
 

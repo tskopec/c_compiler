@@ -5,7 +5,6 @@ use feature qw(say);
 use File::Slurp;
 
 use lib ".";
-use lib "./ADT";
 
 use Types;
 use Lexer;
