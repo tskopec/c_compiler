@@ -46,7 +46,7 @@ sub index_of_in {
 
 sub match {
 	my ($self, $cases) = @_;
-	if (!exists $cases->{default} && grep { !exists $cases->{$_} } $type_info{$self->{_base_type}}->{variants}->@*) {
+	if (!exists $cases->{default} && grep { !exists $cases->{$_} } $type_info{$self->{_base_type}}->{constructors}->@*) {
 		die "cases for type " . $self->{_base_type} . " not exhausted:\n" . (join "\n", keys %$cases);
 	}
 	my $sub = $cases->{$self->{_tag}} // $cases->{default} ;

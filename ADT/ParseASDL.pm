@@ -18,37 +18,39 @@ sub import {
 }
 
 
-sub declare {
-	my @asdl_tokens = split(/[\s)(,]+/, trim(shift));
-	my $base_type = valid_name(shift @asdl_tokens);
-	die "bad syntax: no '='" if (shift(@asdl_tokens) ne '=');
+my $type_name_re = qr/[A-Z]\w*|int|string|bool/;
+my $param_name_re = qr/\w+/;
 
-	my @variants = ([]);
+sub declare {
+	my @asdl_tokens = map { length ? $_ : () } split(/[\s)(,]+/, shift);
+	my $base_type = valid_name(shift @asdl_tokens, $type_name_re);
+	die "bad syntax: no =" if (shift(@asdl_tokens) ne '=');
+
+	my @constructors = ([]);
 	for my $token (@asdl_tokens) {
-		next if ($token eq '');
 		if ($token eq '|') {
-			push @variants, [];
+			push @constructors, [];
 		} else {
-			push $variants[-1]->@*, $token;
+			push $constructors[-1]->@*, $token;
 		}
 	}
 	
-	for my $variant (@variants) {
-		my $constr_tag = valid_name(shift @$variant);
-		push($ADT::type_info{$base_type}->{variants}->@*, $constr_tag);
+	for my $constructor (@constructors) {
+		my $constr_tag = valid_name(shift @$constructor, $type_name_re);
+		push($ADT::type_info{$base_type}->{constructors}->@*, $constr_tag);
 
 		my (@param_types, @param_names);
-		while (my ($i, $token) = each @$variant) {
+		while (my ($i, $token) = each @$constructor) {
 			if ($i++ % 2 == 0) {
 				push(@param_types, to_type($token));
 			} else {
-				push(@param_names, valid_name($token));
+				push(@param_names, valid_name($token, $param_name_re));
 			}
 		}
 		die "$constr_tag: nums of param names/types not equal" if (@param_types != @param_names);
 		$ADT::constructor_info{$constr_tag} = {
-			param_names => \@param_names,
 			param_types => \@param_types,
+			param_names => \@param_names,
 		};
 
 		my $constructor_sub = sub {
@@ -61,19 +63,21 @@ sub declare {
 }
 
 sub valid_name {
-	die("bad name: " . $_[0]) if (!defined $_[0] || $_[0] !~ /^\w+$/);
-	return $_[0];
+	my ($name, $re) = @_; 
+	return ($name =~ /^$re$/) ? $name : die "bad name: $name";
 }
 
 sub to_type {
-	my ($name, $is_opt, $is_arr) = $_[0] =~ /^(\w+)(\?)?(\*)?$/;
-	die("bad type: " . $_[0]) if (!defined $name || ($is_opt && $is_arr));
-	return { full_name => $_[0], name => $name, optional => !!$is_opt, array => !!$is_arr };
+	my ($name, $is_opt, $is_arr) = $_[0] =~ /^($type_name_re)(\?)?(\*)?$/;
+	return (defined $name && !(length($is_opt) && length($is_arr))) 
+		? { full_name => $_[0], name => $name, optional => length $is_opt, array =>  length $is_arr }
+		: die "bad type: " . $_[0];
 }	
 
 sub validate_args {
 	my ($args, $types) = @_;
-	die "num of args/types mismatch: @$args / @$types" if (@$args != @$types);
+	die(sprintf("num of args/types mismatch: %d / %d", scalar(@$args), scalar(@$types))) if (@$args != @$types);
+
 	for my $i (0..$#$args) {
 		my ($arg, $type) = ($args->[$i], $types->[$i]);
 		if (!defined $arg) {
@@ -89,20 +93,13 @@ sub validate_args {
 
 sub validate_arg {
 	my ($arg, $type_name) = @_;
-	if ($type_name eq 'Integer') {
-		die "$arg not int" if ($arg !~ /^\d+$/);
-	} elsif ($type_name eq 'String') {
-		;
-	} elsif ($type_name eq 'Bool') {
-		die "$arg not bool" if ($arg =~ /[^01]/);
-	} else {
+	if ($type_name =~ /^[A-Z]/) {
 		die "$arg not ADT"	 unless ($arg isa 'ADT');
-		die "$arg not $type_name" unless ($arg->is($type_name));
-	}	
-}
-
-sub trim {
-	return $_[0] =~ s/^\s+|\s+$//rg;
+		die "$arg not $type_name" unless ($arg->{_base_type} eq $type_name);
+	} elsif ($type_name eq 'int') {
+		die "$arg not int" if ($arg !~ /^-?\d+$/);
+	} 
+	# bool a string asi cokoliv	
 }
 
 1;

@@ -4,17 +4,22 @@ use warnings;
 
 use ADT::ParseASDL;
 
+sub import {
+	shift;
+	ADT::ParseASDL->import(@_);
+}
+
 BEGIN {
 
 # Lex ###
 	declare(q{
 		Lex_Token =
-			Lex_Identifier(String name)
-			| Lex_IntConstant(Integer val)
-			| Lex_LongConstant(Integer val)
-			| Lex_Keyword(String word)
-			| Lex_Symbol(String char)
-			| Lex_Operator(String op)
+			Lex_Identifier(string name)
+			| Lex_IntConstant(int val)
+			| Lex_LongConstant(int val)
+			| Lex_Keyword(string word)
+			| Lex_Symbol(string char)
+			| Lex_Operator(string op)
 	});
 
 # AST ###
@@ -24,8 +29,8 @@ BEGIN {
 	});
 	declare(q{
 		AST_Declaration =
-			AST_VarDeclaration(String name, AST_Expression? initializer, Type type, StorageClass? storage)
-			| AST_FunDeclaration(String name, AST_VarDeclaration* params, AST_Block? body, Type type, StorageClass? storage)
+			AST_VarDeclaration(string name, AST_Expression? initializer, Type type, StorageClass? storage)
+			| AST_FunDeclaration(string name, AST_VarDeclaration* params, AST_Block? body, Type type, StorageClass? storage)
 	});
 	declare(q{
 		AST_Block =
@@ -43,11 +48,11 @@ BEGIN {
 			| AST_ExprStatement(AST_Expression expr)
 			| AST_If(AST_Expression cond, AST_Statement then, AST_Statement? else)
 			| AST_Compound(AST_Block block)
-			| AST_Break(String label)
-			| AST_Continue(String label)
-			| AST_While(AST_Expression cond, AST_Statement body, String label)
-			| AST_DoWhile(AST_Statement body, AST_Expression cond, String label)
-			| AST_For(AST_ForInit init, AST_Expression? cond, AST_Expression? post, Statement body, String label)
+			| AST_Break(string label)
+			| AST_Continue(string label)
+			| AST_While(AST_Expression cond, AST_Statement body, string label)
+			| AST_DoWhile(AST_Statement body, AST_Expression cond, string label)
+			| AST_For(AST_ForInit init, AST_Expression? cond, AST_Expression? post, Statement body, string label)
 	});
 	declare(q{
 		AST_ForInit =
@@ -57,13 +62,13 @@ BEGIN {
 	declare(q{
 		AST_Expression =
 			 AST_ConstantExpr(AST_Constant constant, Type type)
-			 | AST_Var(String ident, Type type)
+			 | AST_Var(string ident, Type type)
 			 | AST_Cast(AST_Expression expr, Type target)
 			 | AST_Unary(AST_UnaryOperator op, AST_Expression expr, Type type)
 			 | AST_Binary(AST_BinaryOperator op, AST_Expression expr1, AST_Expression expr2, Type type)
 			 | AST_Assignment(AST_Expression lhs, AST_Expression rhs, Type type)
 			 | AST_Conditional(AST_Expression cond, AST_Expression then, AST_Expression else, Type type)
-			 | AST_FunctionCall(String ident, AST_Expression args, Type type)
+			 | AST_FunctionCall(string ident, AST_Expression args, Type type)
 	});
 	declare(q{
 		AST_UnaryOperator =
@@ -75,8 +80,8 @@ BEGIN {
 	});
 	declare(q{
 		AST_Constant =
-			AST_ConstInt(Integer val)
-			| AST_ConstLong(Integer val)
+			AST_ConstInt(int val)
+			| AST_ConstLong(int val)
 	});
 
 # Types & misc
@@ -89,8 +94,8 @@ BEGIN {
 	});
 	declare(q{
 		IdentifierAttrs =
-			FunAttrs(Bool defined, Bool global)
-			| StaticAttrs(InitialValue init_val, Bool global)
+			FunAttrs(bool defined, bool global)
+			| StaticAttrs(InitialValue init_val, bool global)
 			| LocalAttrs
 	});
 	declare(q{
@@ -101,8 +106,8 @@ BEGIN {
 	});
 	declare(q{
 		StaticInit =
-			IntInit(Integer val)
-			| LongInit(Integer val)
+			IntInit(int val)
+			| LongInit(int val)
 	});
 	declare(q{
 		StorageClass =
@@ -116,8 +121,8 @@ BEGIN {
 	});
 	declare(q{
 		TAC_TopLevelDeclaration =
-			TAC_StaticVariable(String identifier, Bool global, Type type, StaticInit static_init)
-			| TAC_Function(String identifier, Bool global, String* params, TAC_Instruction* instructions)
+			TAC_StaticVariable(string identifier, bool global, Type type, StaticInit static_init)
+			| TAC_Function(string identifier, bool global, string* params, TAC_Instruction* instructions)
 	});
 	declare(q{
 		TAC_Instruction =
@@ -127,16 +132,16 @@ BEGIN {
 			| TAC_Unary(TAC_UnaryOperator op, TAC_Value src, TAC_Value dst)
 			| TAC_Binary(TAC_BinaryOperator op, TAC_Value val1, TAC_Value val2, TAC_Value dst)
 			| TAC_Copy(TAC_Value src, TAC_Value dst)
-			| TAC_Jump(String target)
-			| TAC_JumpIfZero(TAC_Value cond, String target)
-			| TAC_JumpIfNotZero(TAC_Value cond, String target)
-			| TAC_Label(String ident)
-			| TAC_FunCall(String name, TAC_Value* params, TAC_Value dst)
+			| TAC_Jump(string target)
+			| TAC_JumpIfZero(TAC_Value cond, string target)
+			| TAC_JumpIfNotZero(TAC_Value cond, string target)
+			| TAC_Label(string ident)
+			| TAC_FunCall(string name, TAC_Value* params, TAC_Value dst)
 	});
 	declare(q{
 		TAC_Value =
 			TAC_Constant(Constant constant)
-			| TAC_Variable(String name)
+			| TAC_Variable(string name)
 	});
 	declare(q{
 		TAC_UnaryOperator =
@@ -158,8 +163,8 @@ BEGIN {
 	});
 	declare(q{
 		ASM_TopLevelDeclaration =
-			ASM_StaticVariable(String name, Bool global, Integer alignment, StaticInit static_init)
-			| ASM_Function(String name, Bool global, Instruction* instructions)
+			ASM_StaticVariable(string name, bool global, int alignment, StaticInit static_init)
+			| ASM_Function(string name, bool global, Instruction* instructions)
 	});
 	declare(q{
 		ASM_Instruction =
@@ -170,12 +175,12 @@ BEGIN {
 			| ASM_Cmp(ASM_OperandSize opsize, ASM_Operand operand1, ASM_Operand operand2)
 			| ASM_Idiv(ASM_OperandSize opsize, ASM_Operand operand)
 			| ASM_Cdq(ASM_OperandSize opsize)
-			| ASM_Jmp(String String)
-			| ASM_JmpCC(ASM_CondCode cond, String target)
+			| ASM_Jmp(string target)
+			| ASM_JmpCC(ASM_CondCode cond, string target)
 			| ASM_SetCC(ASM_CondCode cond, ASM_Operand operand)
-			| ASM_Label(String ident)
+			| ASM_Label(string ident)
 			| ASM_Push(ASM_Operand operand)
-			| ASM_Call(String ident)
+			| ASM_Call(string ident)
 			| ASM_Ret
 	});
 	declare(q{
@@ -188,11 +193,11 @@ BEGIN {
 	});
 	declare(q{
 		ASM_Operand =
-			ASM_Imm(Integer int)
+			ASM_Imm(int int)
 			| ASM_Reg(ASM_Register reg)
-			| ASM_Pseudo(String ident)
-			| ASM_Stack(Integer offset)
-			| ASM_Data(String ident)
+			| ASM_Pseudo(string ident)
+			| ASM_Stack(int offset)
+			| ASM_Data(string ident)
 	});
 	declare(q{
 		ASM_CondCode =
@@ -203,11 +208,6 @@ BEGIN {
 			AX | CX | DX | DI | SI | R8 | R9 | R10 | R11 | SP
 	});
 
-}
-
-sub import {
-	shift;
-	ADT::ParseASDL->import(@_);
 }
 
 1;
