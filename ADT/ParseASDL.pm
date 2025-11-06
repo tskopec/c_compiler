@@ -3,19 +3,19 @@ use strict;
 use warnings;
 use feature qw(say isa);
 
-use lib "./ADT";
-use ADT;
+use ADT::ADT;
 
-require Exporter;
-our @ISA = qw(Exporter);
-our @EXPORT = qw(declare);
-
-BEGIN {
-	#	$Exporter::Verbose = 1;
-}
-sub import {
-	ADT::ParseASDL->export_to_level(2, @_);
-}
+#require Exporter;
+#our @ISA = qw(Exporter);
+#our @EXPORT = qw(declare);
+#
+#BEGIN {
+#	#	$Exporter::Verbose = 1;
+#}
+#sub import {
+#	say "import asdl";
+#	ADT::ParseASDL->export_to_level(2, @_);
+#}
 
 
 my $type_name_re = qr/[A-Z]\w*|int|string|bool/;
@@ -35,6 +35,7 @@ sub declare {
 		}
 	}
 	
+	my %constructor_subs;
 	for my $constructor (@constructors) {
 		my $constr_tag = valid_name(shift @$constructor, $type_name_re);
 		push($ADT::type_info{$base_type}->{constructors}->@*, $constr_tag);
@@ -57,9 +58,9 @@ sub declare {
 			validate_args(\@_, \@param_types);
 			return ADT->new($base_type, $constr_tag, @_);
 		};
-		{ no strict 'refs'; *{$constr_tag} = $constructor_sub; }	
-		push(@EXPORT, $constr_tag);
+		$constructor_subs{$constr_tag} = $constructor_sub;
 	}
+	return %constructor_subs;
 }
 
 sub valid_name {

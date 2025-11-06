@@ -6,13 +6,19 @@ use File::Slurp;
 
 use lib ".";
 
-use Types;
-use Lexer;
-use Parser;
+use ADT::AlgebraicTypes qw(Lex_Symbol);
+#use Types;
+#use Lexer;
+#use Parser;
 #use Semantics;
 #use TAC;
 #use CodeGen;
 #use Emitter;
+
+my $l = Lex_Symbol(";");
+say "in com.pl " . $l;
+
+die "konec test";
 
 our $global_counter = 0;
 
