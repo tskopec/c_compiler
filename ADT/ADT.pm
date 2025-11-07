@@ -1,7 +1,7 @@
-package ADT;
+package ADT::ADT;
 use strict;
 use warnings;
-use feature qw(say isa current_sub);
+use feature qw(isa);
 
 use overload
 	'""' => sub {
@@ -11,11 +11,13 @@ use overload
 	};
 
 
-our %type_info;
+our %variants_info;
 our %constructor_info;
 
 sub new {
 	my ($class, $base_type, $tag, @args) = @_;
+	validate_args(\@args, $constructor_info{$tag}->{param_types});
+
 	my %map = (
 		_tag => $tag, _base_type => $base_type
 	);
@@ -26,27 +28,51 @@ sub new {
 	return bless \%map, $class;
 }
 
-sub is {
-	my ($self, $tag) = @_;
-	return $self->{_tag} eq $tag || $self->{_base_type} eq $tag;
+sub validate_args {
+	my ($args, $types) = @_;
+	die(sprintf("num of args/types mismatch: %d / %d", scalar(@$args), scalar(@$types))) if (@$args != @$types);
+
+	for my $i (0..$#$args) {
+		my ($arg, $type) = ($args->[$i], $types->[$i]);
+		if (!defined $arg) {
+			die("undef arg for type " . $type->{full_name}) unless ($type->{optional});
+		} elsif ($type->{array}) {
+			die("non-array $arg for type " . $type->{full_name}) unless (ref($arg) eq 'ARRAY');
+			validate_arg($_, $type->{name}) for $arg->@*;
+		} else {
+			validate_arg($arg, $type->{name});
+		}
+	}
 }
 
-sub is_one_of {
+sub validate_arg {
+	my ($arg, $type_name) = @_;
+	if ($type_name =~ /^[A-Z]/) {
+		die "$arg not ADT"	 unless ($arg isa 'ADT::ADT');
+		die "$arg not $type_name" unless ($arg->{_base_type} eq $type_name);
+	} elsif ($type_name eq 'int') {
+		die "$arg not int" if ($arg !~ /^-?\d+$/);
+	} 
+	# bool a string asi cokoliv	
+}
+
+
+sub is {
 	my ($self, @tags) = @_;
-	return grep { $self->is($_) } @tags;
+	return $self->index_of_in(@tags) != -1;
 }
 
 sub index_of_in {
 	my ($self, @tags) = @_;
 	while (my ($i, $tag) = each @tags) {
-		return $i if $self->is($tag);
+		return $i if ($self->{_tag} eq $tag || $self->{_base_type} eq $tag);
 	}	
 	return -1;
 }
 
 sub match {
 	my ($self, $cases) = @_;
-	if (!exists $cases->{default} && grep { !exists $cases->{$_} } $type_info{$self->{_base_type}}->{constructors}->@*) {
+	if (!exists $cases->{default} && grep { !exists $cases->{$_} } $variants_info{$self->{_base_type}}->{constructors}->@*) {
 		die "cases for type " . $self->{_base_type} . " not exhausted:\n" . (join "\n", keys %$cases);
 	}
 	my $sub = $cases->{$self->{_tag}} // $cases->{default} ;
@@ -61,24 +87,6 @@ sub values_in_order {
 sub fields_order {
 	my $self = shift;
 	return $constructor_info{$self->{_tag}}->{param_names}->@*;
-}
-
-sub print_tree {
-	my $tab = "  ";
-	my $print_node = sub {
-		my ($node, $indent) = @_;
-		if ($node isa ADT) {
-			say(($tab x $indent) . $node->{_tag});
-			__SUB__->($_, $indent + 1) for $node->values_in_order();
-		} elsif (ref($node) eq 'ARRAY') {
-			say(($tab x $indent) . 'array:');
-			__SUB__->($_, $indent + 1) for $node->@*;
-		} else {
-			say(($tab x $indent) . ($node // 'undef'));
-		}
-	};
-	$print_node->(shift(), 0);
-	print "\n";
 }
 
 1;

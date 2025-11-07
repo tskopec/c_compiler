@@ -1,27 +1,30 @@
 package ADT::ParseASDL;
 use strict;
 use warnings;
-use feature qw(say isa);
 
 use ADT::ADT;
-
-#require Exporter;
-#our @ISA = qw(Exporter);
-#our @EXPORT = qw(declare);
-#
-#BEGIN {
-#	#	$Exporter::Verbose = 1;
-#}
-#sub import {
-#	say "import asdl";
-#	ADT::ParseASDL->export_to_level(2, @_);
-#}
 
 
 my $type_name_re = qr/[A-Z]\w*|int|string|bool/;
 my $param_name_re = qr/\w+/;
 
-sub declare {
+sub parse_file {
+	my $fh = shift;
+	my @constructors;
+	my $current_declaration;
+	while (<$fh>) {
+		next if /^#|^\s+$/;
+		if (/=/ && length $current_declaration) {
+			push(@constructors, parse_declaration($current_declaration));
+			$current_declaration = "";
+		} 
+		$current_declaration .= $_;
+	}
+	push(@constructors, parse_declaration($current_declaration));
+	return @constructors;
+}
+
+sub parse_declaration {
 	my @asdl_tokens = map { length ? $_ : () } split(/[\s)(,]+/, shift);
 	my $base_type = valid_name(shift @asdl_tokens, $type_name_re);
 	die "bad syntax: no =" if (shift(@asdl_tokens) ne '=');
@@ -35,13 +38,12 @@ sub declare {
 		}
 	}
 	
-	my %constructor_subs;
-	for my $constructor (@constructors) {
-		my $constr_tag = valid_name(shift @$constructor, $type_name_re);
-		push($ADT::type_info{$base_type}->{constructors}->@*, $constr_tag);
+	my %constr_subs;
+	for my $constr (@constructors) {
+		my $constr_tag = valid_name(shift @$constr, $type_name_re);
 
 		my (@param_types, @param_names);
-		while (my ($i, $token) = each @$constructor) {
+		while (my ($i, $token) = each @$constr) {
 			if ($i++ % 2 == 0) {
 				push(@param_types, to_type($token));
 			} else {
@@ -49,18 +51,18 @@ sub declare {
 			}
 		}
 		die "$constr_tag: nums of param names/types not equal" if (@param_types != @param_names);
-		$ADT::constructor_info{$constr_tag} = {
+		push($ADT::ADT::type_info{$base_type}->{constructors}->@*, $constr_tag);
+		$ADT::ADT::constructor_info{$constr_tag} = {
 			param_types => \@param_types,
 			param_names => \@param_names,
 		};
 
-		my $constructor_sub = sub {
-			validate_args(\@_, \@param_types);
-			return ADT->new($base_type, $constr_tag, @_);
+		my $constr_sub = sub {
+			return ADT::ADT->new($base_type, $constr_tag, @_);
 		};
-		$constructor_subs{$constr_tag} = $constructor_sub;
+		$constr_subs{$constr_tag} = $constr_sub;
 	}
-	return %constructor_subs;
+	return %constr_subs;
 }
 
 sub valid_name {
@@ -75,33 +77,6 @@ sub to_type {
 		: die "bad type: " . $_[0];
 }	
 
-sub validate_args {
-	my ($args, $types) = @_;
-	die(sprintf("num of args/types mismatch: %d / %d", scalar(@$args), scalar(@$types))) if (@$args != @$types);
-
-	for my $i (0..$#$args) {
-		my ($arg, $type) = ($args->[$i], $types->[$i]);
-		if (!defined $arg) {
-			die("undef arg for type " . $type->{full_name}) unless ($type->{optional});
-		} elsif ($type->{array}) {
-			die("non-array $arg for type " . $type->{full_name}) unless (ref($arg) eq 'ARRAY');
-			validate_arg($_, $type->{name}) for $arg->@*;
-		} else {
-			validate_arg($arg, $type->{name});
-		}
-	}
-}
-
-sub validate_arg {
-	my ($arg, $type_name) = @_;
-	if ($type_name =~ /^[A-Z]/) {
-		die "$arg not ADT"	 unless ($arg isa 'ADT');
-		die "$arg not $type_name" unless ($arg->{_base_type} eq $type_name);
-	} elsif ($type_name eq 'int') {
-		die "$arg not int" if ($arg !~ /^-?\d+$/);
-	} 
-	# bool a string asi cokoliv	
-}
 
 1;
 

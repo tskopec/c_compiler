@@ -3,7 +3,7 @@ use strict;
 use warnings;
 use feature qw(say state signatures);
 
-use Types;
+use ADT::AlgebraicTypes qw(:LEX :AST :T :STOR);
 
 my @TOKENS;
 
@@ -27,16 +27,16 @@ sub parse_declaration {
 	die "missing type" unless defined $type;
 
 	my $name = parse_identifier();
-	if (try_expect('Lex_Symbol', '(')) {
+	if (try_expect('LEX_Symbol', '(')) {
 		my $params = parse_params_list();
-		if (try_expect('Lex_Symbol', '{')) {
+		if (try_expect('LEX_Symbol', '{')) {
 			return AST_FunDeclaration($name, $params, parse_block(), $type, $storage_class);
 		} 
-		expect('Lex_Symbol', ';');
+		expect('LEX_Symbol', ';');
 		return AST_FunDeclaration($name, $params, undef, $type, $storage_class);
 	} else {
-		my $init = try_expect('Lex_Operator', '=') ? parse_expr(0) : undef;
-		expect('Lex_Symbol', ';');
+		my $init = try_expect('LEX_Operator', '=') ? parse_expr(0) : undef;
+		expect('LEX_Symbol', ';');
 		return AST_VarDeclaration($name, $init, $type, $storage_class);
 	}
 }
@@ -45,9 +45,9 @@ sub parse_specifiers {
 	my (@storage_specs, @type_specs);
 	while (1) {
 		my $kw;
-		if ($kw = try_expect('Lex_Keyword', 'int', 'long')) {
+		if ($kw = try_expect('LEX_Keyword', 'int', 'long')) {
 			push @type_specs, $kw->{word};
-		} elsif ($kw = try_expect('Lex_Keyword', 'static', 'extern')) {
+		} elsif ($kw = try_expect('LEX_Keyword', 'static', 'extern')) {
 			push @storage_specs, $kw->{word};
 		} else { last }
 	}
@@ -59,9 +59,9 @@ sub parse_specifiers {
 sub parse_type {
 	my $specs = join(" ", @_);
 	if ($specs eq 'int') {
-		return Int();
+		return T_Int();
 	} elsif ($specs =~ /^(long|int long|long int)$/) {
-		return Long();
+		return T_Long();
 	} else {
 		die "invalid type specifier '$specs'";
 	}
@@ -70,22 +70,22 @@ sub parse_type {
 sub parse_storage_class {
 	my $storage_spec = shift;
 	if (!defined $storage_spec)		{ return undef }
-	if ($storage_spec eq 'static')	{ return Static() }
-	if ($storage_spec eq 'extern')	{ return Extern() }
+	if ($storage_spec eq 'static')	{ return STOR_Static() }
+	if ($storage_spec eq 'extern')	{ return STOR_Extern() }
 	die "unknown storage specifier: $storage_spec";
 }
 
 sub parse_params_list {
 	my @list;
-	if (try_expect('Lex_Keyword', 'void')) {
-		expect('Lex_Symbol', ')');
+	if (try_expect('LEX_Keyword', 'void')) {
+		expect('LEX_Symbol', ')');
 	} else {
 		while (1) {
 			my ($type, $storage) = parse_specifiers();
 			die "invalid specifiers for fun param: $type $storage" if (!defined $type || defined $storage);
 			push(@list, AST_VarDeclaration(parse_identifier(), undef, $type, undef));	
-			last if try_expect('Lex_Symbol', ')');
-			expect('Lex_Symbol', ',');
+			last if try_expect('LEX_Symbol', ')');
+			expect('LEX_Symbol', ',');
 		} 
 	}
 	return \@list;
@@ -94,7 +94,7 @@ sub parse_params_list {
 sub parse_block {
 	my @items;
 	while (@TOKENS) {
-		last if (try_expect('Lex_Symbol', '}'));
+		last if (try_expect('LEX_Symbol', '}'));
 		push @items, parse_block_item();
 	}
 	return AST_Block(\@items);
@@ -109,41 +109,41 @@ sub parse_block_item {
 }
 
 sub parse_statement {
-	if (try_expect('Lex_Keyword', 'return')) {
+	if (try_expect('LEX_Keyword', 'return')) {
 		my $ret_val = parse_expr(0);
-		expect('Lex_Symbol', ';');
+		expect('LEX_Symbol', ';');
 		return AST_Return($ret_val);
-	} elsif (try_expect('Lex_Symbol', '{')) {
+	} elsif (try_expect('LEX_Symbol', '{')) {
 		return AST_Compound(parse_block());
-	} elsif (try_expect('Lex_Symbol', ';')){
+	} elsif (try_expect('LEX_Symbol', ';')){
 		return AST_Null();
-	} elsif (try_expect('Lex_Keyword', 'if')) {
-		expect('Lex_Symbol', '(');
+	} elsif (try_expect('LEX_Keyword', 'if')) {
+		expect('LEX_Symbol', '(');
 		my $cond = parse_expr(0);	
-		expect('Lex_Symbol', ')');
+		expect('LEX_Symbol', ')');
 		my $then = parse_statement();
-		my $else = parse_statement() if try_expect('Lex_Keyword', 'else'); 
+		my $else = parse_statement() if try_expect('LEX_Keyword', 'else'); 
 		return AST_If($cond, $then, $else);
-	} elsif (try_expect('Lex_Keyword', 'break')) {
-		expect('Lex_Symbol', ';');
+	} elsif (try_expect('LEX_Keyword', 'break')) {
+		expect('LEX_Symbol', ';');
 		return AST_Break('dummy');
-	} elsif (try_expect('Lex_Keyword', 'continue')) {
-		expect('Lex_Symbol', ';');
+	} elsif (try_expect('LEX_Keyword', 'continue')) {
+		expect('LEX_Symbol', ';');
 		return AST_Continue('dummy');
-	} elsif (try_expect('Lex_Keyword', 'while')) {
-		expect('Lex_Symbol', '(');
+	} elsif (try_expect('LEX_Keyword', 'while')) {
+		expect('LEX_Symbol', '(');
 		my $cond = parse_expr(0);
-		expect('Lex_Symbol', ')');
+		expect('LEX_Symbol', ')');
 		my $body = parse_statement();
 		return AST_While($cond, $body, 'dummy');
-	} elsif (try_expect('Lex_Keyword', 'do')) {
+	} elsif (try_expect('LEX_Keyword', 'do')) {
 		my $body = parse_statement();
-		expect('Lex_Keyword', 'while') && expect('Lex_Symbol', '(');
+		expect('LEX_Keyword', 'while') && expect('LEX_Symbol', '(');
 		my $cond = parse_expr(0);
-		expect('Lex_Symbol', ')') && expect('Lex_Symbol', ';');
+		expect('LEX_Symbol', ')') && expect('LEX_Symbol', ';');
 		return AST_DoWhile($body, $cond, 'dummy');
-	} elsif (try_expect('Lex_Keyword', 'for')) {
-		expect('Lex_Symbol', '(');
+	} elsif (try_expect('LEX_Keyword', 'for')) {
+		expect('LEX_Symbol', '(');
 		my $init = parse_for_init();
 		my $cond = parse_opt_expr(';');
 		my $post = parse_opt_expr(')');
@@ -151,7 +151,7 @@ sub parse_statement {
 		return AST_For($init, $cond, $post, $body, 'dummy');
 	} else {
 		my $expr = parse_expr(0);
-		expect('Lex_Symbol', ';');
+		expect('LEX_Symbol', ';');
 		return AST_Expression($expr);
 	}
 }
@@ -165,9 +165,9 @@ sub parse_for_init {
 
 sub parse_opt_expr {
 	my $end_symbol = shift;
-	unless (try_expect('Lex_Symbol', $end_symbol)) {
+	unless (try_expect('LEX_Symbol', $end_symbol)) {
 		my $expr = parse_expr(0);
-		expect('Lex_Symbol', $end_symbol);
+		expect('LEX_Symbol', $end_symbol);
 		return $expr;
 	}
 	return undef;
@@ -176,25 +176,25 @@ sub parse_opt_expr {
 sub parse_expr {
 	my $min_prec = shift;
 	my $left = parse_factor();
-	while ((peek())->is('Lex_Operator')) {
+	while ((peek())->is('LEX_Operator')) {
 		my $op = (peek())->{op};
 		last if $op eq ':';
 		last if precedence($op) < $min_prec;
 		if ($op eq '=') {
 			shift @TOKENS;
 			my $right = parse_expr(precedence($op));
-			$left = AST_Assignment($left, $right, DummyType());
+			$left = AST_Assignment($left, $right, T_DummyType());
 		} elsif ($op eq '?') {
 			shift @TOKENS;
 			my $then = parse_expr(0);
-			expect('Lex_Operator', ':');
+			expect('LEX_Operator', ':');
 			my $else = parse_expr(precedence($op));
-			$left = AST_Conditional($left, $then, $else, DummyType());
+			$left = AST_Conditional($left, $then, $else, T_DummyType());
 		} else {
 			my $op_token = shift @TOKENS;
 			my $op_node = parse_binop($op_token->{op});
 			my $right = parse_expr(precedence($op) + 1);
-			$left = AST_Binary($op_node, $left, $right, DummyType());
+			$left = AST_Binary($op_node, $left, $right, T_DummyType());
 		}
 	}
 	return $left;
@@ -203,41 +203,41 @@ sub parse_expr {
 sub parse_factor {
 	my $token = shift @TOKENS;
 	my $result = $token->match({
-		Lex_IntConstant => sub($val) {
+		LEX_IntConstant => sub($val) {
 			return parse_constant('int', $val);
 		},
-		Lex_LongConstant => sub($val) {
+		LEX_LongConstant => sub($val) {
 			return parse_constant('long', $val);
 		},
-		Lex_Identifier => sub($name) {
-			if (try_expect('Lex_Symbol', '(')) {
-				return AST_FunctionCall($name, [], DummyType()) if (try_expect('Lex_Symbol', ')'));
+		LEX_Identifier => sub($name) {
+			if (try_expect('LEX_Symbol', '(')) {
+				return AST_FunctionCall($name, [], T_DummyType()) if (try_expect('LEX_Symbol', ')'));
 				my @args;
 				while (1) {
 					push(@args, parse_expr(0));
-					last if (try_expect('Lex_Symbol', ')'));
-					expect('Lex_Symbol', ',');
+					last if (try_expect('LEX_Symbol', ')'));
+					expect('LEX_Symbol', ',');
 				}
-				return AST_FunctionCall($name, \@args, DummyType());
+				return AST_FunctionCall($name, \@args, T_DummyType());
 			} else {
-				return AST_Var($name, DummyType());
+				return AST_Var($name, T_DummyType());
 			}
 		},
-		Lex_Operator => sub($op) {
+		LEX_Operator => sub($op) {
 			my $op_node = parse_unop($op);
-			return AST_Unary($op_node, parse_factor(), DummyType());
+			return AST_Unary($op_node, parse_factor(), T_DummyType());
 		},
-		Lex_Symbol => sub($char) {
+		LEX_Symbol => sub($char) {
 			if ($char eq '(') {
 				my ($type, $storage) = parse_specifiers();
 				die "storage specifier in cast" if (defined $storage);
 				if (defined $type) {
-					expect("Symbol", ")");
+					expect("LEX_Symbol", ")");
 					my $expr = parse_expr(100);
 					return AST_Cast($expr, $type);
 				} else {
 					my $inner = parse_expr(0);
-					expect("Symbol", ")");
+					expect("LEX_Symbol", ")");
 					return $inner;
 				}
 			}
@@ -256,15 +256,15 @@ sub parse_constant {
 	if ($val > $max_long) {
 		die "constant too large for long $val";
 	} elsif ($type eq 'int' && $val < $max_int) {
-		return AST_ConstantExpr(AST_ConstInt($val), Int());
+		return AST_ConstantExpr(AST_ConstInt($val), T_Int());
 	} else {
-		return AST_ConstantExpr(AST_ConstLong($val), Long());
+		return AST_ConstantExpr(AST_ConstLong($val), T_Long());
 	}
 }
 
 sub parse_identifier {
 	my $token = shift @TOKENS;
-	return $token->is('Lex_Identifier') ? $token->{name} : die  "$token not identifier";
+	return $token->is('LEX_Identifier') ? $token->{name} : die  "$token not identifier";
 }
 
 sub parse_unop {

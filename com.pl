@@ -6,19 +6,14 @@ use File::Slurp;
 
 use lib ".";
 
-use ADT::AlgebraicTypes qw(Lex_Symbol);
-#use Types;
-#use Lexer;
-#use Parser;
+use ADT::AlgebraicTypes qw(print_tree);
+use Lexer;
+use Parser;
 #use Semantics;
 #use TAC;
 #use CodeGen;
 #use Emitter;
 
-my $l = Lex_Symbol(";");
-say "in com.pl " . $l;
-
-die "konec test";
 
 our $global_counter = 0;
 
@@ -72,9 +67,9 @@ sub compile {
 	say(join("\n", @tokens) . "\n") if $debug;
 	return if ($target_phase eq 'lex'); 	
 
-#	# PARSE
+	# PARSE
 	my $ast = Parser::parse(@tokens);
-	$ast->print_tree() if $debug;
+	print_tree($ast) if $debug;
 	return if ($target_phase eq 'parse');
 	#
 	#	# SEMANTICS

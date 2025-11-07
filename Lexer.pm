@@ -3,7 +3,7 @@ use strict;
 use warnings;
 use feature qw(say);
 
-use Types;
+use ADT::AlgebraicTypes qw(:LEX);
 
 
 my $sym_re = qr/^([;}{)(,]).*/;
@@ -22,22 +22,22 @@ sub tokenize {
 		$src =~ s/^\s+//;
 		last unless $src;
 		if ($src =~ $sym_re) {
-			push(@tokens, Lex_Symbol($1));
+			push(@tokens, LEX_Symbol($1));
 		}
 		elsif ($src =~ $op_re) {
-			push(@tokens, Lex_Operator($1));
+			push(@tokens, LEX_Operator($1));
 		}
 		elsif ($src =~ $kw_re) {
-			push(@tokens, Lex_Keyword($1));
+			push(@tokens, LEX_Keyword($1));
 		}	
 		elsif ($src =~ $long_const_re) {
-			push(@tokens, Lex_LongConstant($2));
+			push(@tokens, LEX_LongConstant($2));
 		}
 		elsif ($src =~ $const_re) {
-			push(@tokens, Lex_IntConstant($1));
+			push(@tokens, LEX_IntConstant($1));
 		}
 		elsif ($src =~ $iden_re) {
-			push(@tokens, Lex_Identifier($1));
+			push(@tokens, LEX_Identifier($1));
 		} else {
 			die "neznam token -> $src";
 		}

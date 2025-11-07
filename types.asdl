@@ -1,0 +1,136 @@
+# Lex ###
+LEX_Token =
+	LEX_Identifier(string name)
+	| LEX_IntConstant(int val)
+	| LEX_LongConstant(int val)
+	| LEX_Keyword(string word)
+	| LEX_Symbol(string char)
+	| LEX_Operator(string op)
+
+# AST ###
+AST_Program =
+	AST_Program(AST_Declaration* declarations)
+AST_Declaration =
+	AST_VarDeclaration(string name, AST_Expression? initializer, T_Type type, STOR_StorageClass? storage)
+	| AST_FunDeclaration(string name, AST_VarDeclaration* params, AST_Block? body, T_Type type, STOR_StorageClass? storage)
+AST_Block =
+	AST_Block(AST_BlockItem* items)
+AST_BlockItem =
+	AST_BlockStatement(AST_Statement stmt)
+	| AST_BlockDeclaration(AST_Declaration decl)
+AST_Statement =
+	AST_Null
+	| AST_Return(AST_Expression expr)
+	| AST_ExprStatement(AST_Expression expr)
+	| AST_If(AST_Expression cond, AST_Statement then, AST_Statement? else)
+	| AST_Compound(AST_Block block)
+	| AST_Break(string label)
+	| AST_Continue(string label)
+	| AST_While(AST_Expression cond, AST_Statement body, string label)
+	| AST_DoWhile(AST_Statement body, AST_Expression cond, string label)
+	| AST_For(AST_ForInit init, AST_Expression? cond, AST_Expression? post, AST_Statement body, string label)
+AST_ForInit =
+	AST_ForInitDeclaration(AST_VarDeclaration decl)
+	| AST_ForInitExpr(AST_Expression? expr)
+AST_Expression =
+	 AST_ConstantExpr(AST_Constant constant, T_Type type)
+	 | AST_Var(string ident, T_Type type)
+	 | AST_Cast(AST_Expression expr, T_Type target)
+	 | AST_Unary(AST_UnaryOperator op, AST_Expression expr, T_Type type)
+	 | AST_Binary(AST_BinaryOperator op, AST_Expression expr1, AST_Expression expr2, T_Type type)
+	 | AST_Assignment(AST_Expression lhs, AST_Expression rhs, T_Type type)
+	 | AST_Conditional(AST_Expression cond, AST_Expression then, AST_Expression else, T_Type type)
+	 | AST_FunctionCall(string ident, AST_Expression args, T_Type type)
+AST_UnaryOperator =
+	AST_Complement | AST_Negate | AST_Not
+AST_BinaryOperator =
+	AST_Add | AST_Subtract | AST_Multiply | AST_Divide | AST_Modulo | AST_And | AST_Or | AST_Equal | AST_NotEqual | AST_LessThan | AST_LessOrEqual | AST_GreaterThan | AST_GreaterOrEqual
+AST_Constant =
+	AST_ConstInt(int val)
+	| AST_ConstLong(int val)
+
+# Types & misc
+T_Type =
+	T_Int
+	| T_Long
+	| T_FunType(T_Type* params, T_Type ret)
+	| T_DummyType
+ATT_IdentifierAttrs =
+	ATT_FunAttrs(bool defined, bool global)
+	| ATT_StaticAttrs(INI_InitialValue init_val, bool global)
+	| ATT_LocalAttrs
+INI_InitialValue =
+	INI_Tentative
+	| INI_Initial(INI_StaticInit static_init)
+	| INI_NoInitializer
+INI_StaticInit =
+	INI_IntInit(int val)
+	| INI_LongInit(int val)
+STOR_StorageClass =
+	STOR_Static | STOR_Extern
+
+# TAC ###
+TAC_Program =
+	TAC_Program(TAC_TopLevelDeclaration* declarations)
+TAC_TopLevelDeclaration =
+	TAC_StaticVariable(string identifier, bool global, T_Type type, StaticInit static_init)
+	| TAC_Function(string identifier, bool global, string* params, TAC_Instruction* instructions)
+TAC_Instruction =
+	TAC_Return(TAC_Value value)
+	| TAC_SignExtend(TAC_Value src, TAC_Value dst)
+	| TAC_Truncate(TAC_Value src, TAC_Value dst)
+	| TAC_Unary(TAC_UnaryOperator op, TAC_Value src, TAC_Value dst)
+	| TAC_Binary(TAC_BinaryOperator op, TAC_Value val1, TAC_Value val2, TAC_Value dst)
+	| TAC_Copy(TAC_Value src, TAC_Value dst)
+	| TAC_Jump(string target)
+	| TAC_JumpIfZero(TAC_Value cond, string target)
+	| TAC_JumpIfNotZero(TAC_Value cond, string target)
+	| TAC_Label(string ident)
+	| TAC_FunCall(string name, TAC_Value* params, TAC_Value dst)
+TAC_Value =
+	TAC_Constant(Constant constant)
+	| TAC_Variable(string name)
+TAC_UnaryOperator =
+	TAC_Complement | TAC_Negate | TAC_Not
+TAC_BinaryOperator =
+	TAC_Add | TAC_Subtract | TAC_Multiply | TAC_Divide | TAC_Modulo | TAC_And | TAC_Or | TAC_Equal | TAC_NotEqual | TAC_LessThan | TAC_LessOrEqual | TAC_GreaterThan | TAC_GreaterOrEqual
+
+# ASM ###
+ASM_Program =
+	ASM_Program(ASM_TopLvlDeclaration* declarations)
+ASM_OperandSize =
+	ASM_Longword | ASM_Quadword
+ASM_TopLevelDeclaration =
+	ASM_StaticVariable(string name, bool global, int alignment, StaticInit static_init)
+	| ASM_Function(string name, bool global, Instruction* instructions)
+ASM_Instruction =
+	ASM_Mov(ASM_OperandSize opsize, ASM_Operand src, ASM_Operand dst)
+	| ASM_Movsx(ASM_Operand src, ASM_Operand dst)
+	| ASM_Unary(ASM_UnaryOperator op, ASM_OperandSize opsize, ASM_Operand operand)
+	| ASM_Binary(ASM_BinaryOperator op, ASM_OperandSize opsize, ASM_Operand operand1, ASM_Operand operand2)
+	| ASM_Cmp(ASM_OperandSize opsize, ASM_Operand operand1, ASM_Operand operand2)
+	| ASM_Idiv(ASM_OperandSize opsize, ASM_Operand operand)
+	| ASM_Cdq(ASM_OperandSize opsize)
+	| ASM_Jmp(string target)
+	| ASM_JmpCC(ASM_CondCode cond, string target)
+	| ASM_SetCC(ASM_CondCode cond, ASM_Operand operand)
+	| ASM_Label(string ident)
+	| ASM_Push(ASM_Operand operand)
+	| ASM_Call(string ident)
+	| ASM_Ret
+ASM_UnaryOperator =
+	ASM_Neg | ASM_Not
+ASM_BinaryOperator =
+	ASM_Add | ASM_Sub | ASM_Mult
+ASM_Operand =
+	ASM_Imm(int int)
+	| ASM_Reg(ASM_Register reg)
+	| ASM_Pseudo(string ident)
+	| ASM_Stack(int offset)
+	| ASM_Data(string ident)
+ASM_CondCode =
+	ASM_E | ASM_NE | ASM_G | ASM_GE | ASM_L | ASM_LE
+ASM_Register =
+	ASM_AX | ASM_CX | ASM_DX | ASM_DI | ASM_SI | ASM_R8 | ASM_R9 | ASM_R10 | ASM_R11 | ASM_SP
+
+
