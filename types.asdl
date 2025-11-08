@@ -11,8 +11,8 @@ LEX_Token =
 AST_Program =
 	AST_Program(AST_Declaration* declarations)
 AST_Declaration =
-	AST_VarDeclaration(string name, AST_Expression? initializer, T_Type type, STOR_StorageClass? storage)
-	| AST_FunDeclaration(string name, AST_VarDeclaration* params, AST_Block? body, T_Type type, STOR_StorageClass? storage)
+	AST_VarDeclaration(string name, AST_Expression? initializer, T_Type type, S_StorageClass? storage)
+	| AST_FunDeclaration(string name, AST_VarDeclaration* params, AST_Block? body, T_Type type, S_StorageClass? storage)
 AST_Block =
 	AST_Block(AST_BlockItem* items)
 AST_BlockItem =
@@ -55,19 +55,19 @@ T_Type =
 	| T_Long
 	| T_FunType(T_Type* params, T_Type ret)
 	| T_DummyType
-ATT_IdentifierAttrs =
-	ATT_FunAttrs(bool defined, bool global)
-	| ATT_StaticAttrs(INI_InitialValue init_val, bool global)
-	| ATT_LocalAttrs
-INI_InitialValue =
-	INI_Tentative
-	| INI_Initial(INI_StaticInit static_init)
-	| INI_NoInitializer
-INI_StaticInit =
-	INI_IntInit(int val)
-	| INI_LongInit(int val)
-STOR_StorageClass =
-	STOR_Static | STOR_Extern
+A_IdentifierAttrs =
+	A_FunAttrs(bool defined, bool global)
+	| A_StaticAttrs(I_InitialValue init_val, bool global)
+	| A_LocalAttrs
+I_InitialValue =
+	I_Tentative
+	| I_Initial(I_StaticInit static_init)
+	| I_NoInitializer
+I_StaticInit =
+	I_IntInit(int val)
+	| I_LongInit(int val)
+S_StorageClass =
+	S_Static | S_Extern
 
 # TAC ###
 TAC_Program =

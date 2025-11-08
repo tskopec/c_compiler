@@ -5,23 +5,19 @@ use warnings;
 use ADT::ADT;
 
 
-my $type_name_re = qr/[A-Z]\w*|int|string|bool/;
+my $type_name_re  = qr/[A-Z]\w*/;
+my $param_type_re = qr/[A-Z]\w*|int|string|bool/;
 my $param_name_re = qr/\w+/;
 
 sub parse_file {
 	my $fh = shift;
-	my @constructors;
-	my $current_declaration;
+	my @declarations;
 	while (<$fh>) {
 		next if /^#|^\s+$/;
-		if (/=/ && length $current_declaration) {
-			push(@constructors, parse_declaration($current_declaration));
-			$current_declaration = "";
-		} 
-		$current_declaration .= $_;
+		push(@declarations, "") if (/=/);
+		$declarations[-1] .= $_;
 	}
-	push(@constructors, parse_declaration($current_declaration));
-	return @constructors;
+	return map { parse_declaration($_) } @declarations;
 }
 
 sub parse_declaration {
@@ -41,7 +37,6 @@ sub parse_declaration {
 	my %constr_subs;
 	for my $constr (@constructors) {
 		my $constr_tag = valid_name(shift @$constr, $type_name_re);
-
 		my (@param_types, @param_names);
 		while (my ($i, $token) = each @$constr) {
 			if ($i++ % 2 == 0) {
@@ -51,7 +46,8 @@ sub parse_declaration {
 			}
 		}
 		die "$constr_tag: nums of param names/types not equal" if (@param_types != @param_names);
-		push($ADT::ADT::type_info{$base_type}->{constructors}->@*, $constr_tag);
+
+		push($ADT::ADT::variants_info{$base_type}->@*, $constr_tag);
 		$ADT::ADT::constructor_info{$constr_tag} = {
 			param_types => \@param_types,
 			param_names => \@param_names,
@@ -71,7 +67,7 @@ sub valid_name {
 }
 
 sub to_type {
-	my ($name, $is_opt, $is_arr) = $_[0] =~ /^($type_name_re)(\?)?(\*)?$/;
+	my ($name, $is_opt, $is_arr) = $_[0] =~ /^($param_type_re)(\?)?(\*)?$/;
 	return (defined $name && !(length($is_opt) && length($is_arr))) 
 		? { full_name => $_[0], name => $name, optional => length $is_opt, array =>  length $is_arr }
 		: die "bad type: " . $_[0];

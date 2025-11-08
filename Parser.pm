@@ -3,7 +3,7 @@ use strict;
 use warnings;
 use feature qw(say state signatures);
 
-use ADT::AlgebraicTypes qw(:LEX :AST :T :STOR);
+use ADT::AlgebraicTypes qw(:LEX :AST :T :S);
 
 my @TOKENS;
 
@@ -24,7 +24,6 @@ sub parse_declaration {
 	my @specs = parse_specifiers();
 	return undef unless @specs;
 	my ($type, $storage_class) = @specs;
-	die "missing type" unless defined $type;
 
 	my $name = parse_identifier();
 	if (try_expect('LEX_Symbol', '(')) {
@@ -43,8 +42,8 @@ sub parse_declaration {
 
 sub parse_specifiers {
 	my (@storage_specs, @type_specs);
+	my $kw;
 	while (1) {
-		my $kw;
 		if ($kw = try_expect('LEX_Keyword', 'int', 'long')) {
 			push @type_specs, $kw->{word};
 		} elsif ($kw = try_expect('LEX_Keyword', 'static', 'extern')) {
@@ -52,7 +51,9 @@ sub parse_specifiers {
 		} else { last }
 	}
 	die "too many storage specs: @{[@storage_specs]}" if (@storage_specs > 1);
-	return () if (!@type_specs && !@storage_specs);
+	if (@type_specs == 0) {
+		return (@storage_specs == 0) ? () : die "missing type specifier";
+	}
 	return (parse_type(@type_specs), parse_storage_class(@storage_specs));
 }
 
@@ -70,8 +71,8 @@ sub parse_type {
 sub parse_storage_class {
 	my $storage_spec = shift;
 	if (!defined $storage_spec)		{ return undef }
-	if ($storage_spec eq 'static')	{ return STOR_Static() }
-	if ($storage_spec eq 'extern')	{ return STOR_Extern() }
+	if ($storage_spec eq 'static')	{ return S_Static() }
+	if ($storage_spec eq 'extern')	{ return S_Extern() }
 	die "unknown storage specifier: $storage_spec";
 }
 
@@ -319,7 +320,7 @@ sub try_expect {
 	my ($tag, @possible_vals) = @_;
 	my $next = peek();
 	if ($next->is($tag)) {
-		my $val = ($next->values_in_order())[0]; 
+		my $val = $next->value_by_index(0); 
 		return shift @TOKENS if (!@possible_vals || grep { $val eq $_ } @possible_vals);
 	}
 	return 0;

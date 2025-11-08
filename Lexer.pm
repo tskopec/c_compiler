@@ -14,7 +14,6 @@ my $const_re = qr/^([0-9]+)\b.*/;
 my $iden_re = qr/^([a-zA-Z_]\w*)\b.*/;
 
 sub tokenize {
-
 	my $src = shift;
 	my @tokens;
 
