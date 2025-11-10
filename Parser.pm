@@ -45,9 +45,9 @@ sub parse_specifiers {
 	my $kw;
 	while (1) {
 		if ($kw = try_expect('LEX_Keyword', 'int', 'long')) {
-			push @type_specs, $kw->{word};
+			push @type_specs, $kw->get('word');
 		} elsif ($kw = try_expect('LEX_Keyword', 'static', 'extern')) {
-			push @storage_specs, $kw->{word};
+			push @storage_specs, $kw->get('word');
 		} else { last }
 	}
 	die "too many storage specs: @{[@storage_specs]}" if (@storage_specs > 1);
@@ -158,10 +158,13 @@ sub parse_statement {
 }
 
 sub parse_for_init {
-	return undef if (try_expect('AST_Symbol', ';'));
-	my $res = parse_declaration() // parse_opt_expr(';');
-	die "fun declaration in for init" if ($res->is('AST_FunDeclaration'));
-	return $res;
+	my $decl = parse_declaration();
+	if (defined $decl) {
+		die "fun declaration in for init" if ($res->is('AST_FunDeclaration'));
+		return AST_ForInitDeclaration($decl);
+	}
+	my $opt_e = parse_opt_expr(';');
+	return AST_ForInitExpression($opt_e);
 }
 
 sub parse_opt_expr {
@@ -178,7 +181,7 @@ sub parse_expr {
 	my $min_prec = shift;
 	my $left = parse_factor();
 	while ((peek())->is('LEX_Operator')) {
-		my $op = (peek())->{op};
+		my $op = (peek())->get('op');
 		last if $op eq ':';
 		last if precedence($op) < $min_prec;
 		if ($op eq '=') {
@@ -193,7 +196,7 @@ sub parse_expr {
 			$left = AST_Conditional($left, $then, $else, T_DummyType());
 		} else {
 			my $op_token = shift @TOKENS;
-			my $op_node = parse_binop($op_token->{op});
+			my $op_node = parse_binop($op_token->get('op'));
 			my $right = parse_expr(precedence($op) + 1);
 			$left = AST_Binary($op_node, $left, $right, T_DummyType());
 		}
@@ -265,7 +268,7 @@ sub parse_constant {
 
 sub parse_identifier {
 	my $token = shift @TOKENS;
-	return $token->is('LEX_Identifier') ? $token->{name} : die  "$token not identifier";
+	return $token->is('LEX_Identifier') ? $token->get('name') : die  "$token not identifier";
 }
 
 sub parse_unop {

@@ -1,9 +1,10 @@
 package Semantics;
-
 use strict;
 use warnings;
-use feature qw(say state isa);
-use Types::Algebraic;
+use feature qw(say state isa signatures);
+
+use ADT::AlgebraicTypes qw(:AST :T :S :I);
+
 
 our %symbol_table;
 
@@ -17,27 +18,29 @@ sub run {
 
 ### IDENTIFIER RESOLUTION ###
 sub resolve_ids {
-	my ($declarations) = ::extract_or_die(shift(), 'Program'); 
+	my $program = shift;
 	my $ids_map = {};
-	for my $decl (@$declarations) {
-		match ($decl) {
-			with (FunDeclaration $name $params $body $type $storage) {
+	for my $decl ($program->{declarations}->@*) {
+		$decl->match({
+			AST_FunDeclaration => sub($name, $params, $body, $type, $storage) {
 				resolve_fun_declaration_ids($decl, $ids_map, 0);
-			}
-			with (VarDeclaration $name $init $type $storage) {
+			}, 
+			AST_VarDeclaration => sub($name, $init, $type, $storage) {
 				resolve_top_level_var_declaration_ids($decl, $ids_map);
+			},
+			default => sub() {
+				die "unknown declaration: $decl";
 			}
-			default { die "unknown declaration: $decl" }
-		}
+		});
 	}
 }
 
 sub resolve_fun_declaration_ids {
 	my ($fun, $ids_map, $in_block_scope) = @_;
-	my ($name, $params, $body, $type, $storage) = ::extract_or_die($fun, 'FunDeclaration');
+	my ($name, $params, $body, $type, $storage) = $fun->values_in_order("AST_FunDeclaration");
 	if ($in_block_scope) {
 		die "nested fun definition" if (defined $body);
-		die "static nested fun" if ($storage->{tag} eq 'Static');
+		die "static nested fun" if ($storage->is('S_Static'));
 	}
 	if (exists $ids_map->{$name}) {
 		my $previous_entry = $ids_map->{$name};
@@ -49,89 +52,98 @@ sub resolve_fun_declaration_ids {
 	my $inner_ids_map = make_inner_scope_map($ids_map);
 	resolve_local_var_declaration_ids($_, $inner_ids_map) for @$params;
    	if (defined $body) {
-		my ($items) = ::extract($body, 'Block');
+		my ($items) = $body->values_in_order("AST_Block");
 		resolve_block_item_ids($_, $inner_ids_map) for @$items;
 	}
 }
 
 sub resolve_top_level_var_declaration_ids {
 	my ($decl, $ids_map) = @_;
-	my ($name, $init, $type, $storage) = ::extract_or_die($decl, 'VarDeclaration');
+	my ($name, $init, $type, $storage) = $decl->values_in_order('AST_VarDeclaration');
 	$ids_map->{$name} = { uniq_name => $name, from_this_scope => 1, has_linkage => 1};
 }
 
 sub resolve_local_var_declaration_ids {
 	my ($declaration, $ids_map) = @_;
-	my ($name, $init, $type, $storage) = ::extract_or_die($declaration, 'VarDeclaration');
+	my ($name, $init, $type, $storage) = $declaration->values_in_order('AST_VarDeclaration');
 	if (exists $ids_map->{$name}
 		&& $ids_map->{$name}{from_this_scope}
-		&& !($ids_map->{$name}{has_linkage} && $storage->{tag} eq 'Extern')) {
+		&& !($ids_map->{$name}{has_linkage} && $storage->is('S_Extern')) {
 			die "multiple declarations of $name in this scope, some without linkage";
 	}
-	if ($storage->{tag} eq 'Extern') {
+	if ($storage->is('S_Extern')) {
 		$ids_map->{$name} = { uniq_name => $name, from_this_scope => 1, has_linkage => 1 };
 	} else {
-		$declaration->{values}[0] = unique_var_name($name);
-		$ids_map->{$name} = { uniq_name => $declaration->{values}[0], from_this_scope => 1, has_linkage => 0 };
+		$declaration->set('name', unique_var_name($name));
+		$ids_map->{$name} = { uniq_name => $declaration->get('name'), from_this_scope => 1, has_linkage => 0 };
 		resolve_expr_ids($init, $ids_map) if defined $init;
 	}
 }
 
 sub resolve_block_item_ids {
 	my ($item, $ids_map) = @_;
-	match ($item) {
-		with (VarDeclaration $name $init $type $storage) {
+	$item->match({
+		AST_VarDeclaration => sub($name, $init, $type, $storage) {
 			resolve_local_var_declaration_ids($item, $ids_map);
-		}
-		with (FunDeclaration $name $params $body $type $storage) {
-			die "local fun definition: $name" if defined $body;
+		},
+		AST_FunDeclaration => sub($name, $params, $body, $type, $storage) {
+			die "local fun definition: $name" if (defined $body);
 			resolve_fun_declaration_ids($item, $ids_map, 1);
-		}
-		default {
+		},
+		default => sub() {
 			resolve_statement_ids($item, $ids_map);
-		}
-	}
+		}	
+	});
 }
 
 sub resolve_statement_ids {
 	my ($statement, $ids_map) = @_;
-	match ($statement) {
-		with (Return $e) { resolve_expr_ids($e, $ids_map); }
-		with (Expression $e) { resolve_expr_ids($e, $ids_map); }
-		with (Null) {;}
-		with (If $cond $then $else) {
+	$statement->match({
+		AST_Return => sub($e) { 
+			resolve_expr_ids($e, $ids_map);
+	   	},
+		AST_Expression => sub($e) { 
+			resolve_expr_ids($e, $ids_map); 
+		},
+		AST_Null => sub() { ; },
+		AST_If => sub($cond, $then , $else) {
 			resolve_expr_ids($cond, $ids_map);
 			resolve_statement_ids($then, $ids_map);
 			resolve_statement_ids($else, $ids_map) if defined $else;
-		}
-		with (Compound $block) {
-			my ($items) = ::extract_or_die($block, 'Block');
+		},
+		AST_Compound => sub($block) {
+			my ($items) = $block->values_in_order('AST_Block');
 			my $new_idents = make_inner_scope_map($ids_map);
 			resolve_block_item_ids($_, $new_idents) for @$items; 
-		}
-		with (While $cond $body $label) {
+		},
+		AST_While => sub($cond, $body, $label) {
 			resolve_expr_ids($cond, $ids_map);
 			resolve_statement_ids($body, $ids_map);
-		} 
-		with (DoWhile $body $cond $label) {
+		},
+		AST_DoWhile => sub($body, $cond, $label) {
 			resolve_statement_ids($body, $ids_map);
 			resolve_expr_ids($cond, $ids_map);
-		}
-		with (For $init $cond $post $body $label) {
+		},
+		AST_For => sub($init, $cond, $post, $body, $label) {
 			my $new_idents = make_inner_scope_map($ids_map);
-			if (defined $init && $init->{tag} eq 'VarDeclaration') {
-				resolve_local_var_declaration_ids($init, $new_idents);
-			} else {
-				resolve_opt_expr_ids($init, $new_idents);
-			}
+			$init->match({
+				AST_ForInitDeclaration => sub($decl) {
+					resolve_local_var_declaration_ids($idecl, $new_idents);
+				},
+				AST_ForInitExpression => sub($expr) {
+					resolve_opt_expr_ids($expr, $new_idents);
+				}
+			});
 			resolve_opt_expr_ids($cond, $new_idents);
 			resolve_opt_expr_ids($post, $new_idents);
 			resolve_statement_ids($body, $new_idents);
-		}
-		with (Break $label) {;}
-		with (Continue $label) {;}
-		default { die "unknown statement $statement" }
-	}	   
+		},
+		AST_Break => sub($label) { ; },
+		AST_Continue => sub($label) { ; },
+		default => sub() { 
+			die "unknown statement $statement"
+	   	}
+	});	   
 }
 
 sub resolve_opt_expr_ids {
@@ -141,23 +153,33 @@ sub resolve_opt_expr_ids {
 
 sub resolve_expr_ids {
 	my ($expr, $ids_map) = @_;
-	match ($expr) {
-		with (ConstantExpr $val $type) {;}
-		with (Cast $expr $type) { resolve_expr_ids($expr, $ids_map); }
-		with (Var $name $type) { $expr->{values}[0] = ($ids_map->{$name}{uniq_name} // die "undeclared variable $name"); }
-		with (Unary $op $e $type) { resolve_expr_ids($e, $ids_map); }
-		with (Binary $op $e1 $e2 $type) { resolve_expr_ids($_, $ids_map) for ($e1, $e2); }
-		with (Assignment $le $re $type) { 
-			die "not a variable $le" if ($le->{tag} ne 'Var');
-		   	resolve_expr_ids($_, $ids_map) for ($le, $re);
-	   	}
-		with (Conditional $cond $then $else $type) { resolve_expr_ids($_, $ids_map) for ($cond, $then, $else); }
-		with (FunctionCall $name $args $type) {
-			$expr->{values}[0] = ($ids_map->{$name}{uniq_name} // die "calling undeclared function $name");
+	$expr->match() ({
+		AST_ConstantExpr => sub($val, $type) {;},
+		AST_Cast => sub($expr, $type) { 
+			resolve_expr_ids($expr, , $ids_map);
+	   	},
+		AST_Var => sub($name, $type) { 
+			$expr->set('ident', ($ids_map->{$name}{uniq_name} // die "undeclared variable $name"));
+	   	},
+		AST_Unary => sub($op, $e, $type) {
+		   	resolve_expr_ids($e, $ids_map);
+	   	},
+		AST_Binary => sub($op, $e1, $e2, $type) { 
+			resolve_expr_ids($_, $ids_map) for ($e1, $e2); 
+		},
+		AST_Assignment	=> sub($le, $re, $type) {
+			die "not a variable $le" if (!$le->is('AST_Var'));
+			resolve_expr_ids($_, $ids_map) for ($le, $re);
+		},
+		AST_Conditional => sub($cond, $then, $else, $type) { 
+			resolve_expr_ids($, $ids_map) for ($cond, $then, $else); 
+		},
+		AST_FunctionCall => sub($name, $args, $type) {
+			$expr->set('ident', ($ids_map->{$name}{uniq_name} // die "calling undeclared function $name"));
 			resolve_expr_ids($_, $ids_map) for @$args;
-		}
+		},
 		default { die "unknown expression $expr" }
-	}
+	});
 }
 
 sub unique_var_name {
@@ -176,7 +198,7 @@ sub make_inner_scope_map {
 	return $result;
 }
 
-
+# TODO
 
 ### TYPE CHECKING ###
 sub check_types {

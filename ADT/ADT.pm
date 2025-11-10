@@ -58,6 +58,17 @@ sub validate_arg {
 	} 
 }
 
+sub get {
+	my ($self, $key) = @_;
+	die "bad key $key" unless (exists $self->{$key});
+	return $self->{$key};
+}
+
+sub set {
+	my ($self, $key, $val) = @_;
+	die "bad key $key" unless (exists $self->{$key});
+	$self->{$key} = $val;
+}
 
 sub is {
 	my ($self, @tags) = @_;
@@ -88,6 +99,8 @@ sub value_by_index {
 
 sub values_in_order {
 	my $self = shift;
+	my $expected_type = shift;
+	die "$self not $expected_type" if (defined $expected_type && $self->{'@tag'} ne $expected_type);
 	return map { $self->{$_} } $self->fields_order();
 }
 
