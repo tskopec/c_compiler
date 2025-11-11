@@ -7,56 +7,29 @@ use overload
 	'""' => sub {
 		my $self = shift;
 		my $fields_string = join(", ", map { $_ . ": "  . $self->{$_} } $self->fields_order());
-		return $self->{'@tag'} . "(" . $fields_string . ")";
+		return $self->{':tag'} . "(" . $fields_string . ")";
 	};
 
 
 our %variants_info;
-our %constructor_info;
+our %constr_info;
 
 sub new {
 	my ($class, $base_type, $tag, @args) = @_;
-	validate_args(\@args, $constructor_info{$tag}->{param_types});
+	my $info = $constr_info{$tag};
+	if (@args != $info->{n_params}) {
+		die(sprintf("num of args/types mismatch: %d / %d", scalar(@args), $info->{n_params}));
+	}
 
-	my %map = (
-		'@tag' => $tag, '@base_type' => $base_type
-	);
-	my @param_names = $constructor_info{$tag}->{param_names}->@*;
+	my $self = bless { ':tag' => $tag, ':base_type' => $base_type, }, $class;
+
 	while (my ($i, $arg) = each @args) {
-		$map{$param_names[$i]} = $arg;
+		my $param_name = $info->{params_order}[$i];
+		$self->set($param_name, $arg);
 	}
-	return bless \%map, $class;
+	return $self;
 }
 
-sub validate_args {
-	my ($args, $types) = @_;
-	die(sprintf("num of args/types mismatch: %d / %d", scalar(@$args), scalar(@$types))) if (@$args != @$types);
-
-	for my $i (0..$#$args) {
-		my ($arg, $type) = ($args->[$i], $types->[$i]);
-		if (!defined $arg) {
-			die("undef arg for type " . $type->{full_name}) unless ($type->{optional});
-		} elsif ($type->{array}) {
-			die("non-array $arg for type " . $type->{full_name}) unless (ref($arg) eq 'ARRAY');
-			validate_arg($_, $type->{name}) for $arg->@*;
-		} else {
-			validate_arg($arg, $type->{name});
-		}
-	}
-}
-
-sub validate_arg {
-	my ($arg, $type_name) = @_;
-	if ($type_name =~ /^[A-Z]/) {
-		die "$arg not ADT"		  unless ($arg isa 'ADT::ADT');
-		die "$arg not $type_name" unless ($arg->{'@base_type'} eq $type_name);
-	} else {
-		die "$arg not primitive $type_name" unless (ref($arg) eq "");
-		if ($type_name eq 'int') {
-			die "$arg not int" if ($arg !~ /^-?\d+$/);
-		}
-	} 
-}
 
 sub get {
 	my ($self, $key) = @_;
@@ -66,9 +39,15 @@ sub get {
 
 sub set {
 	my ($self, $key, $val) = @_;
-	die "bad key $key" unless (exists $self->{$key});
+	check_value($val, $constr_info{$self->{':tag'}}->{param_types}{$key});
 	$self->{$key} = $val;
 }
+
+sub value_by_index {
+	my ($self, $i) = @_;
+	return $self->{$constr_info{$self->{':tag'}}->{params_order}->[$i]};
+}
+
 
 sub is {
 	my ($self, @tags) = @_;
@@ -78,35 +57,57 @@ sub is {
 sub index_of_in {
 	my ($self, @tags) = @_;
 	while (my ($i, $tag) = each @tags) {
-		return $i if ($self->{'@tag'} eq $tag || $self->{'@base_type'} eq $tag);
+		return $i if ($self->{':tag'} eq $tag || $self->{':base_type'} eq $tag);
 	}	
 	return -1;
 }
 
 sub match {
 	my ($self, $cases) = @_;
-	if (!exists $cases->{default} && grep { !exists $cases->{$_} } $variants_info{$self->{'@base_type'}}->@*) {
-		die "cases for type " . $self->{'@base_type'} . " not exhausted:\n" . (join "\n", keys %$cases);
+	if (!exists $cases->{default}) {
+		my @missing = grep { !exists $cases->{$_} } $variants_info{$self->{':base_type'}}->@*;
+		die "missing cases for type " . $self->{':base_type'} . ": @missing" if (@missing);
 	}
-	my $sub = $cases->{$self->{'@tag'}} // $cases->{default} ;
+	my $sub = $cases->{$self->{':tag'}} // $cases->{default};
 	$sub->($self->values_in_order());
 }
 
-sub value_by_index {
-	my ($self, $i) = @_;
-	return $self->{$constructor_info{$self->{'@tag'}}->{param_names}->[$i]};
-}
 
 sub values_in_order {
-	my $self = shift;
-	my $expected_type = shift;
-	die "$self not $expected_type" if (defined $expected_type && $self->{'@tag'} ne $expected_type);
+	my ($self, $expected_type) = @_;
+	if (defined $expected_type && !$self->is($expected_type)) {
+		die "$self not $expected_type";
+	}
 	return map { $self->{$_} } $self->fields_order();
 }
 
 sub fields_order {
 	my $self = shift;
-	return $constructor_info{$self->{'@tag'}}->{param_names}->@*;
+	return $constr_info{$self->{':tag'}}->{params_order}->@*;
 }
+
+
+sub check_value {
+	my ($value, $type) = @_;
+	die "missing type for $value" if (!defined $type);
+	if (!defined $value) {
+		$type->{optional} ? return : die("undef val for type " . $type->{full_name});
+	} elsif ($type->{array}) {
+		die("non-array $value for type " . $type->{full_name}) unless (ref($value) eq 'ARRAY');
+	}
+
+	for my $val (ref($value) eq 'ARRAY' ? $value->@* : ($value)) {
+		if ($type->{name} =~ /^[A-Z]/) {
+			die("$val not ADT")				 unless ($val isa 'ADT::ADT');
+			die("$val not " . $type->{name}) unless ($val->{':base_type'} eq $type->{name});
+		} else {
+			die("$val not primitive " . $type->{name}) unless (ref($val) eq "");
+			if ($type->{name} eq 'int') {
+				die "$val not int" if ($val !~ /^-?\d+$/);
+			}
+		} 
+	}
+}
+
 
 1;

@@ -160,7 +160,7 @@ sub parse_statement {
 sub parse_for_init {
 	my $decl = parse_declaration();
 	if (defined $decl) {
-		die "fun declaration in for init" if ($res->is('AST_FunDeclaration'));
+		die "fun declaration in for init" if ($decl->is('AST_FunDeclaration'));
 		return AST_ForInitDeclaration($decl);
 	}
 	my $opt_e = parse_opt_expr(';');

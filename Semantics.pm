@@ -3,7 +3,7 @@ use strict;
 use warnings;
 use feature qw(say state isa signatures);
 
-use ADT::AlgebraicTypes qw(:AST :T :S :I);
+use ADT::AlgebraicTypes qw(:AST :A :T :S :I);
 
 
 our %symbol_table;
@@ -20,7 +20,7 @@ sub run {
 sub resolve_ids {
 	my $program = shift;
 	my $ids_map = {};
-	for my $decl ($program->{declarations}->@*) {
+	for my $decl (@{$program->get('declarations')}) {
 		$decl->match({
 			AST_FunDeclaration => sub($name, $params, $body, $type, $storage) {
 				resolve_fun_declaration_ids($decl, $ids_map, 0);
@@ -178,7 +178,7 @@ sub resolve_expr_ids {
 			$expr->set('ident', ($ids_map->{$name}{uniq_name} // die "calling undeclared function $name"));
 			resolve_expr_ids($_, $ids_map) for @$args;
 		},
-		default { die "unknown expression $expr" }
+		default => sub() { die "unknown expression $expr" }
 	});
 }
 
@@ -198,23 +198,18 @@ sub make_inner_scope_map {
 	return $result;
 }
 
-# TODO
-
 ### TYPE CHECKING ###
 sub check_types {
 	state $current_fun_ret_type;
 	my ($node, $parent_node) = @_;
-	if ($node isa Types::Algebraic::ADT) {
-		match ($node) {
-			with (FunDeclaration $name $params $body $ret_type $storage) {
+	if ($node isa 'ADT::ADT') {
+		$node->match({}
+			AST_FunDeclaration => sub($name, $params, $body, $ret_type, $storage) {
 				$current_fun_ret_type = $ret_type;
-				my $f_type = ::FunType([ 
-						map { my ($name, $init, $p_type, $storage) = ::extract_or_die($_, 'VarDeclaration'); $p_type } @$params 
-					],
-					$ret_type);
+				my $f_type = T_FunType([ map { $_->get('type') } @$params ], $ret_type);
 				my $has_body = defined($body);
 				my $already_defined = 0;
-				my $global = $storage->{tag} ne 'Static';
+				my $global = not $storage->is('S_Static');
 
 				if (exists $symbol_table{$name}) {
 					$already_defined = get_symbol_attr($name, 'defined');
@@ -225,34 +220,32 @@ sub check_types {
 				}
 				$symbol_table{$name} = { 
 					type => $f_type,
-					attrs => ::FunAttrs(
+					attrs => A_FunAttrs(
 						($already_defined || $has_body),
 						0+$global
 					)
 				};
 				if ($has_body) {
 					for my $p (@$params) {
-						my ($name, $init, $p_type, $storage) = ::extract_or_die($p, 'VarDeclaration');
-						$symbol_table{$name} = { type => $p_type, attrs => ::LocalAttrs() };
+						$symbol_table{$p->get('name')} = { type => $p->get('type'), attrs => A_LocalAttrs() };
 					}
 					check_types($body, $node);
 				}
 			}
-			with (VarDeclaration $name $init $type $storage) {
-				my $is_file_scope = $parent_node isa Types::Algebraic::ADT && $parent_node->{tag} eq 'Program';
+			AST_VarDeclaration => sub($name, $init, $type, $storage) {
+				my $is_file_scope = $parent_node isa 'ADT::ADT' && $parent_node->is('AST_Program)';
 				if ($is_file_scope) {
 					my $init_val;
 					if (!defined $init) {
-						$init_val = $storage->{tag} eq 'Extern' ? ::NoInitializer() : ::Tentative();
+						$init_val = $storage->is('S_Extern') ? I_NoInitializer() : I_Tentative();
 					} else {
-						my ($const, $_type) = ::extract_or_die($init, 'ConstantExpr');
-						$init_val = const_to_initval($const, $type);
+						$init_val = const_to_initval($init->get('constant'), $init->get('type'));
 					} 
-					my $global = $storage->{tag} ne 'Static';
+					my $global = not $storage->is('S_Static');
 					
 					if (exists $symbol_table{$name}) {
 						die "already declared as other type: $name" unless (types_equal(get_symbol_attr($name, 'type'), $type));
-						if ($storage->{tag} eq 'Extern') {
+						if ($storage->is('S_Extern')) {
 							$global = get_symbol_attr($name, 'global');
 						} elsif (get_symbol_attr($name, 'global') != $global) {
 							die "conflicting linkage, var $name";

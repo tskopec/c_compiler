@@ -46,11 +46,13 @@ sub parse_declaration {
 			}
 		}
 		die "$constr_tag: nums of param names/types not equal" if (@param_types != @param_names);
-
 		push($ADT::ADT::variants_info{$base_type}->@*, $constr_tag);
-		$ADT::ADT::constructor_info{$constr_tag} = {
-			param_types => \@param_types,
-			param_names => \@param_names,
+		$ADT::ADT::constr_info{$constr_tag} = {
+			n_params => scalar(@param_names),
+			params_order => \@param_names,
+			param_types => {
+				map { ($param_names[$_], $param_types[$_]) } 0..$#param_names
+			},
 		};
 
 		my $constr_sub = sub {

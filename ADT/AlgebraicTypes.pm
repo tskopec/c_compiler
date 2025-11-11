@@ -13,7 +13,7 @@ our @EXPORT_OK;
 our %EXPORT_TAGS;
 
 BEGIN {
-	$Exporter::Verbose = 1;
+	#$Exporter::Verbose = 1;
 	open(my $fh, "<", "./types.asdl") or die $!;
 	my %constructors = ADT::ParseASDL::parse_file($fh);
 	while (my ($name, $sub) = each %constructors) {
@@ -33,7 +33,7 @@ sub print_tree {
 	my $print_node = sub {
 		my ($node, $indent) = @_;
 		if ($node isa ADT::ADT) {
-			say(($tab x $indent) . $node->{'@tag'});
+			say(($tab x $indent) . $node->{':tag'});
 			__SUB__->($_, $indent + 1) for $node->values_in_order();
 		} elsif (ref($node) eq 'ARRAY') {
 			say(($tab x $indent) . 'array:');
