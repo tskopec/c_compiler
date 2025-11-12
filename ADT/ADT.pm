@@ -62,6 +62,12 @@ sub index_of_in {
 	return -1;
 }
 
+sub same_type_as {
+    my ($self, $other) = @_;
+    die "$other not ADT" unless ($other isa 'ADT::ADT');
+    return $self->{':tag'} eq $other->{':tag'};
+}
+
 sub match {
 	my ($self, $cases) = @_;
 	if (!exists $cases->{default}) {
