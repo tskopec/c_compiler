@@ -9,7 +9,7 @@ use lib ".";
 use ADT::AlgebraicTypes qw(print_tree);
 use Lexer;
 use Parser;
-#use Semantics;
+use Semantics;
 #use TAC;
 #use CodeGen;
 #use Emitter;
@@ -71,11 +71,11 @@ sub compile {
 	my $ast = Parser::parse(@tokens);
 	print_tree($ast) if $debug;
 	return if ($target_phase eq 'parse');
-	#
-	#	# SEMANTICS
-	#	Semantics::run($ast);
-	#	print_AST($ast) if $debug;
-	#	return if ($target_phase eq 'validate');
+	
+	# SEMANTICS
+	Semantics::run($ast);
+	print_tree($ast) if $debug;
+	return if ($target_phase eq 'validate');
 	#
 	#	# TAC
 	#	my $tac = TAC::emit_TAC($ast);

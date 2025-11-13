@@ -26,7 +26,7 @@ sub resolve_ids {
 				resolve_fun_declaration_ids($name, $params, $body, $type, $storage, $ids_map, 0);
 			},
 			AST_VarDeclaration => sub($name, $init, $type, $storage) {
-				resolve_top_level_var_declaration_ids($name, $init, $type, $storage, $ids_map, @values);
+				resolve_top_level_var_declaration_ids($name, $init, $type, $storage, $ids_map);
 			},
 			default => sub {
 				die "unknown declaration: $decl";
@@ -50,7 +50,7 @@ sub resolve_fun_declaration_ids {
 	}
 	$ids_map->{$name} = { uniq_name => $name, from_this_scope => 1, has_linkage => 1 };
 	my $inner_ids_map = make_inner_scope_map($ids_map);
-	resolve_local_var_declaration_ids($_->values_in_order('AST_VarDeclaration'), $inner_ids_map) for @$params;
+	resolve_local_var_declaration_ids($_, $inner_ids_map) for @$params;
 	if (defined $body) {
 		my $items = $body->get('items');
 		resolve_block_item_ids($_, $inner_ids_map) for @$items;
@@ -64,14 +64,14 @@ sub resolve_top_level_var_declaration_ids {
 }
 
 sub resolve_local_var_declaration_ids {
-	my ($name, $init, $type, $storage,
-	   	$ids_map) = @_;
+	my ($declaration, $ids_map) = @_;
+	my ($name, $init, $type, $storage) = $declaration->values_in_order('AST_VarDeclaration');
 	if (exists $ids_map->{$name}
 		&& $ids_map->{$name}{from_this_scope}
-		&& !($ids_map->{$name}{has_linkage} && $storage->is('S_Extern')) {
+		&& !($ids_map->{$name}{has_linkage} && $storage->is('S_Extern'))) {
 			die "multiple declarations of $name in this scope, some without linkage";
 	}
-	if ($storage->is('S_Extern')) {
+	if (defined $storage && $storage->is('S_Extern')) {
 		$ids_map->{$name} = { uniq_name => $name, from_this_scope => 1, has_linkage => 1 };
 	} else {
 		$declaration->set('name', unique_var_name($name));
@@ -86,7 +86,7 @@ sub resolve_block_item_ids {
 		AST_BlockDeclaration => sub($decl) {
 			$decl->match({
 				AST_VarDeclaration => sub($name, $init, $type, $storage) {
-					resolve_local_var_declaration_ids($name, $init, $type, $storage, $ids_map);
+					resolve_local_var_declaration_ids($decl, $ids_map);
 				},
 				AST_FunDeclaration => sub($name, $params, $body, $type, $storage) {
 					die "local fun definition: $name" if (defined $body);
@@ -110,7 +110,7 @@ sub resolve_statement_ids {
 			resolve_expr_ids($e, $ids_map);
 		},
 		AST_Null => sub() { ; },
-		AST_If => sub($cond, $then , $else) {
+		AST_If => sub($cond, $then, $else) {
 			resolve_expr_ids($cond, $ids_map);
 			resolve_statement_ids($then, $ids_map);
 			resolve_statement_ids($else, $ids_map) if defined $else;
@@ -132,7 +132,7 @@ sub resolve_statement_ids {
 			my $new_idents = make_inner_scope_map($ids_map);
 			$init->match({
 				AST_ForInitDeclaration => sub($decl) {
-					resolve_local_var_declaration_ids($decl->values_in_order('AST_VarDeclaration'), $new_idents);
+					resolve_local_var_declaration_ids($decl, $new_idents);
 				},
 				AST_ForInitExpression => sub($expr) {
 					resolve_opt_expr_ids($expr, $new_idents);
@@ -157,7 +157,7 @@ sub resolve_opt_expr_ids {
 
 sub resolve_expr_ids {
 	my ($expr, $ids_map) = @_;
-	$expr->match() ({
+	$expr->match({
 		AST_ConstantExpr => sub($val, $type) {;},
 		AST_Cast => sub($expr, $type) {
 			resolve_expr_ids($expr, $ids_map);
@@ -216,7 +216,7 @@ sub check_types {
 				my $f_type = T_FunType([ map { $_->get('type') } @$params ], $ret_type);
 				my $has_body = defined($body);
 				my $already_defined = 0;
-				my $global = not $storage->is('S_Static');
+				my $global = defined $storage && !$storage->is('S_Static');
 
 				if (exists $symbol_table{$name}) {
 					$already_defined = get_symbol_attr($name, 'defined');
@@ -259,10 +259,10 @@ sub check_types {
 						}
 
 						my $prev_init = get_symbol_attr($name, 'init_value');
-						if ($prev_init->is('I_Initial') {
-							die "conflicting file scope var definitions: $name " if ($init_val->is('I_Initial');
+						if ($prev_init->is('I_Initial')) {
+							die "conflicting file scope var definitions: $name " if ($init_val->is('I_Initial'));
 							$init_val = $prev_init;
-						} elsif (!$init_val->is('I_Initial') && $prev_init->is('I_Tentative') {
+						} elsif (!$init_val->is('I_Initial') && $prev_init->is('I_Tentative')) {
 							$init_val = I_Tentative();
 						}
 					}
@@ -274,7 +274,7 @@ sub check_types {
 					if ($parent_node isa 'ADT::ADT' && $parent_node->is('AST_ForInitDeclaration') && defined($storage)) {
 						die "for loop header var $name declaration with storage class";
 					}
-					if ($storage->is('S_Extern') {
+					if (defined $storage && $storage->is('S_Extern')) {
 						die "initalizing local extern variable" if (defined $init);
 						if (exists $symbol_table{$name}) {
 							die "already declared as other type: $name" unless (types_equal(get_symbol_attr($name, 'type'), $type));
@@ -284,7 +284,7 @@ sub check_types {
 								attrs => A_StaticAttrs(I_NoInitializer(), 1)
 							};
 						}
-					} elsif ($storage->is('S_Static') {
+					} elsif (defined $storage && $storage->is('S_Static')) {
 						my $init_val;
 						if (!defined $init) {
 							$init_val = I_Initial(0);
@@ -321,7 +321,7 @@ sub check_types {
 				$node->set('type', $type);
 			},
 			AST_ConstantExpr => sub($const, $type) {;},
-			AST_Cast => sub($expr $type) {
+			AST_Cast => sub($expr, $type) {
 				check_types($expr, $node);
 				$node->set('type', $type);
 			},
@@ -336,7 +336,7 @@ sub check_types {
 			AST_Binary => sub($op, $e1, $e2, $dummy_type) {
 				check_types($e1, $node);
 				check_types($e2, $node);
-				if ($op->is('AST_And', 'AST_Or'))
+				if ($op->is('AST_And', 'AST_Or')) {
 					$node->set('type', T_Int());
 				} else {
 					my $common_type = get_common_type($e1->get('type'), $e2->get('type'));
@@ -410,7 +410,7 @@ sub get_common_type {
 
 sub convert_type {
 	my ($expr, $type) = @_;
-	return ($type->same_type_as($expr->get('type')) ? $expr : AST_Cast($expr, $type);
+	return $type->same_type_as($expr->get('type')) ? $expr : AST_Cast($expr, $type);
 }
 
 sub types_equal {
@@ -429,8 +429,7 @@ sub types_equal {
 
 sub const_to_initval {
 	my ($const, $type) = @_;
-	return I_Initial(
-		($type->is('T_Int')
+	return I_Initial($type->is('T_Int')
 			? I_IntInit(fit_integer_into($const->get('val'), $type))
 			: I_LongInit(fit_integer_into($const->get('val'), $type))
 	);
