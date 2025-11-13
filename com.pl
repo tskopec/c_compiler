@@ -10,7 +10,7 @@ use ADT::AlgebraicTypes qw(print_tree);
 use Lexer;
 use Parser;
 use Semantics;
-#use TAC;
+use TAC;
 #use CodeGen;
 #use Emitter;
 
@@ -76,11 +76,11 @@ sub compile {
 	Semantics::run($ast);
 	print_tree($ast) if $debug;
 	return if ($target_phase eq 'validate');
-	#
-	#	# TAC
-	#	my $tac = TAC::emit_TAC($ast);
-	#	print_AST($tac) if $debug;
-	#	return if ($target_phase eq 'tac');
+	
+	# TAC
+	my $tac = TAC::emit_TAC($ast);
+	print_tree($tac) if $debug;
+	return if ($target_phase eq 'tac');
 	#
 	#	# ASSEMBLY GEN
 	#	my $asm = CodeGen::generate($tac);

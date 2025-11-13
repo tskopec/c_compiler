@@ -13,7 +13,7 @@ sub emit_TAC {
         AST_Program => sub($declarations) {
             my (@tac_funs, @tac_vars);
             for my $d (@$declarations) {
-                next if (not $d->is('AST_FunDeclaration');
+                next if (not $d->is('AST_FunDeclaration'));
                 my $tac_fun = emit_TAC($d);
                 push(@tac_funs, $tac_fun) if (defined $tac_fun);
             }
@@ -59,8 +59,7 @@ sub emit_TAC {
             push @$instructions, TAC_Label($end_label);
         },
         AST_Compound =>sub($block) {
-            my ($items) = ::extract_or_die($block, 'Block');
-            emit_TAC($_, $instructions) for @{$block->get('items')};
+            emit_TAC($_->value_by_index(0), $instructions) for @{$block->get('items')};
         },
         AST_DoWhile => sub($body, $cond, $label) {
             my ($start_label) = labels('start');
@@ -81,7 +80,9 @@ sub emit_TAC {
         },
         AST_For => sub($init, $cond, $post, $body, $label) {
             my ($start_label) = labels('start');
-            emit_TAC($init, $instructions) if defined $init;
+			if ($init->is('AST_ForInitDeclaration') || defined $init->get('expr')) {
+				emit_TAC($init->value_by_index(0), $instructions);
+			}
             push @$instructions, TAC_Label($start_label);
             if (defined $cond) {
                 my $cond_res = emit_TAC($cond, $instructions);
@@ -110,7 +111,7 @@ sub emit_TAC {
         },
         AST_Cast =>sub($expr, $type) {
             my $res = emit_TAC($expr, $instructions);
-            if ($type->same_type_as(Semantics::get_type($expr)) {
+            if ($type->same_type_as(Semantics::get_type($expr))) {
                 return $res;
             }
             my $dst = make_TAC_var($type);
@@ -130,7 +131,7 @@ sub emit_TAC {
         },
         AST_Binary => sub($op, $exp1, $exp2, $type) {
             my $dst = make_TAC_var($type);
-            if ($op->is('AST_And') {
+            if ($op->is('AST_And')) {
                 my ($false_label, $end_label) = labels(qw(false end));
                 my $src1 = emit_TAC($exp1, $instructions);
                 push @$instructions, TAC_JumpIfZero($src1, $false_label);
@@ -141,7 +142,7 @@ sub emit_TAC {
                                      TAC_Label($false_label),
                                      TAC_Copy(TAC_Constant(AST_ConstInt(0)), $dst),
                                      TAC_Label($end_label));
-            } elsif ($op->is('AST_Or') {
+            } elsif ($op->is('AST_Or')) {
                 my ($true_label, $end_label) = labels(qw(true end));
                 my $src1 = emit_TAC($exp1, $instructions);
                 push @$instructions, TAC_JumpIfNotZero($src1, $true_label);
@@ -263,8 +264,8 @@ sub covert_symbols_to_TAC {
 
 sub get_default_init {
     my $type = shift;
-    return I_IntInit(0)     if ($type->is('T_Int');
-    return I_LongInit(0) if ($type->is('T_Long');
+    return I_IntInit(0)  if ($type->is('T_Int'));
+    return I_LongInit(0) if ($type->is('T_Long'));
     die "unknown type $type (get_default_init)";
 }
 
