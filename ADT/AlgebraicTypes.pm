@@ -31,18 +31,18 @@ BEGIN {
 sub print_tree {
 	state $tab = "  ";
 	my $print_node = sub {
-		my ($node, $indent) = @_;
+		my ($key, $node, $indent) = @_;
 		if ($node isa ADT::ADT) {
-			say(($tab x $indent) . $node->{':tag'});
-			__SUB__->($_, $indent + 1) for $node->values_in_order();
+			say(($tab x $indent) . "$key: " . $node->{':tag'});
+			__SUB__->($_, $node->{$_}, $indent + 1) for $node->fields_order();
 		} elsif (ref($node) eq 'ARRAY') {
-			say(($tab x $indent) . 'array:');
-			__SUB__->($_, $indent + 1) for $node->@*;
+			say(($tab x $indent) . "$key\[\]:");
+			__SUB__->($_, $node->[$_], $indent + 1) for (0..$#$node);
 		} else {
-			say(($tab x $indent) . '"' . ($node // 'undef') . '"');
+			say(($tab x $indent) . "$key: " . ($node // 'undef'));
 		}
 	};
-	$print_node->(shift(), 0);
+	$print_node->("root", shift(), 0);
 	print "\n";
 }
 

@@ -158,7 +158,7 @@ sub resolve_opt_expr_ids {
 sub resolve_expr_ids {
 	my ($expr, $ids_map) = @_;
 	$expr->match({
-		AST_ConstantExpr => sub($val, $type) {;},
+		AST_ConstantExpr => sub($const, $type) {;},
 		AST_Cast => sub($expr, $type) {
 			resolve_expr_ids($expr, $ids_map);
 		},
@@ -429,7 +429,8 @@ sub types_equal {
 
 sub const_to_initval {
 	my ($const, $type) = @_;
-	return I_Initial($type->is('T_Int')
+	return I_Initial(
+		$type->is('T_Int') 
 			? I_IntInit(fit_integer_into($const->get('val'), $type))
 			: I_LongInit(fit_integer_into($const->get('val'), $type))
 	);

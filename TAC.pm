@@ -3,7 +3,7 @@ use strict;
 use warnings;
 use feature qw(say state signatures);
 
-use ADT::AlgebraicTypes qw(:AST :TAC :T);
+use ADT::AlgebraicTypes qw(:AST :TAC :T :C :A);
 use Semantics;
 
 
@@ -22,12 +22,8 @@ sub emit_TAC {
         },
         AST_FunDeclaration => sub($name, $params, $body, $ret_type, $storage) {
             if (defined $body) {
-                my $items = $body->get('items');
-                my $instructions = [];
-                for my $item (@$items) {
-                    emit_TAC($item, $instructions);
-                }
-                push @$instructions, TAC_Return(TAC_Constant(AST_ConstInt(0))); # TODO predpona constant
+				emit_TAC($body, my $instructions = []);
+                push @$instructions, TAC_Return(TAC_Constant(C_ConstInt(0)));
                 return TAC_Function($name,
                                       Semantics::get_symbol_attr($name, 'global'),
                                       [ map { $_->get('name') } @$params ],
@@ -40,7 +36,10 @@ sub emit_TAC {
             if (defined $init) {
                 emit_TAC(AST_Assignment(AST_Var($name, $type), $init, $type), $instructions);
             }
-           },
+        },
+		AST_Block => sub($items) {
+			emit_TAC($_->value_by_index(0), $instructions) for @$items;
+		},
         AST_Return => sub($exp) {
             push(@$instructions, TAC_Return(emit_TAC($exp, $instructions)));
         },
@@ -59,7 +58,7 @@ sub emit_TAC {
             push @$instructions, TAC_Label($end_label);
         },
         AST_Compound =>sub($block) {
-            emit_TAC($_->value_by_index(0), $instructions) for @{$block->get('items')};
+            emit_TAC($block, $instructions);
         },
         AST_DoWhile => sub($body, $cond, $label) {
             my ($start_label) = labels('start');
@@ -137,10 +136,10 @@ sub emit_TAC {
                 push @$instructions, TAC_JumpIfZero($src1, $false_label);
                 my $src2 = emit_TAC($exp2, $instructions);
                 push(@$instructions, TAC_JumpIfZero($src2, $false_label),
-                                     TAC_Copy(TAC_Constant(AST_ConstInt(1)), $dst),   # TODO consts
+                                     TAC_Copy(TAC_Constant(C_ConstInt(1)), $dst),
                                      TAC_Jump($end_label),
                                      TAC_Label($false_label),
-                                     TAC_Copy(TAC_Constant(AST_ConstInt(0)), $dst),
+                                     TAC_Copy(TAC_Constant(C_ConstInt(0)), $dst),
                                      TAC_Label($end_label));
             } elsif ($op->is('AST_Or')) {
                 my ($true_label, $end_label) = labels(qw(true end));
@@ -148,10 +147,10 @@ sub emit_TAC {
                 push @$instructions, TAC_JumpIfNotZero($src1, $true_label);
                 my $src2 = emit_TAC($exp2,  $instructions);
                 push(@$instructions, TAC_JumpIfNotZero($src2, $true_label),
-                                     TAC_Copy(TAC_Constant(AST_ConstInt(0)), $dst), # TODO consts
+                                     TAC_Copy(TAC_Constant(C_ConstInt(0)), $dst),
                                      TAC_Jump($end_label),
                                      TAC_Label($true_label),
-                                     TAC_Copy(TAC_Constant(AST_ConstInt(1)), $dst),
+                                     TAC_Copy(TAC_Constant(C_ConstInt(1)), $dst),
                                      TAC_Label($end_label));
             } else {
                 my $binop = convert_binop($op);
@@ -187,7 +186,7 @@ sub emit_TAC {
             push(@$instructions, (TAC_FunCall($name, $arg_vals, $dst)));
             return $dst;
         },
-        default => sub() {
+        default => sub {
             die "unknown AST node: $node";
         }
     });

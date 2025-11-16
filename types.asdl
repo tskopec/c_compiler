@@ -33,7 +33,7 @@ AST_ForInit =
 	AST_ForInitDeclaration(AST_VarDeclaration decl)
 	| AST_ForInitExpr(AST_Expression? expr)
 AST_Expression =
-	 AST_ConstantExpr(AST_Constant constant, T_Type type)
+	 AST_ConstantExpr(C_Constant constant, T_Type type)
 	 | AST_Var(string ident, T_Type type)
 	 | AST_Cast(AST_Expression expr, T_Type target)
 	 | AST_Unary(AST_UnaryOperator op, AST_Expression expr, T_Type type)
@@ -45,9 +45,6 @@ AST_UnaryOperator =
 	AST_Complement | AST_Negate | AST_Not
 AST_BinaryOperator =
 	AST_Add | AST_Subtract | AST_Multiply | AST_Divide | AST_Modulo | AST_And | AST_Or | AST_Equal | AST_NotEqual | AST_LessThan | AST_LessOrEqual | AST_GreaterThan | AST_GreaterOrEqual
-AST_Constant =
-	AST_ConstInt(int val)
-	| AST_ConstLong(int val)
 
 # Types & misc
 T_Type =
@@ -55,6 +52,9 @@ T_Type =
 	| T_Long
 	| T_FunType(T_Type* params, T_Type ret)
 	| T_DummyType
+C_Constant =
+	C_ConstInt(int val)
+	| C_ConstLong(int val)
 A_IdentifierAttrs =
 	A_FunAttrs(bool defined, bool global)
 	| A_StaticAttrs(I_InitialValue init_val, bool global)
@@ -88,7 +88,7 @@ TAC_Instruction =
 	| TAC_Label(string ident)
 	| TAC_FunCall(string name, TAC_Value* params, TAC_Value dst)
 TAC_Value =
-	TAC_Constant(Constant constant)
+	TAC_Constant(C_Constant constant)
 	| TAC_Variable(string name)
 TAC_UnaryOperator =
 	TAC_Complement | TAC_Negate | TAC_Not
