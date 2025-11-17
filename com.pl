@@ -11,8 +11,8 @@ use Lexer;
 use Parser;
 use Semantics;
 use TAC;
-#use CodeGen;
-#use Emitter;
+use CodeGen;
+use Emitter;
 
 
 our $global_counter = 0;
@@ -81,27 +81,27 @@ sub compile {
 	my $tac = TAC::emit_TAC($ast);
 	print_tree($tac) if $debug;
 	return if ($target_phase eq 'tac');
-	#
-	#	# ASSEMBLY GEN
-	#	my $asm = CodeGen::generate($tac);
-	#	print_AST($asm) if $debug;
-	#	return if ($target_phase eq 'codegen');
-	#
-	#	# EMIT CODE
-	#	my $asm_file = $src_file =~ s/c$/s/r;
-	#	my $code = Emitter::emit_code($asm);
-	#	say($code) if $debug;
-	#	write_file($asm_file, $code);
-	#	 
-	#	# ASSEMBLE
-	#	if ($dont_link) {
-	#		my $obj_file = $src_file =~ s/\.c$/.o/r;
-	#		qx/gcc -c $asm_file -o $obj_file/;
-	#	} else {
-	#		my $bin_file = $src_file =~ s/\.c$//r;
-	#		qx/gcc $asm_file -o $bin_file/;
-	#	}
-	#	unlink($asm_file); 
+
+	# ASSEMBLY GEN
+	my $asm = CodeGen::generate($tac);
+	print_AST($asm) if $debug;
+	return if ($target_phase eq 'codegen');
+	
+	# EMIT CODE
+	my $asm_file = $src_file =~ s/c$/s/r;
+	my $code = Emitter::emit_code($asm);
+	say($code) if $debug;
+	write_file($asm_file, $code);
+	  
+	# ASSEMBLE
+	if ($dont_link) {
+		my $obj_file = $src_file =~ s/\.c$/.o/r;
+	 	qx/gcc -c $asm_file -o $obj_file/;
+	} else {
+		my $bin_file = $src_file =~ s/\.c$//r;
+		qx/gcc $asm_file -o $bin_file/;
+	}
+	unlink($asm_file); 
 }
 
 

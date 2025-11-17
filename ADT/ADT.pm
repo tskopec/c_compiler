@@ -75,7 +75,7 @@ sub match {
 		die "missing cases for type " . $self->{':base_type'} . ": @missing" if (@missing);
 	}
 	my $sub = $cases->{$self->{':tag'}} // $cases->{default};
-	$sub->($self->values_in_order());
+	return $sub->($self->values_in_order());
 }
 
 

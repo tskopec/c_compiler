@@ -3,6 +3,7 @@ package CodeGen;
 use strict;
 use warnings;
 use feature qw(say isa state current_sub signatures);
+
 use List::Util qw(min);
 use ADT::AlgebraicTypes qw(:TAC :ASM);
 use Semantics;
@@ -26,7 +27,7 @@ sub fill_asm_symtable {
 		if ($entry->{type}->is('T_FunType')) {
 			$asm_symbol_table{$name} = { 
 				entry_type => 'Fun',
-			   	defined => $attrs->get('defined');
+			   	defined => $attrs->get('defined')
 		   	};
 		} else {
 			$asm_symbol_table{$name} = { 
@@ -38,7 +39,7 @@ sub fill_asm_symtable {
 	}	 
 }
 
-### FIRST PASS ###
+#1# FIRST PASS ###
 sub translate_to_ASM {
 	my $node = shift;
 	$node->match({
@@ -87,7 +88,7 @@ sub translate_to_ASM {
 						ASM_Cdq($src_op_size),
 						ASM_Idiv($src_op_size, translate_to_ASM($src2)),
 						ASM_Mov($src_op_size, ASM_Reg((ASM_AX(), ASM_DX())[$i]), $asm_dst));
-			} elsif (-1 != (my $i = $op->index_of_in(qw(TAC_Equal TAC_NotEqual TAC_LessThan TAC_LessOrEqual TAC_GreaterThan TAC_GreaterOrEqual)))) {
+			} elsif (-1 != ($i = $op->index_of_in(qw(TAC_Equal TAC_NotEqual TAC_LessThan TAC_LessOrEqual TAC_GreaterThan TAC_GreaterOrEqual)))) {
 				return (ASM_Cmp($src_op_size, translate_to_ASM($src2), translate_to_ASM($src1)),
 						ASM_Mov(operand_size_of($dst), ASM_Imm(0), $asm_dst),
 						ASM_SetCC((ASM_E(), ASM_NE(), ASM_L(), ASM_LE(), ASM_G(), ASM_GE())[$i], $asm_dst));
@@ -152,34 +153,33 @@ sub translate_to_ASM {
 		},
 		TAC_Truncate => sub($src, $dst) {
 			return ASM_Mov(ASM_Longword(), translate_to_ASM($src), translate_to_ASM($dst));
-		},,
+		},
 		default { die "unknown TAC $node" }
 	});
 }
 
 sub convert_unop {
 	my $op = shift;
-	match ($op) {
-		with (TAC_Complement)	{ return ASM_Not }
-		with (TAC_Negate)		{ return ASM_Neg }
-		default					{ die "unknown op $op" }
-	}	
+	$op->match({
+		TAC_Complement => sub() { return ASM_Not() },
+		TAC_Negate => sub() { return ASM_Neg() },
+		default	=> sub { die "unknown op $op" },
+	});	
 }
 
 sub convert_binop {
 	my $op = shift;
-	match ($op) {
-		 with (TAC_Add)			{ return ASM_Add }
-		 with (TAC_Subtract)	{ return ASM_Sub }
-		 with (TAC_Multiply)	{ return ASM_Mult }
-		 default				{ die "unknown bin op $op" }
-	}	
+	$op->match({
+		 TAC_Add => sub() { return ASM_Add() },
+		 TAC_Subtract => sub() { return ASM_Sub() },
+		 TAC_Multiply => sub() { return ASM_Mult() },
+		 default => sub { die "unknown bin op $op" },
+	});	
 }
 
 sub operand_size_of {
 	my $val = shift;
 	my $type_tag;
-	# TODO
 	if ($val->is('T_Type')) {
 		$type_tag = $val->{':tag'};
 	} else {
@@ -201,8 +201,8 @@ sub operand_size_of {
 
 sub size_in_bytes {
 	my $type = shift;
-	return 4 if ($type->{tag} eq 'ASM_Longword');
-	return 8 if ($type->{tag} eq 'ASM_Quadword');
+	return 4 if ($type->is('ASM_Longword'));
+	return 8 if ($type->is('ASM_Quadword'));
 	die "unknown type $type (size_in_bytes)";
 }
 
@@ -214,10 +214,10 @@ sub deallocate_stack {
 }
 
 
-### SECOND PASS ###
+#2# SECOND PASS ###
 sub fix_up {
 	my $program = shift;
-	for my $declaration ($program->{values}[0]->@*) {
+	for my $declaration (@{$program->get('declarations')}) {
 		$declaration->match({
 			ASM_Function => sub($name, $global, $instructions) {
 				replace_pseudo($declaration);
@@ -235,21 +235,21 @@ sub replace_pseudo {
 	my $process_node;
 	$process_node = sub {
 		my $node = shift;
-		match ($node) {
-			with (ASM_Pseudo $ident) {
+		return $node->match({
+			ASM_Pseudo => sub($ident) {
 				if (exists $asm_symbol_table{$ident} && $asm_symbol_table{$ident}->{static}) {
-					return ::ASM_Data($ident);
+					return ASM_Data($ident);
 				} else {
 					unless (exists $offsets{$ident}) {
 						my $size = size_in_bytes($asm_symbol_table{$ident}{op_size});
 						$offsets{$ident} = ($current_offset -= $size + $current_offset % $size);				
 					}	
-					return ::ASM_Stack($offsets{$ident});
+					return ASM_Stack($offsets{$ident});
 				}
-			}
-			default { 
+			},
+			default => sub { 
 				for my $val ($node->{values}->@*) {
-					if ($val isa Types::Algebraic::ADT) {
+					if ($val isa 'ADT::ADT') {
 						$val = $process_node->($val);
 					} elsif (ref($val) eq 'ARRAY') {
 						$val = [ map { $process_node->($_) } @$val ];
@@ -257,100 +257,107 @@ sub replace_pseudo {
 				}
 				return $node;
 			}
-		}
+		});
 	};
 	$process_node->($function);
-	my ($name, $global, $instructions) = ::extract_or_die($function, 'ASM_Function');
+	my ($name, $global, $instructions) = $function->values_in_order('ASM_Function');
 	my $max_offset = -$current_offset;
 	unshift(@$instructions, allocate_stack($max_offset + ($max_offset % 16))); # 16 byte aligned
 }
 
-## FIX
+#3# FIX
 sub fix_instr {
 	my $function = shift;
 	my $fix = sub {
 		my $instruction = shift;
 		my $res = [$instruction];
-		if (my ($op, $op_size, $src, $dst) = ::extract($instruction, 'ASM_Binary')) {
-			if ($op->{tag} eq 'ASM_Mult') {
-				if (check_imm_too_large($src, $op_size)) {
-					$res = relocate_instr_operand($res, { when => 'before', from => $src, to => ::R10(), op_size => $op_size });
+		$instruction->match({
+			ASM_Binary => sub($op, $op_size, $src, $dst) {
+				if ($op->is('ASM_Mult')) {
+					if (check_imm_too_large($src, $op_size)) {
+						$res = relocate_instr_operand($res, { when => 'before', from => $src, to => ASM_R10(), op_size => $op_size });
+					}
+					if (is_mem_addr($dst)) {
+						$res = relocate_instr_operand($res, { when => 'both', from => $dst, to => ASM_R11(), op_size => $op_size });
+					}
+				} elsif ($op->is('ASM_Add', 'ASM_Sub')) {
+					if ((is_mem_addr($src) && is_mem_addr($dst)) || check_imm_too_large($src, $op_size)) {
+						$res = relocate_instr_operand($res, { when => 'before', from => $src, to => ASM_R10(), op_size => $op_size });
+					} 
+				}
+			},
+			ASM_Mov => sub($op_size, $src, $dst) {
+				if (is_mem_addr($src) && is_mem_addr($dst)) {
+					$res = relocate_instr_operand($res, { when => 'before', from => $src, to => ASM_R10(), op_size => $op_size });
+				} elsif ($src->is('ASM_Imm')) {
+					state $max_uint = 2**32;
+					if ($op_size->is('ASM_Longword')) {
+						$src->get('val') %= $max_uint;
+					} elsif ($op_size->is('ASM_Quadword') && $src->get('val') > $max_uint) {
+						$res = relocate_instr_operand($res, { when => 'before', from => $src, to => ASM_R10(), op_size => $op_size });
+					}
+				}
+			},
+			ASM_Cmp => sub($op_size, $src, $dst) {
+				if ((is_mem_addr($src) && is_mem_addr($dst)) || check_imm_too_large($src, $op_size)) {
+					$res = relocate_instr_operand($res, { when => 'before', from => $src, to => ASM_R10(), op_size => $op_size });
+				}
+				if ($dst->is('ASM_Imm')) {
+					$res = relocate_instr_operand($res, { when => 'before', from => $dst, to => ASM_R11(), op_size => $op_size });
+				}
+			},
+			ASM_Idiv => sub($op_size, $operand) {
+				if ($operand->is('ASM_Imm')) {
+					$res = relocate_instr_operand($res, { when => 'before', from => $operand, to => ASM_R10(), op_size => $op_size });
+				}
+			},
+			ASM_Movsx => sub($src, $dst) {
+				if ($src->is('ASM_Imm')) {
+					$res = relocate_instr_operand($res, { when => 'before', from => $src, to => ASM_R10(), op_size => ASM_Longword() });
 				}
 				if (is_mem_addr($dst)) {
-					$res = relocate_instr_operand($res, { when => 'both', from => $dst, to => ::R11(), op_size => $op_size });
+					$res = relocate_instr_operand($res, { when => 'after', from => ASM_R11(), to => $dst, op_size => ASM_Quadword() });
 				}
-			} elsif ($op->{tag} eq 'ASM_Add' || $op->{tag} eq 'ASM_Sub') {
-				if ((is_mem_addr($src) && is_mem_addr($dst)) || check_imm_too_large($src, $op_size)) {
-					$res = relocate_instr_operand($res, { when => 'before', from => $src, to => ::R10(), op_size => $op_size });
-				} 
-			}
-		} elsif (my ($op_size, $src, $dst) = ::extract($instruction, 'ASM_Mov')) {
-			if (is_mem_addr($src) && is_mem_addr($dst)) {
-				$res = relocate_instr_operand($res, { when => 'before', from => $src, to => ::R10(), op_size => $op_size });
-			} elsif ($src->{tag} eq 'ASM_Imm') {
-				state $max_uint = 2**32;
-				if ($op_size->{tag} eq 'ASM_Longword') {
-					$src->{values}[0] %= $max_uint;
-				} elsif ($op_size->{tag} eq 'ASM_Quadword' && $src->{values}[0] > $max_uint) {
-					$res = relocate_instr_operand($res, { when => 'before', from => $src, to => ::R10(), op_size => $op_size });
+			},
+			ASM_Push => sub($operand) {
+				if (check_imm_too_large($operand, ASM_Quadword())) {
+					$res = relocate_instr_operand($res, { when => 'before', from => $operand, to => ASM_R10(), op_size => ASM_Quadword() });
 				}
-			}
-		} elsif (my ($op_size, $src, $dst) = ::extract($instruction, 'ASM_Cmp')) {
-			if ((is_mem_addr($src) && is_mem_addr($dst)) || check_imm_too_large($src, $op_size)) {
-				$res = relocate_instr_operand($res, { when => 'before', from => $src, to => ::R10(), op_size => $op_size });
-			}
-			if ($dst->{tag} eq 'ASM_Imm') {
-				$res = relocate_instr_operand($res, { when => 'before', from => $dst, to => ::R11(), op_size => $op_size });
-			}
-		}
-		elsif (my ($op_size, $operand) = ::extract($instruction, 'ASM_Idiv')) {
-			if ($operand->{tag} eq 'ASM_Imm') {
-				$res = relocate_instr_operand($res, { when => 'before', from => $operand, to => ::R10(), op_size => $op_size });
-			}
-		} elsif (my ($src, $dst) = ::extract($instruction, 'ASM_Movsx')) {
-			if ($src->{tag} eq 'ASM_Imm') {
-				$res = relocate_instr_operand($res, { when => 'before', from => $src, to => ::R10(), op_size => ::ASM_Longword() });
-			}
-			if (is_mem_addr($dst)) {
-				$res = relocate_instr_operand($res, { when => 'after', from => ::R11(), to => $dst, op_size => ::ASM_Quadword() });
-			}
-		} elsif (my ($operand) = ::extract($instruction, 'ASM_Push')) {
-			if (check_imm_too_large($operand, ::ASM_Quadword())) {
-				$res = relocate_instr_operand($res, { when => 'before', from => $operand, to => ::R10(), op_size => ::ASM_Quadword() });
-			}
-		}
+			},
+			default => sub {;}
+		});
 		return @$res;
 	};
-	my ($name, $global, $instructions) = ::extract_or_die($function, 'ASM_Function');
+	my ($name, $global, $instructions) = $function->values_in_order('ASM_Function');
 	splice(@$instructions, 0, $#$instructions + 1, ( map { $fix->($_) } @$instructions ));
 }
 
 # FIX utils
 sub is_mem_addr {
-	return ::is_one_of(shift(), 'ASM_Stack', 'ASM_Data');
+	return (shift())->is('ASM_Stack', 'ASM_Data');
 }
 
 # The assembler permits an immediate value in addq, imulq, subq, cmpq, or pushq only if it can be represented as a signed 32-bit integer (page 268)
 sub check_imm_too_large {
 	my ($src, $op_size) = @_;
-	return ($op_size->{tag} eq 'ASM_Quadword' && $src->{tag} eq 'ASM_Imm' && $src->{values}[0] > (2**31 - 1));
+	return $op_size->is('ASM_Quadword') && $src->is('ASM_Imm') && $src->get('val') > (2**31 - 1);
 }
 
 sub relocate_instr_operand {
 	my ($instructions, $move) = @_;
 	if (%$move) {
 		my $instruction = $instructions->[-1];
-		my ($from, $to) = map { ref($_) eq 'ASM_Register' ? ::ASM_Reg($_) : $_ } (@$move{'from', 'to'});
+		my ($from, $to) = map { $_->is('ASM_Register') ? ASM_Reg($_) : $_ } (@$move{'from', 'to'});
 		if ($move->{when} eq 'before') {
-			unshift(@$instructions, ::ASM_Mov($move->{op_size}, $from, $to));
-			$instruction->{values} = [ map { $_ eq $from ? $to : $_ } $instruction->{values}->@* ];
+			unshift(@$instructions, ASM_Mov($move->get('op_size'), $from, $to));
+			$instruction->{values} = [ map { $_ eq $from ? $to : $_ } $instruction->values_in_order() ];
 		} elsif ($move->{when} eq 'after') {
-			push(@$instructions, ::ASM_Mov($move->{op_size}, $from, $to));
-			$instruction->{values} = [ map { $_ eq $to ? $from : $_ } $instruction->{values}->@* ];
+			push(@$instructions, ASM_Mov($move->get('op_size'), $from, $to));
+			$instruction->{values} = [ map { $_ eq $to ? $from : $_ } $instruction->values_in_order() ];
 		} elsif ($move->{when} eq 'both') {
-			unshift(@$instructions, ::ASM_Mov($move->{op_size}, $from, $to));
-			$instruction->{values} = [ map { $_ eq $from ? $to : $_ } $instruction->{values}->@* ];
-			push(@$instructions, ::ASM_Mov($move->{op_size}, $to, $from));
+			unshift(@$instructions, ASM_Mov($move->get('op_size'), $from, $to));
+			$instruction->{values} = [ map { $_ eq $from ? $to : $_ } $instruction->values_in_order() ];
+			push(@$instructions, ASM_Mov($move->get('op_size'), $to, $from));
 		}
 	}
 	return $instructions;

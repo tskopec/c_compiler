@@ -123,7 +123,7 @@ ASM_UnaryOperator =
 ASM_BinaryOperator =
 	ASM_Add | ASM_Sub | ASM_Mult
 ASM_Operand =
-	ASM_Imm(int int)
+	ASM_Imm(int val)
 	| ASM_Reg(ASM_Register reg)
 	| ASM_Pseudo(string ident)
 	| ASM_Stack(int offset)
