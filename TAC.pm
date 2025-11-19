@@ -265,7 +265,7 @@ sub get_default_init {
     my $type = shift;
     return I_IntInit(0)  if ($type->is('T_Int'));
     return I_LongInit(0) if ($type->is('T_Long'));
-    die "unknown type $type (get_default_init)";
+    die "unknown type $type";
 }
 
 

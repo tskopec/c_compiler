@@ -8,6 +8,10 @@ use overload
 		my $self = shift;
 		my $fields_string = join(", ", map { $_ . ": "  . $self->{$_} } $self->fields_order());
 		return $self->{':tag'} . "(" . $fields_string . ")";
+	},
+	eq => sub {
+		my ($a, $b) = @_;
+		return "$a" eq "$b";
 	};
 
 
@@ -84,12 +88,19 @@ sub values_in_order {
 	if (defined $expected_type && !$self->is($expected_type)) {
 		die "$self not $expected_type";
 	}
-	return map { $self->{$_} } $self->fields_order();
+	return map { $self->get($_) } $self->fields_order();
 }
 
 sub fields_order {
 	my $self = shift;
 	return $constr_info{$self->{':tag'}}->{params_order}->@*;
+}
+
+sub remap_values {
+	my ($self, $fun) = @_;
+	for my $key ($self->fields_order()) {
+		$self->set($key, $fun->($self->get($key)));
+	}
 }
 
 

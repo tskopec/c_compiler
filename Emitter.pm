@@ -131,7 +131,7 @@ sub emit_code {
 		ASM_Call => sub($label) {
 			return "\tcall $label" . (Semantics::get_symbol_attr($label, 'defined') ? "" : '@PLT') . "\n";
 		},
-		default => sub{ die "unknown asm node $node"; }
+		default => sub { die "unknown asm node $node"; }
 	});
 }
 
@@ -141,7 +141,7 @@ sub translate_type {
 	return (8, 'q') if $type->is('ASM_Quadword');
 	return (4, 'long') if $type->is('T_IntType');
 	return (8, 'quad') if $type->is('T_LongType');
-	die "unknown type $type (translate_type)";
+	die "unknown type $type";
 }
 
 sub strip_prefix {

@@ -154,7 +154,7 @@ sub translate_to_ASM {
 		TAC_Truncate => sub($src, $dst) {
 			return ASM_Mov(ASM_Longword(), translate_to_ASM($src), translate_to_ASM($dst));
 		},
-		default { die "unknown TAC $node" }
+		default => sub { die "unknown TAC $node" }
 	});
 }
 
@@ -190,9 +190,7 @@ sub operand_size_of {
 			TAC_Variable => sub($name) {
 				$type_tag = $Semantics::symbol_table{$name}->{type}->{':tag'};
 			},
-			default => sub {
-				die "unknown val $val (operand_size_of)";
-			}
+			default => sub { die "unknown val $val" }
 		});
 	}
 	return ASM_Longword() if ($type_tag =~ /Int/);
@@ -203,7 +201,7 @@ sub size_in_bytes {
 	my $type = shift;
 	return 4 if ($type->is('ASM_Longword'));
 	return 8 if ($type->is('ASM_Quadword'));
-	die "unknown type $type (size_in_bytes)";
+	die "unknown type $type";
 }
 
 sub allocate_stack {
@@ -224,7 +222,7 @@ sub fix_up {
 				fix_instr($declaration);
 			},
 			ASM_StaticVariable => sub($name, $global, $alignment, $init) {;},
-			default { die "not a declaration: $declaration" }
+			default => sub { die "not a declaration: $declaration" }
 		});
 	}
 }
@@ -248,13 +246,15 @@ sub replace_pseudo {
 				}
 			},
 			default => sub { 
-				for my $val ($node->{values}->@*) {
+				$node->remap_values(sub {
+					my $val = shift;
 					if ($val isa 'ADT::ADT') {
 						$val = $process_node->($val);
 					} elsif (ref($val) eq 'ARRAY') {
 						$val = [ map { $process_node->($_) } @$val ];
 					}
-				}
+					return $val;
+				});
 				return $node;
 			}
 		});
@@ -292,7 +292,7 @@ sub fix_instr {
 				} elsif ($src->is('ASM_Imm')) {
 					state $max_uint = 2**32;
 					if ($op_size->is('ASM_Longword')) {
-						$src->get('val') %= $max_uint;
+						$src->set('val', $src->get('val') % $max_uint);
 					} elsif ($op_size->is('ASM_Quadword') && $src->get('val') > $max_uint) {
 						$res = relocate_instr_operand($res, { when => 'before', from => $src, to => ASM_R10(), op_size => $op_size });
 					}
@@ -329,7 +329,7 @@ sub fix_instr {
 		return @$res;
 	};
 	my ($name, $global, $instructions) = $function->values_in_order('ASM_Function');
-	splice(@$instructions, 0, $#$instructions + 1, ( map { $fix->($_) } @$instructions ));
+	$function->set('instructions', [ map { $fix->($_) } @$instructions ]);
 }
 
 # FIX utils
@@ -349,15 +349,15 @@ sub relocate_instr_operand {
 		my $instruction = $instructions->[-1];
 		my ($from, $to) = map { $_->is('ASM_Register') ? ASM_Reg($_) : $_ } (@$move{'from', 'to'});
 		if ($move->{when} eq 'before') {
-			unshift(@$instructions, ASM_Mov($move->get('op_size'), $from, $to));
-			$instruction->{values} = [ map { $_ eq $from ? $to : $_ } $instruction->values_in_order() ];
+			unshift(@$instructions, ASM_Mov($move->{op_size}, $from, $to));
+			$instruction->remap_values( sub { my $val = shift; $val eq $from ? $to : $val } );
 		} elsif ($move->{when} eq 'after') {
-			push(@$instructions, ASM_Mov($move->get('op_size'), $from, $to));
-			$instruction->{values} = [ map { $_ eq $to ? $from : $_ } $instruction->values_in_order() ];
+			push(@$instructions, ASM_Mov($move->{op_size}, $from, $to));
+			$instruction->remap_values( sub { my $val = shift; $val eq $to ? $from : $val } );
 		} elsif ($move->{when} eq 'both') {
-			unshift(@$instructions, ASM_Mov($move->get('op_size'), $from, $to));
-			$instruction->{values} = [ map { $_ eq $from ? $to : $_ } $instruction->values_in_order() ];
-			push(@$instructions, ASM_Mov($move->get('op_size'), $to, $from));
+			unshift(@$instructions, ASM_Mov($move->{op_size}, $from, $to));
+			$instruction->remap_values( sub { my $val = shift; $val eq $from ? $to : $val } );
+			push(@$instructions, ASM_Mov($move->{op_size}, $to, $from));
 		}
 	}
 	return $instructions;

@@ -97,12 +97,12 @@ TAC_BinaryOperator =
 
 # ASM ###
 ASM_Program =
-	ASM_Program(ASM_TopLvlDeclaration* declarations)
+	ASM_Program(ASM_TopLevelDeclaration* declarations)
 ASM_OperandSize =
 	ASM_Longword | ASM_Quadword
 ASM_TopLevelDeclaration =
 	ASM_StaticVariable(string name, bool global, int alignment, StaticInit static_init)
-	| ASM_Function(string name, bool global, Instruction* instructions)
+	| ASM_Function(string name, bool global, ASM_Instruction* instructions)
 ASM_Instruction =
 	ASM_Mov(ASM_OperandSize opsize, ASM_Operand src, ASM_Operand dst)
 	| ASM_Movsx(ASM_Operand src, ASM_Operand dst)

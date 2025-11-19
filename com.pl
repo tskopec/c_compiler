@@ -84,7 +84,7 @@ sub compile {
 
 	# ASSEMBLY GEN
 	my $asm = CodeGen::generate($tac);
-	print_AST($asm) if $debug;
+	print_tree($asm) if $debug;
 	return if ($target_phase eq 'codegen');
 	
 	# EMIT CODE
