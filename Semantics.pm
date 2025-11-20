@@ -216,7 +216,7 @@ sub check_types {
 				my $f_type = T_FunType([ map { $_->get('type') } @$params ], $ret_type);
 				my $has_body = defined($body);
 				my $already_defined = 0;
-				my $global = defined $storage && !$storage->is('S_Static');
+				my $global = !defined($storage) || !$storage->is('S_Static');
 
 				if (exists $symbol_table{$name}) {
 					$already_defined = get_symbol_attr($name, 'defined');
