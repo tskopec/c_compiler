@@ -36,10 +36,10 @@ sub print_tree {
 			say(($tab x $indent) . "$key: " . $node->{':tag'});
 			__SUB__->($_, $node->{$_}, $indent + 1) for $node->fields_order();
 		} elsif (ref($node) eq 'ARRAY') {
-			say(($tab x $indent) . "$key\[\]:");
+			say(($tab x $indent) . "[$key]:");
 			__SUB__->($_, $node->[$_], $indent + 1) for (0..$#$node);
 		} else {
-			say(($tab x $indent) . "$key: " . ($node // 'undef'));
+			say(($tab x $indent) . "$key: " . (defined($node) ? qq("$node") : 'undef'));
 		}
 	};
 	$print_node->("root", shift(), 0);

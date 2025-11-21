@@ -99,7 +99,7 @@ sub emit_TAC {
         AST_Continue =>sub($label) {
             push @$instructions, TAC_Jump("_continue$label");
         },
-        AST_Expression => sub($expr) {
+        AST_ExprStatement => sub($expr) {
             emit_TAC($expr, $instructions);
         },
         AST_ConstantExpr => sub($const, $type) {

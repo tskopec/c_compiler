@@ -31,7 +31,7 @@ AST_Statement =
 	| AST_For(AST_ForInit init, AST_Expression? cond, AST_Expression? post, AST_Statement body, string label)
 AST_ForInit =
 	AST_ForInitDeclaration(AST_VarDeclaration decl)
-	| AST_ForInitExpr(AST_Expression? expr)
+	| AST_ForInitExpression(AST_Expression? expr)
 AST_Expression =
 	 AST_ConstantExpr(C_Constant constant, T_Type type)
 	 | AST_Var(string ident, T_Type type)

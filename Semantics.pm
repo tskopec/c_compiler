@@ -106,7 +106,7 @@ sub resolve_statement_ids {
 		AST_Return => sub($e) {
 			resolve_expr_ids($e, $ids_map);
 		},
-		AST_Expression => sub($e) {
+		AST_ExprStatement => sub($e) {
 			resolve_expr_ids($e, $ids_map);
 		},
 		AST_Null => sub() { ; },

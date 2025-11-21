@@ -153,7 +153,7 @@ sub parse_statement {
 	} else {
 		my $expr = parse_expr(0);
 		expect('LEX_Symbol', ';');
-		return AST_Expression($expr);
+		return AST_ExprStatement($expr);
 	}
 }
 

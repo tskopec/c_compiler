@@ -6,7 +6,7 @@ use feature qw(isa);
 use overload
 	'""' => sub {
 		my $self = shift;
-		my $fields_string = join(", ", map { $_ . ": "  . $self->{$_} } $self->fields_order());
+		my $fields_string = join(", ", map { "$_: " . (defined($self->{$_}) ? qq("$self->{$_}") : "undef") } $self->fields_order());
 		return $self->{':tag'} . "(" . $fields_string . ")";
 	},
 	eq => sub {
@@ -116,7 +116,7 @@ sub check_value {
 	for my $val (ref($value) eq 'ARRAY' ? $value->@* : ($value)) {
 		if ($type->{name} =~ /^[A-Z]/) {
 			die("$val not ADT")				 unless ($val isa 'ADT::ADT');
-			die("$val not " . $type->{name}) unless ($val->{':base_type'} eq $type->{name});
+			die"$val not " . $type->{name} unless $val->is($type->{name});
 		} else {
 			die("$val not primitive " . $type->{name}) unless (ref($val) eq "");
 			if ($type->{name} eq 'int') {
