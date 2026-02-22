@@ -15,7 +15,7 @@ sub parse {
 sub parse_program {
 	my @declarations;
 	while (@TOKENS) {
-		push(@declarations, parse_declaration());
+		push(@declarations, parse_declaration() // die "cant parse declaration");
 	}
 	return AST_Program(\@declarations);
 }
