@@ -35,7 +35,7 @@ AST_ForInit =
 AST_Expression =
 	 AST_ConstantExpr(C_Constant constant, T_Type type)
 	 | AST_Var(string ident, T_Type type)
-	 | AST_Cast(AST_Expression expr, T_Type target)
+	 | AST_Cast(AST_Expression expr, T_Type type)
 	 | AST_Unary(AST_UnaryOperator op, AST_Expression expr, T_Type type)
 	 | AST_Binary(AST_BinaryOperator op, AST_Expression expr1, AST_Expression expr2, T_Type type)
 	 | AST_Assignment(AST_Expression lhs, AST_Expression rhs, T_Type type)

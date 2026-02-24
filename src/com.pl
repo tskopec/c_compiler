@@ -4,7 +4,7 @@ use warnings;
 use feature qw(say);
 use File::Slurp;
 
-use lib ".";
+use lib "."; # proc to nefachci v idei?
 
 use ADT::AlgebraicTypes qw(print_tree);
 use Lexer;
@@ -13,7 +13,6 @@ use Semantics;
 use TAC;
 use CodeGen;
 use Emitter;
-
 
 our $global_counter = 0;
 my $error_code = 255;
@@ -44,34 +43,34 @@ qx/gcc -E -P $src_file -o $prep_file/;
 $error_code = 1;
 my $src_str = read_file($prep_file);
 say "COMPILING $src_file:\n $src_str\n" if (grep { $_ } (values %debug));
-unlink($prep_file); 
+unlink($prep_file);
 my @tokens = Lexer::tokenize($src_str);
 say(join("\n", @tokens) . "\n") if $debug{l};
-return if ($target_phase eq 'lex'); 	
+exit if ($target_phase eq 'lex');
 
 # PARSE
 $error_code = 2;
 my $ast = Parser::parse(@tokens);
 print_tree($ast) if $debug{p};
-return if ($target_phase eq 'parse');
+exit if ($target_phase eq 'parse');
 
 # SEMANTICS
 $error_code = 3;
 Semantics::run($ast);
 print_tree($ast) if $debug{s};
-return if ($target_phase eq 'validate');
+exit if ($target_phase eq 'validate');
 
 # TAC
 $error_code = 4;
 my $tac = TAC::emit_TAC($ast);
 print_tree($tac) if $debug{t};
-return if ($target_phase eq 'tac');
+exit if ($target_phase eq 'tac');
 
 # ASSEMBLY GEN
 $error_code = 5;
 my $asm = CodeGen::generate($tac);
 print_tree($asm) if $debug{c};
-return if ($target_phase eq 'codegen');
+exit if ($target_phase eq 'codegen');
 
 # EMIT CODE
 $error_code = 6;
@@ -89,12 +88,12 @@ if ($dont_link) {
 	my $bin_file = $src_file =~ s/\.c$//r;
 	qx/gcc $asm_file -o $bin_file/;
 }
-unlink($asm_file); 
+unlink($asm_file);
 
 $error_code = 0;
 
 END {
-	exit $error_code;
+	$? = $error_code;
 }
 
 

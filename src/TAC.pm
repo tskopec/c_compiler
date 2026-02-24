@@ -57,7 +57,7 @@ sub emit_TAC {
             }
             push @$instructions, TAC_Label($end_label);
         },
-        AST_Compound =>sub($block) {
+        AST_Compound => sub($block) {
             emit_TAC($block, $instructions);
         },
         AST_DoWhile => sub($body, $cond, $label) {
@@ -96,7 +96,7 @@ sub emit_TAC {
         AST_Break => sub($label) {
             push @$instructions, TAC_Jump("_break$label");
         },
-        AST_Continue =>sub($label) {
+        AST_Continue => sub($label) {
             push @$instructions, TAC_Jump("_continue$label");
         },
         AST_ExprStatement => sub($expr) {
@@ -108,9 +108,9 @@ sub emit_TAC {
         AST_Var => sub($ident, $type) {
             return TAC_Variable($ident);
         },
-        AST_Cast =>sub($expr, $type) {
+        AST_Cast => sub($expr, $type) {
             my $res = emit_TAC($expr, $instructions);
-            if ($type->same_type_as(Semantics::get_type($expr))) {
+            if ($type->same_type_as($expr->get('type'))) {
                 return $res;
             }
             my $dst = make_TAC_var($type);
@@ -121,7 +121,7 @@ sub emit_TAC {
             }
             return $dst;
         },
-        AST_Unary =>sub($op, $exp, $type) {
+        AST_Unary => sub($op, $exp, $type) {
             my $unop = convert_unop($op);
             my $src = emit_TAC($exp, $instructions);
             my $dst = make_TAC_var($type);
@@ -180,7 +180,7 @@ sub emit_TAC {
                                   TAC_Label($end_label));
             return $res;
         },
-        AST_FunctionCall =>sub($name, $args, $type) {
+        AST_FunctionCall => sub($name, $args, $type) {
             my $dst = make_TAC_var($type);
             my $arg_vals = [ map { emit_TAC($_, $instructions) } @$args ];
             push(@$instructions, (TAC_FunCall($name, $arg_vals, $dst)));

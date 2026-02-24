@@ -66,8 +66,8 @@ sub emit_code {
 			return "\tidiv" . $suffix . " " . emit_code($operand, $n_bytes) . "\n";
 		},
 		ASM_Cdq => sub($type) {
-			return "\tcdq\n" if $type->is('ASM_Quadword');
-			return "\tcqo\n" if $type->is('ASM_Longword');
+			return "\tcdq\n" if $type->is('ASM_Longword');
+			return "\tcqo\n" if $type->is('ASM_Quadword');
 			die 'unknown cdq type $type';
 		},
 		ASM_Cmp => sub($type, $a, $b) {

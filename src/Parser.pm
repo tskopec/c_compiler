@@ -95,9 +95,10 @@ sub parse_params_list {
 sub parse_block {
 	my @items;
 	while (@TOKENS) {
-		last if (try_expect('LEX_Symbol', '}'));
+	 	last if (peek()->is('LEX_Symbol', '}'));
 		push @items, parse_block_item();
 	}
+	expect('LEX_Symbol', '}');
 	return AST_Block(\@items);
 }
 
