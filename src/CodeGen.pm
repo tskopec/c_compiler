@@ -262,7 +262,7 @@ sub replace_pseudo {
 	$process_node->($function);
 	my ($name, $global, $instructions) = $function->values_in_order('ASM_Function');
 	my $max_offset = -$current_offset;
-	unshift(@$instructions, allocate_stack($max_offset + ($max_offset % 16))); # 16 byte aligned
+	unshift(@$instructions, allocate_stack(16 * int(($max_offset + 15) / 16))); # 16 byte aligned
 }
 
 #3# FIX

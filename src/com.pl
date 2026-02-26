@@ -81,7 +81,7 @@ write_file($asm_file, $code);
 
 # ASSEMBLE
 $error_code = 7;
-if ($dont_link) {
+if ($dont_link != 0) {
 	my $obj_file = $src_file =~ s/\.c$/.o/r;
 	qx/gcc -c $asm_file -o $obj_file/;
 } else {

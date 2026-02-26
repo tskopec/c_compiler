@@ -95,11 +95,10 @@ sub parse_params_list {
 sub parse_block {
 	my @items;
 	while (@TOKENS) {
-	 	last if (peek()->is('LEX_Symbol', '}'));
+		return AST_Block(\@items) if (try_expect('LEX_Symbol', '}'));
 		push @items, parse_block_item();
 	}
-	expect('LEX_Symbol', '}');
-	return AST_Block(\@items);
+	die "missing closing brace";
 }
 
 sub parse_block_item {

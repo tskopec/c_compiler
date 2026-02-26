@@ -10,8 +10,12 @@ use overload
 		return $self->{':tag'} . "(" . $fields_string . ")";
 	},
 	eq => sub {
-		my ($a, $b) = @_;
-		return "$a" eq "$b";
+		my ($x, $y) = @_;
+		return "$x" eq "$y";
+	},
+	ne => sub {
+		my ($x, $y) = @_;
+		return "$x" ne "$y";
 	};
 
 

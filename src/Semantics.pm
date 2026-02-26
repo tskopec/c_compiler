@@ -40,7 +40,7 @@ sub resolve_fun_declaration_ids {
 		$ids_map, $in_block_scope) = @_;
 	if ($in_block_scope) {
 		die "nested fun definition" if (defined $body);
-		die "static nested fun" if ($storage->is('S_Static'));
+		die "static nested fun" if (defined($storage) && $storage->is('S_Static'));
 	}
 	if (exists $ids_map->{$name}) {
 		my $previous_entry = $ids_map->{$name};
