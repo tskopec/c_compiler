@@ -68,10 +68,10 @@ sub resolve_local_var_declaration_ids {
 	my ($name, $init, $type, $storage) = $declaration->values_in_order('AST_VarDeclaration');
 	if (exists $ids_map->{$name}
 		&& $ids_map->{$name}{from_this_scope}
-		&& !($ids_map->{$name}{has_linkage} && $storage->is('S_Extern'))) {
+		&& !($ids_map->{$name}{has_linkage} && defined($storage) && $storage->is('S_Extern'))) {
 			die "multiple declarations of $name in this scope, some without linkage";
 	}
-	if (defined $storage && $storage->is('S_Extern')) {
+	if (defined($storage) && $storage->is('S_Extern')) {
 		$ids_map->{$name} = { uniq_name => $name, from_this_scope => 1, has_linkage => 1 };
 	} else {
 		$declaration->set('name', unique_var_name($name));
@@ -244,15 +244,15 @@ sub check_types {
 				if ($is_file_scope) {
 					my $init_val;
 					if (!defined $init) {
-						$init_val = $storage->is('S_Extern') ? I_NoInitializer() : I_Tentative();
+						$init_val = (defined($storage) && $storage->is('S_Extern')) ? I_NoInitializer() : I_Tentative();
 					} else {
 						$init_val = const_to_initval($init->get('constant'), $init->get('type'));
 					}
-					my $global = not $storage->is('S_Static');
+					my $global = not (defined($storage) && $storage->is('S_Static'));
 
 					if (exists $symbol_table{$name}) {
 						die "already declared as other type: $name" unless (types_equal(get_symbol_attr($name, 'type'), $type));
-						if ($storage->is('S_Extern')) {
+						if (defined($storage) && $storage->is('S_Extern')) {
 							$global = get_symbol_attr($name, 'global');
 						} elsif (get_symbol_attr($name, 'global') != $global) {
 							die "conflicting linkage, var $name";
@@ -274,7 +274,7 @@ sub check_types {
 					if ($parent_node isa 'ADT::ADT' && $parent_node->is('AST_ForInitDeclaration') && defined($storage)) {
 						die "for loop header var $name declaration with storage class";
 					}
-					if (defined $storage && $storage->is('S_Extern')) {
+					if (defined($storage) && $storage->is('S_Extern')) {
 						die "initalizing local extern variable" if (defined $init);
 						if (exists $symbol_table{$name}) {
 							die "already declared as other type: $name" unless (types_equal(get_symbol_attr($name, 'type'), $type));
@@ -284,7 +284,7 @@ sub check_types {
 								attrs => A_StaticAttrs(I_NoInitializer(), 1)
 							};
 						}
-					} elsif (defined $storage && $storage->is('S_Static')) {
+					} elsif (defined($storage) && $storage->is('S_Static')) {
 						my $init_val;
 						if (!defined $init) {
 							$init_val = I_Initial(0);

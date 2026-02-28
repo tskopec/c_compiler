@@ -73,7 +73,7 @@ S_StorageClass =
 TAC_Program =
 	TAC_Program(TAC_TopLevelDeclaration* declarations)
 TAC_TopLevelDeclaration =
-	TAC_StaticVariable(string identifier, bool global, T_Type type, StaticInit static_init)
+	TAC_StaticVariable(string identifier, bool global, T_Type type, I_StaticInit static_init)
 	| TAC_Function(string identifier, bool global, string* params, TAC_Instruction* instructions)
 TAC_Instruction =
 	TAC_Return(TAC_Value value)
@@ -101,7 +101,7 @@ ASM_Program =
 ASM_OperandSize =
 	ASM_Longword | ASM_Quadword
 ASM_TopLevelDeclaration =
-	ASM_StaticVariable(string name, bool global, int alignment, StaticInit static_init)
+	ASM_StaticVariable(string name, bool global, int alignment, I_StaticInit static_init)
 	| ASM_Function(string name, bool global, ASM_Instruction* instructions)
 ASM_Instruction =
 	ASM_Mov(ASM_OperandSize opsize, ASM_Operand src, ASM_Operand dst)

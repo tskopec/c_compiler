@@ -16,7 +16,7 @@ sub emit_code {
 			return $code;
 		},
 		ASM_Function => sub($name, $global, $instructions) {
-			my $code = $global ? "\t.global $name\n" : "";
+			my $code = $global ? "\t.globl $name\n" : "";
 			$code .= "\t.text\n";
 			$code .= "$name:\n";
 			$code .= "\tpushq %rbp\n";
@@ -25,9 +25,9 @@ sub emit_code {
 			return $code;
 		}, 
 		ASM_StaticVariable => sub($name, $global, $alignment, $init) {
-			my $code = $global ? "\t.global $name\n" : "";
+			my $code = $global ? "\t.globl $name\n" : "";
 			my ($init_bytes, $init_word) = translate_type($init);
-			if ($init == 0) {
+			if (not defined($init)) {
 				$code .= "\t.bss\n";
 				$code .= "\t.align $alignment\n";
 				$code .= "$name:\n";
@@ -36,7 +36,7 @@ sub emit_code {
 				$code .= "\t.data\n";
 				$code .= "\t.align $alignment\n";
 				$code .= "$name:\n";
-				$code .= "\t.$init_word $init\n";	
+				$code .= "\t.$init_word " . $init->get('val') . "\n";
 			}
 			return $code;
 		},
@@ -139,8 +139,8 @@ sub translate_type {
 	my $type = shift;
 	return (4, 'l') if $type->is('ASM_Longword');
 	return (8, 'q') if $type->is('ASM_Quadword');
-	return (4, 'long') if $type->is('T_IntType');
-	return (8, 'quad') if $type->is('T_LongType');
+	return (4, 'long') if $type->is('T_IntType', 'I_IntInit');
+	return (8, 'quad') if $type->is('T_LongType', 'I_LongInit');
 	die "unknown type $type";
 }
 

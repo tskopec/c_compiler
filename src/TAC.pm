@@ -3,7 +3,7 @@ use strict;
 use warnings;
 use feature qw(say state signatures);
 
-use ADT::AlgebraicTypes qw(:AST :TAC :T :C :A);
+use ADT::AlgebraicTypes qw(:AST :TAC :T :C :A :I);
 use Semantics;
 
 
