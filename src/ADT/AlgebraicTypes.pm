@@ -8,7 +8,7 @@ use ADT::ParseASDL;
 
 require Exporter;
 our @ISA = qw(Exporter);
-our @EXPORT = qw(print_tree);
+our @EXPORT = qw(print_tree is_ADT);
 our @EXPORT_OK;
 our %EXPORT_TAGS;
 
@@ -44,6 +44,11 @@ sub print_tree {
 	};
 	$print_node->("root", shift(), 0);
 	print "\n";
+}
+
+sub is_ADT {
+	my ($adt, @tags) = @_;
+	return $adt isa ADT::ADT && $adt->is(@tags);
 }
 
 1;

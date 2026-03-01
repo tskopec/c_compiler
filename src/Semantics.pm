@@ -3,7 +3,7 @@ use strict;
 use warnings;
 use feature qw(say state isa signatures);
 
-use ADT::AlgebraicTypes qw(:AST :A :I :S :T);
+use ADT::AlgebraicTypes qw(:AST :A :I :S :T is_ADT);
 
 
 our %symbol_table;
@@ -40,7 +40,7 @@ sub resolve_fun_declaration_ids {
 		$ids_map, $in_block_scope) = @_;
 	if ($in_block_scope) {
 		die "nested fun definition" if (defined $body);
-		die "static nested fun" if (defined($storage) && $storage->is('S_Static'));
+		die "static nested fun" if (is_ADT($storage, 'S_Static'));
 	}
 	if (exists $ids_map->{$name}) {
 		my $previous_entry = $ids_map->{$name};
@@ -68,15 +68,15 @@ sub resolve_local_var_declaration_ids {
 	my ($name, $init, $type, $storage) = $declaration->values_in_order('AST_VarDeclaration');
 	if (exists $ids_map->{$name}
 		&& $ids_map->{$name}{from_this_scope}
-		&& !($ids_map->{$name}{has_linkage} && defined($storage) && $storage->is('S_Extern'))) {
+		&& !($ids_map->{$name}{has_linkage} && is_ADT($storage, 'S_Extern'))) {
 			die "multiple declarations of $name in this scope, some without linkage";
 	}
-	if (defined($storage) && $storage->is('S_Extern')) {
+	if (is_ADT($storage, 'S_Extern')) {
 		$ids_map->{$name} = { uniq_name => $name, from_this_scope => 1, has_linkage => 1 };
 	} else {
 		$declaration->set('name', unique_var_name($name));
 		$ids_map->{$name} = { uniq_name => $declaration->get('name'), from_this_scope => 1, has_linkage => 0 };
-		resolve_expr_ids($init, $ids_map) if defined $init;
+		resolve_expr_ids($init, $ids_map) if (defined $init);
 	}
 }
 
@@ -113,7 +113,7 @@ sub resolve_statement_ids {
 		AST_If => sub($cond, $then, $else) {
 			resolve_expr_ids($cond, $ids_map);
 			resolve_statement_ids($then, $ids_map);
-			resolve_statement_ids($else, $ids_map) if defined $else;
+			resolve_statement_ids($else, $ids_map) if (defined $else);
 		},
 		AST_Compound => sub($block) {
 			my $items = $block->get('items');
@@ -152,7 +152,7 @@ sub resolve_statement_ids {
 
 sub resolve_opt_expr_ids {
 	my ($expr, $ids_map) = @_;
-	resolve_expr_ids($expr, $ids_map) if defined $expr;
+	resolve_expr_ids($expr, $ids_map) if (defined $expr);
 }
 
 sub resolve_expr_ids {
@@ -216,7 +216,7 @@ sub check_types {
 				my $f_type = T_FunType([ map { $_->get('type') } @$params ], $ret_type);
 				my $has_body = defined($body);
 				my $already_defined = 0;
-				my $global = !defined($storage) || !$storage->is('S_Static');
+				my $global = not is_ADT($storage, 'S_Static');
 
 				if (exists $symbol_table{$name}) {
 					$already_defined = get_symbol_attr($name, 'defined');
@@ -244,15 +244,15 @@ sub check_types {
 				if ($is_file_scope) {
 					my $init_val;
 					if (!defined $init) {
-						$init_val = (defined($storage) && $storage->is('S_Extern')) ? I_NoInitializer() : I_Tentative();
+						$init_val = (is_ADT($storage, 'S_Extern')) ? I_NoInitializer() : I_Tentative();
 					} else {
 						$init_val = const_to_initval($init->get('constant'), $init->get('type'));
 					}
-					my $global = not (defined($storage) && $storage->is('S_Static'));
+					my $global = not (is_ADT($storage, 'S_Static'));
 
 					if (exists $symbol_table{$name}) {
 						die "already declared as other type: $name" unless (types_equal(get_symbol_attr($name, 'type'), $type));
-						if (defined($storage) && $storage->is('S_Extern')) {
+						if (is_ADT($storage, 'S_Extern')) {
 							$global = get_symbol_attr($name, 'global');
 						} elsif (get_symbol_attr($name, 'global') != $global) {
 							die "conflicting linkage, var $name";
@@ -274,7 +274,7 @@ sub check_types {
 					if ($parent_node isa 'ADT::ADT' && $parent_node->is('AST_ForInitDeclaration') && defined($storage)) {
 						die "for loop header var $name declaration with storage class";
 					}
-					if (defined($storage) && $storage->is('S_Extern')) {
+					if (is_ADT($storage, 'S_Extern')) {
 						die "initalizing local extern variable" if (defined $init);
 						if (exists $symbol_table{$name}) {
 							die "already declared as other type: $name" unless (types_equal(get_symbol_attr($name, 'type'), $type));
@@ -284,7 +284,7 @@ sub check_types {
 								attrs => A_StaticAttrs(I_NoInitializer(), 1)
 							};
 						}
-					} elsif (defined($storage) && $storage->is('S_Static')) {
+					} elsif (is_ADT($storage, 'S_Static')) {
 						my $init_val;
 						if (!defined $init) {
 							$init_val = I_Initial(0);
