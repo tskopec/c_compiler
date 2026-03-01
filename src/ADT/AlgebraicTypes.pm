@@ -3,6 +3,8 @@ use strict;
 use warnings;
 use feature qw(say isa current_sub state);
 
+use Cwd qw(abs_path);
+
 use ADT::ADT;
 use ADT::ParseASDL;
 
@@ -14,7 +16,7 @@ our %EXPORT_TAGS;
 
 BEGIN {
 	#$Exporter::Verbose = 1;
-	open(my $fh, "<", "./types.asdl") or die $!;
+	open(my $fh, "<", $main::src_dir . "/types.asdl") or die $!;
 	my %constructors = ADT::ParseASDL::parse_file($fh);
 	while (my ($name, $sub) = each %constructors) {
 		{ no strict 'refs'; *{$name} = $sub } 

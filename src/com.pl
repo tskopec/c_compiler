@@ -2,9 +2,14 @@
 use strict;
 use warnings;
 use feature qw(say);
-use File::Slurp;
 
-use lib "."; # proc to nefachci v idei?
+use File::Slurp;
+use Cwd qw(abs_path);
+
+our $src_dir;
+BEGIN {
+	push(@INC, $src_dir = abs_path(__FILE__) =~ s|[^/]+$||r);
+}
 
 use ADT::AlgebraicTypes qw(print_tree);
 use Lexer;
@@ -19,13 +24,13 @@ my $error_code = 255;
 
 # ARGS
 our %debug;
-my $src_file;
+my @src_files;
 my $target_phase = "";
 my $dont_link = 0;
 
 foreach (@ARGV) {
 	if (/\.c$/) {
-		$src_file = $_;
+		push @src_files, $_;
 	} elsif (/^--(lex|parse|validate|tac|codegen)$/) {
 		$target_phase = $1;
 	} elsif (/^-d(\w*)$/) {
@@ -35,60 +40,63 @@ foreach (@ARGV) {
 	}
 }
 
-# PREPROCESS
-my $prep_file = $src_file =~ s/c$/i/r;
-qx/gcc -E -P $src_file -o $prep_file/;
+my @asm_files;
+for my $src_file (@src_files) {
+	say ">>> COMPILING file: $src_file";
+	# PREPROCESS
+	my $prep_file = $src_file =~ s/\.c$/.i/r;
+	qx/gcc -E -P $src_file -o $prep_file/;
 
-# LEX
-$error_code = 1;
-my $src_str = read_file($prep_file);
-say "COMPILING $src_file:\n $src_str\n" if (grep { $_ } (values %debug));
-unlink($prep_file);
-my @tokens = Lexer::tokenize($src_str);
-say(join("\n", @tokens) . "\n") if $debug{l};
-exit if ($target_phase eq 'lex');
+	# LEX
+	$error_code = 1;
+	my $src_str = read_file($prep_file);
+	unlink($prep_file);
+	my @tokens = Lexer::tokenize($src_str);
+	say(join("\n", @tokens) . "\n") if $debug{l};
+	exit if ($target_phase eq 'lex');
 
-# PARSE
-$error_code = 2;
-my $ast = Parser::parse(@tokens);
-print_tree($ast) if $debug{p};
-exit if ($target_phase eq 'parse');
+	# PARSE
+	$error_code = 2;
+	my $ast = Parser::parse(@tokens);
+	print_tree($ast) if $debug{p};
+	exit if ($target_phase eq 'parse');
 
-# SEMANTICS
-$error_code = 3;
-Semantics::run($ast);
-print_tree($ast) if $debug{s};
-exit if ($target_phase eq 'validate');
+	# SEMANTICS
+	$error_code = 3;
+	Semantics::run($ast);
+	print_tree($ast) if $debug{s};
+	exit if ($target_phase eq 'validate');
 
-# TAC
-$error_code = 4;
-my $tac = TAC::emit_TAC($ast);
-print_tree($tac) if $debug{t};
-exit if ($target_phase eq 'tac');
+	# TAC
+	$error_code = 4;
+	my $tac = TAC::emit_TAC($ast);
+	print_tree($tac) if $debug{t};
+	exit if ($target_phase eq 'tac');
 
-# ASSEMBLY GEN
-$error_code = 5;
-my $asm = CodeGen::generate($tac);
-print_tree($asm) if $debug{c};
-exit if ($target_phase eq 'codegen');
+	# ASSEMBLY GEN
+	$error_code = 5;
+	my $asm = CodeGen::generate($tac);
+	print_tree($asm) if $debug{c};
+	exit if ($target_phase eq 'codegen');
 
-# EMIT CODE
-$error_code = 6;
-my $asm_file = $src_file =~ s/c$/s/r;
-my $code = Emitter::emit_code($asm);
-say($code) if $debug{e};
-write_file($asm_file, $code);
+	# EMIT CODE
+	$error_code = 6;
+	my $asm_file = $src_file =~ s/\.c$/.s/r;
+	my $code = Emitter::emit_code($asm);
+	say($code) if $debug{e};
+	write_file($asm_file, $code);
+	push @asm_files, $asm_file;
+	say "<<< DONE file: $src_file\n";
+}
 
 # ASSEMBLE
 $error_code = 7;
 if ($dont_link != 0) {
-	my $obj_file = $src_file =~ s/\.c$/.o/r;
-	qx/gcc -c $asm_file -o $obj_file/;
+	qx(gcc -c $_ -o @{[ s/\.s$/.o/r ]}) for @asm_files;
 } else {
-	my $bin_file = $src_file =~ s/\.c$//r;
-	qx/gcc $asm_file -o $bin_file/;
+	qx(gcc @asm_files -o @{[ $asm_files[0] =~ s/\.s$//r ]});
 }
-unlink($asm_file);
+unlink($_) for (@asm_files);
 
 $error_code = 0;
 
