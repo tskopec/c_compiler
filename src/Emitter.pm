@@ -27,16 +27,16 @@ sub emit_code {
 		ASM_StaticVariable => sub($name, $global, $alignment, $init) {
 			my $code = $global ? "\t.globl $name\n" : "";
 			my ($init_bytes, $init_word) = translate_type($init);
-			if (not defined($init)) {
-				$code .= "\t.bss\n";
-				$code .= "\t.align $alignment\n";
-				$code .= "$name:\n";
-				$code .= "\t.zero $init_bytes\n";	
-			} else {
+			if ($init->get('val') != 0) {
 				$code .= "\t.data\n";
 				$code .= "\t.align $alignment\n";
 				$code .= "$name:\n";
 				$code .= "\t.$init_word " . $init->get('val') . "\n";
+			} else {
+				$code .= "\t.bss\n";
+				$code .= "\t.align $alignment\n";
+				$code .= "$name:\n";
+				$code .= "\t.zero $init_bytes\n";
 			}
 			return $code;
 		},

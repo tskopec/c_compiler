@@ -34,7 +34,7 @@ foreach (@ARGV) {
 	} elsif (/^--(lex|parse|validate|tac|codegen)$/) {
 		$target_phase = $1;
 	} elsif (/^-d(\w*)$/) {
-		$debug{$_} = 1 for (split('', $1 ? $1 : "lpstce"));
+		$debug{$_} = 1 for (split('', $1 ? $1 : "lpstceS"));
 	} elsif (/^-c$/) {
 		$dont_link = 1;
 	}
@@ -42,7 +42,9 @@ foreach (@ARGV) {
 
 my @asm_files;
 for my $src_file (@src_files) {
-	say ">>> COMPILING file: $src_file";
+	say ">>> COMPILING file: $src_file\n";
+	say(read_file($src_file) . "\n");
+
 	# PREPROCESS
 	my $prep_file = $src_file =~ s/\.c$/.i/r;
 	qx/gcc -E -P $src_file -o $prep_file/;
@@ -52,38 +54,61 @@ for my $src_file (@src_files) {
 	my $src_str = read_file($prep_file);
 	unlink($prep_file);
 	my @tokens = Lexer::tokenize($src_str);
-	say(join("\n", @tokens) . "\n") if $debug{l};
+	say("> Lexer\n" . join("\n", @tokens) . "\n") if $debug{l};
 	exit if ($target_phase eq 'lex');
 
 	# PARSE
 	$error_code = 2;
 	my $ast = Parser::parse(@tokens);
-	print_tree($ast) if $debug{p};
+	if ($debug{p}) {
+		say "> Parser";
+		print_tree($ast);
+	}
 	exit if ($target_phase eq 'parse');
 
 	# SEMANTICS
 	$error_code = 3;
 	Semantics::run($ast);
-	print_tree($ast) if $debug{s};
+	if ($debug{s}) {
+		say "> Validator";
+		print_tree($ast);
+	}
+	if (debug{S}) {
+		say "> Symbol table";
+		say "$_ --> " . $Semantics::symbol_table{$_} for (keys %Semantics::symbol_table);
+	}
 	exit if ($target_phase eq 'validate');
 
 	# TAC
 	$error_code = 4;
 	my $tac = TAC::emit_TAC($ast);
-	print_tree($tac) if $debug{t};
+	if ($debug{t}) {
+		say "> TAC tree";
+		print_tree($tac);
+	}
 	exit if ($target_phase eq 'tac');
 
 	# ASSEMBLY GEN
 	$error_code = 5;
 	my $asm = CodeGen::generate($tac);
-	print_tree($asm) if $debug{c};
+	if ($debug{c}) {
+		say "> ASM tree";
+		print_tree($asm);
+	}
+	if ($debug{S}) {
+		say "> ASM Symbol table";
+		say "$_ --> " . $CodeGen::asm_symbol_table{$_} for (keys %CodeGen::asm_symbol_table);
+	}
 	exit if ($target_phase eq 'codegen');
 
 	# EMIT CODE
 	$error_code = 6;
 	my $asm_file = $src_file =~ s/\.c$/.s/r;
 	my $code = Emitter::emit_code($asm);
-	say($code) if $debug{e};
+	if ($debug{e}) {
+		say "> Assembly";
+		say($code);
+	}
 	write_file($asm_file, $code);
 	push @asm_files, $asm_file;
 	say "<<< DONE file: $src_file\n";
