@@ -241,12 +241,15 @@ sub check_types {
 			},
 			AST_VarDeclaration => sub($name, $init, $type, $storage) {
 				my $is_file_scope = $parent_node isa 'ADT::ADT' && $parent_node->is('AST_Program');
+			### file scope var
 				if ($is_file_scope) {
 					my $init_val;
-					if (!defined $init) {
-						$init_val = (is_ADT($storage, 'S_Extern')) ? I_NoInitializer() : I_Tentative();
-					} else {
+					if (is_ADT($init, 'AST_ConstantExpr')) {
 						$init_val = const_to_initval($init->get('constant'), $init->get('type'));
+					} elsif (!defined($init)) {
+						$init_val = is_ADT($storage, 'S_Extern') ? I_NoInitializer() : I_Tentative();
+					} else {
+						die "initializer is not a constant: $init";
 					}
 					my $global = not (is_ADT($storage, 'S_Static'));
 
@@ -270,7 +273,8 @@ sub check_types {
 						type => $type,
 						attrs => A_StaticAttrs($init_val, 0+$global)
 					};
-				} else { # local var
+			### local var
+				} else {
 					if ($parent_node isa 'ADT::ADT' && $parent_node->is('AST_ForInitDeclaration') && defined($storage)) {
 						die "for loop header var $name declaration with storage class";
 					}
@@ -286,10 +290,12 @@ sub check_types {
 						}
 					} elsif (is_ADT($storage, 'S_Static')) {
 						my $init_val;
-						if (!defined $init) {
-							$init_val = I_Initial(0);
-						} else {
+						if (is_ADT($init, 'AST_ConstantExpr')) {
 							$init_val = const_to_initval($init->get('constant'), $init->get('type'));
+						} elsif (!defined $init) {
+							$init_val = I_Initial(I_IntInit(0));
+						} else {
+							die "initializer not constant: $init";
 						}
 						$symbol_table{$name} = {
 							type => $type,

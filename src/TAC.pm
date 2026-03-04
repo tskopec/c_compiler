@@ -3,7 +3,7 @@ use strict;
 use warnings;
 use feature qw(say state signatures);
 
-use ADT::AlgebraicTypes qw(:AST :TAC :T :C :A :I);
+use ADT::AlgebraicTypes qw(:AST :TAC :T :C :A :I is_ADT);
 use Semantics;
 
 
@@ -33,7 +33,7 @@ sub emit_TAC {
             }
         },
         AST_VarDeclaration => sub($name, $init, $type, $storage) {
-            if (defined $init) {
+            if (defined $init && !is_ADT($storage, 'S_Static')) {
                 emit_TAC(AST_Assignment(AST_Var($name, $type), $init, $type), $instructions);
             }
         },

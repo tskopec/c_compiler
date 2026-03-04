@@ -4,6 +4,7 @@ use warnings;
 use feature qw(say);
 
 use File::Slurp;
+use Data::Dumper;
 use Cwd qw(abs_path);
 
 our $src_dir;
@@ -55,7 +56,9 @@ for my $src_file (@src_files) {
 	unlink($prep_file);
 	my @tokens = Lexer::tokenize($src_str);
 	say("> Lexer\n" . join("\n", @tokens) . "\n") if $debug{l};
-	exit if ($target_phase eq 'lex');
+	if ($target_phase eq 'lex') {
+		$error_code = 0; exit;
+	}
 
 	# PARSE
 	$error_code = 2;
@@ -64,7 +67,9 @@ for my $src_file (@src_files) {
 		say "> Parser";
 		print_tree($ast);
 	}
-	exit if ($target_phase eq 'parse');
+	if ($target_phase eq 'parse') {
+		$error_code = 0; exit;
+	}
 
 	# SEMANTICS
 	$error_code = 3;
@@ -73,11 +78,13 @@ for my $src_file (@src_files) {
 		say "> Validator";
 		print_tree($ast);
 	}
-	if (debug{S}) {
+	if ($debug{S}) {
 		say "> Symbol table";
-		say "$_ --> " . $Semantics::symbol_table{$_} for (keys %Semantics::symbol_table);
+		say(Dumper(\%Semantics::symbol_table));
 	}
-	exit if ($target_phase eq 'validate');
+	if ($target_phase eq 'validate') {
+		$error_code = 0; exit;
+	}
 
 	# TAC
 	$error_code = 4;
@@ -86,7 +93,9 @@ for my $src_file (@src_files) {
 		say "> TAC tree";
 		print_tree($tac);
 	}
-	exit if ($target_phase eq 'tac');
+	if ($target_phase eq 'tac') {
+		$error_code = 0; exit;
+	}
 
 	# ASSEMBLY GEN
 	$error_code = 5;
@@ -97,9 +106,11 @@ for my $src_file (@src_files) {
 	}
 	if ($debug{S}) {
 		say "> ASM Symbol table";
-		say "$_ --> " . $CodeGen::asm_symbol_table{$_} for (keys %CodeGen::asm_symbol_table);
+		say(Dumper(\%CodeGen::asm_symbol_table));
 	}
-	exit if ($target_phase eq 'codegen');
+	if ($target_phase eq 'codegen') {
+		$error_code = 0; exit;
+	}
 
 	# EMIT CODE
 	$error_code = 6;
@@ -118,11 +129,11 @@ for my $src_file (@src_files) {
 $error_code = 7;
 if ($dont_link != 0) {
 	qx(gcc -c $_ -o @{[ s/\.s$/.o/r ]}) for @asm_files;
-} else {
+}
+else {
 	qx(gcc @asm_files -o @{[ $asm_files[0] =~ s/\.s$//r ]});
 }
 unlink($_) for (@asm_files);
-
 $error_code = 0;
 
 END {
