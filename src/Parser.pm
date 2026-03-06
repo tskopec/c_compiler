@@ -4,6 +4,7 @@ use warnings;
 use feature qw(say state signatures);
 
 use ADT::AlgebraicTypes qw(:LEX :AST :T :C :S);
+use Const;
 
 my @TOKENS;
 
@@ -254,12 +255,10 @@ sub parse_factor {
 }
 
 sub parse_constant {
-	state $max_long = 2**63 - 1;
-	state $max_int = 2**31 - 1;
 	my ($type, $val) = @_;
-	if ($val > $max_long) {
+	if ($val > MAX_LONG) {
 		die "constant too large for long $val";
-	} elsif ($type eq 'int' && $val < $max_int) {
+	} elsif ($type eq 'int' && $val < MAX_INT) {
 		return AST_ConstantExpr(C_ConstInt($val), T_Int());
 	} else {
 		return AST_ConstantExpr(C_ConstLong($val), T_Long());

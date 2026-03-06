@@ -45,7 +45,7 @@ sub emit_code {
 			return "\tmov" . $suffix . " " . emit_code($src, $n_bytes) . ", " . emit_code($dst, $n_bytes) . "\n";
 		},
 		ASM_Movsx => sub($src, $dst) {
-			return "\tmovslq " . emit_code($src) . ", " . emit_code($dst);
+			return "\tmovslq " . emit_code($src) . ", " . emit_code($dst, 8) . "\n";
 		},
 		ASM_Ret => sub() {
 			my $code = "\tmovq %rbp, %rsp\n";

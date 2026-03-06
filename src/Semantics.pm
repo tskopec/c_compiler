@@ -4,6 +4,7 @@ use warnings;
 use feature qw(say state isa signatures);
 
 use ADT::AlgebraicTypes qw(:AST :A :I :S :T is_ADT);
+use Const;
 
 
 our %symbol_table;
@@ -311,6 +312,9 @@ sub check_types {
 						}
 					}
 				}
+				if (defined $init) {
+					$node->set('initializer', convert_type($init, $type));
+				}
 			},
 			AST_FunctionCall => sub($name, $args, $dummy_type) {
 				my ($param_types, $ret_type) = (get_symbol_attr($name, 'type'))->values_in_order('T_FunType');
@@ -435,25 +439,13 @@ sub types_equal {
 
 sub const_to_initval {
 	my ($const, $type) = @_;
+	my $val = $const->get('val');
 	return I_Initial(
 		$type->is('T_Int') 
-			? I_IntInit(fit_integer_into($const->get('val'), $type))
-			: I_LongInit(fit_integer_into($const->get('val'), $type))
+			? I_IntInit($val & 0xffffffff)
+			: I_LongInit($val <= MAX_LONG ? $val : die("integer $val too large for long"))
 	);
 }
-
-sub fit_integer_into {
-	state $max_int = 2**31 - 1;
-	state $max_uint = 2**32;
-	my ($val, $type) = @_;
-	if ($type->is('T_Int')) {
-		$val -= $max_uint while ($val > $max_int);
-	}
-	return $val;
-}
-
-
-
 
 #3# LOOP LABELING ###
 sub label_loops {

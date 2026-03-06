@@ -7,6 +7,7 @@ use feature qw(say isa state current_sub signatures);
 use List::Util qw(min);
 use ADT::AlgebraicTypes qw(:TAC :ASM);
 use Semantics;
+use Const;
 
 our %asm_symbol_table;
 
@@ -290,10 +291,9 @@ sub fix_instr {
 				if (is_mem_addr($src) && is_mem_addr($dst)) {
 					$res = relocate_instr_operand($res, { when => 'before', from => $src, to => ASM_R10(), op_size => $op_size });
 				} elsif ($src->is('ASM_Imm')) {
-					state $max_uint = 2**32;
 					if ($op_size->is('ASM_Longword')) {
-						$src->set('val', $src->get('val') % $max_uint);
-					} elsif ($op_size->is('ASM_Quadword') && $src->get('val') > $max_uint) {
+						$src->set('val', $src->get('val') & 0xffffffff);
+					} elsif ($op_size->is('ASM_Quadword') && $src->get('val') > MAX_INT) {
 						$res = relocate_instr_operand($res, { when => 'before', from => $src, to => ASM_R10(), op_size => $op_size });
 					}
 				}
@@ -340,7 +340,7 @@ sub is_mem_addr {
 # The assembler permits an immediate value in addq, imulq, subq, cmpq, or pushq only if it can be represented as a signed 32-bit integer (page 268)
 sub check_imm_too_large {
 	my ($src, $op_size) = @_;
-	return $op_size->is('ASM_Quadword') && $src->is('ASM_Imm') && $src->get('val') > (2**31 - 1);
+	return $op_size->is('ASM_Quadword') && $src->is('ASM_Imm') && $src->get('val') > MAX_INT;
 }
 
 sub relocate_instr_operand {
