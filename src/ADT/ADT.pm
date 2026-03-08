@@ -26,7 +26,7 @@ sub new {
 	my ($class, $base_type, $tag, @args) = @_;
 	my $info = $constr_info{$tag};
 	if (@args != $info->{n_params}) {
-		die(sprintf("num of args/types mismatch: %d / %d", scalar(@args), $info->{n_params}));
+		die(sprintf("$tag: num of args/types mismatch: %d / %d", scalar(@args), $info->{n_params}));
 	}
 
 	my $self = bless { ':tag' => $tag, ':base_type' => $base_type, }, $class;

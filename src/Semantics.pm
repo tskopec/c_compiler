@@ -4,7 +4,7 @@ use warnings;
 use feature qw(say state isa signatures);
 
 use ADT::AlgebraicTypes qw(:AST :A :I :S :T is_ADT);
-use Const;
+use TypeConvertor;
 
 
 our %symbol_table;

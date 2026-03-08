@@ -4,7 +4,7 @@ use warnings;
 use feature qw(say state signatures);
 
 use ADT::AlgebraicTypes qw(:LEX :AST :T :C :S);
-use Const;
+use TypeConvertor;
 
 my @TOKENS;
 
@@ -45,7 +45,7 @@ sub parse_specifiers {
 	my (@storage_specs, @type_specs);
 	my $kw;
 	while (1) {
-		if ($kw = try_expect('LEX_Keyword', 'int', 'long')) {
+		if ($kw = try_expect('LEX_Keyword', 'int', 'long', 'signed', 'unsigned')) {
 			push @type_specs, $kw->get('word');
 		} elsif ($kw = try_expect('LEX_Keyword', 'static', 'extern')) {
 			push @storage_specs, $kw->get('word');
@@ -59,14 +59,14 @@ sub parse_specifiers {
 }
 
 sub parse_type {
-	my $specs = join(" ", @_);
-	if ($specs eq 'int') {
-		return T_Int();
-	} elsif ($specs =~ /^(long|int long|long int)$/) {
-		return T_Long();
-	} else {
-		die "invalid type specifier '$specs'";
-	}
+	my %freqs = map { my $_outer = $_; ($_outer, 0+grep { $_outer eq $_ } @_) } @_;
+	die "duplicate type" if (grep { $_ > 1 } (values %freqs));
+	die "bad type" if ($freqs{signed} && $freqs{unsigned});
+
+	return T_ULong() if ($freqs{long} && $freqs{unsigned});
+	return T_UInt() if ($freqs{unsigned});
+	return T_Long() if ($freqs{long});
+	return T_Int();
 }
 
 sub parse_storage_class {
@@ -211,8 +211,14 @@ sub parse_factor {
 		LEX_IntConstant => sub($val) {
 			return parse_constant('int', $val);
 		},
+		LEX_UIntConstant => sub($val) {
+			return parse_constant('uint', $val);
+		},
 		LEX_LongConstant => sub($val) {
 			return parse_constant('long', $val);
+		},
+		LEX_ULongConstant => sub($val) {
+			return parse_constant('ulong', $val);
 		},
 		LEX_Identifier => sub($name) {
 			if (try_expect('LEX_Symbol', '(')) {
@@ -256,12 +262,14 @@ sub parse_factor {
 
 sub parse_constant {
 	my ($type, $val) = @_;
-	if ($val > MAX_LONG) {
-		die "constant too large for long $val";
-	} elsif ($type eq 'int' && $val < MAX_INT) {
-		return AST_ConstantExpr(C_ConstInt($val), T_Int());
+	if ($type =~ /^u/) {
+		die "too large $val" if ($val > MAX_ULONG);
+		return AST_ConstantExpr(C_ConstULong($val), T_ULong) if ($type eq "ulong");
+		return AST_ConstantExpr(C_ConstUInt($val), T_UInt);
 	} else {
-		return AST_ConstantExpr(C_ConstLong($val), T_Long());
+		die "too large: $val" if ($val > MAX_LONG);
+		return AST_ConstantExpr(C_ConstLong($val), T_Long) if ($type eq "long");
+		return AST_ConstantExpr(C_ConstInt($val), T_Int);
 	}
 }
 

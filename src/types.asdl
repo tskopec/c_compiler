@@ -2,7 +2,9 @@
 LEX_Token =
 	LEX_Identifier(string name)
 	| LEX_IntConstant(int val)
+	| LEX_UIntConstant(int val)
 	| LEX_LongConstant(int val)
+	| LEX_ULongConstant(int val)
 	| LEX_Keyword(string word)
 	| LEX_Symbol(string char)
 	| LEX_Operator(string op)
@@ -49,12 +51,16 @@ AST_BinaryOperator =
 # Types & misc
 T_Type =
 	T_Int
+	| T_UInt
 	| T_Long
+	| T_ULong
 	| T_FunType(T_Type* params, T_Type ret)
 	| T_DummyType
 C_Constant =
 	C_ConstInt(int val)
+	| C_ConstUInt(int val)
 	| C_ConstLong(int val)
+	| C_ConstULong(int val)
 A_IdentifierAttrs =
 	A_FunAttrs(bool defined, bool global)
 	| A_StaticAttrs(I_InitialValue init_val, bool global)
