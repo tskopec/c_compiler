@@ -4,7 +4,7 @@ use warnings;
 use feature qw(say state signatures);
 
 use ADT::AlgebraicTypes qw(:LEX :AST :T :C :S);
-use TypeConvertor;
+use TypeUtils qw(/^MAX_/);
 
 my @TOKENS;
 
@@ -60,8 +60,8 @@ sub parse_specifiers {
 
 sub parse_type {
 	my %freqs = map { my $_outer = $_; ($_outer, 0+grep { $_outer eq $_ } @_) } @_;
-	die "duplicate type" if (grep { $_ > 1 } (values %freqs));
-	die "bad type" if ($freqs{signed} && $freqs{unsigned});
+	die "duplicate type spec: " . join(",", @_) if (grep { $_ > 1 } (values %freqs));
+	die "type both signed & unsigned" if ($freqs{signed} && $freqs{unsigned});
 
 	return T_ULong() if ($freqs{long} && $freqs{unsigned});
 	return T_UInt() if ($freqs{unsigned});

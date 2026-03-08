@@ -7,7 +7,7 @@ use feature qw(say isa state current_sub signatures);
 use List::Util qw(min);
 use ADT::AlgebraicTypes qw(:TAC :ASM);
 use Semantics;
-use TypeConvertor;
+use TypeUtils qw(/^MAX_/);
 
 our %asm_symbol_table;
 

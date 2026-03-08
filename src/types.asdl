@@ -71,7 +71,9 @@ I_InitialValue =
 	| I_NoInitializer
 I_StaticInit =
 	I_IntInit(int val)
+	| I_UIntInit(int val)
 	| I_LongInit(int val)
+	| I_ULongInit(int val)
 S_StorageClass =
 	S_Static | S_Extern
 

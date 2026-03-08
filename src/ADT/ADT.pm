@@ -82,7 +82,11 @@ sub match {
 		my @missing = grep { !exists $cases->{$_} } $variants_info{$self->{':base_type'}}->@*;
 		die "missing cases for type " . $self->{':base_type'} . ": @missing" if (@missing);
 	}
-	my $sub = $cases->{$self->{':tag'}} // $cases->{default};
+	my %key_split_cases;
+	while (my ($key, $sub) = each %$cases) {
+		$key_split_cases{$_} = $sub for split(/[\s,]+/, $key);
+	}
+	my $sub = $key_split_cases{$self->{':tag'}} // $key_split_cases{default};
 	return $sub->($self->values_in_order());
 }
 

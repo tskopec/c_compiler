@@ -4,7 +4,7 @@ use warnings;
 use feature qw(say state isa signatures);
 
 use ADT::AlgebraicTypes qw(:AST :A :I :S :T is_ADT);
-use TypeConvertor;
+use TypeUtils qw(/^MAX_/ get_common_type convert_type types_equal const_to_initval);
 
 
 our %symbol_table;
@@ -104,10 +104,7 @@ sub resolve_block_item_ids {
 sub resolve_statement_ids {
 	my ($statement, $ids_map) = @_;
 	$statement->match({
-		AST_Return => sub($e) {
-			resolve_expr_ids($e, $ids_map);
-		},
-		AST_ExprStatement => sub($e) {
+		"AST_Return, AST_ExprStatement"  => sub($e) {
 			resolve_expr_ids($e, $ids_map);
 		},
 		AST_Null => sub() { ; },
@@ -143,8 +140,7 @@ sub resolve_statement_ids {
 			resolve_opt_expr_ids($post, $new_idents);
 			resolve_statement_ids($body, $new_idents);
 		},
-		AST_Break => sub($label) {;},
-		AST_Continue => sub($label) {;},
+		"AST_Break, AST_Continue" => sub($label) {;},
 		default => sub {
 			die "unknown statement $statement"
 		}
@@ -407,44 +403,6 @@ sub get_symbol_attr {
 		}
 	});
 	return $res;
-}
-
-sub get_common_type {
-	my ($t1, $t2) = @_;
-	if ($t1->same_type_as($t2)) {
-		return $t1;
-	} else {
-		return T_Long();
-	}
-}
-
-sub convert_type {
-	my ($expr, $type) = @_;
-	return $type->same_type_as($expr->get('type')) ? $expr : AST_Cast($expr, $type);
-}
-
-sub types_equal {
-	my ($t1, $t2) = @_;
-	if ($t1->same_type_as($t2)) {
-		if ($t1->is('T_FunType')) {
-			my ($param_types1, $ret_type1) = $t1->values_in_order('T_FunType');
-			my ($param_types2, $ret_type2) = $t2->values_in_order('T_FunType');
-			return 0 if (@$param_types1 != @$param_types2 || $ret_type1 ne $ret_type2);
-			return not grep { not $param_types1->[$_]->same_type_as($param_types2->[$_]) } (0..$#$param_types1);
-		}
-		return 1;
-	}
-	return 0;
-}
-
-sub const_to_initval {
-	my ($const, $type) = @_;
-	my $val = $const->get('val');
-	return I_Initial(
-		$type->is('T_Int') 
-			? I_IntInit($val & 0xffffffff)
-			: I_LongInit($val <= MAX_LONG ? $val : die("integer $val too large for long"))
-	);
 }
 
 #3# LOOP LABELING ###
