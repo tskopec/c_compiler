@@ -33,7 +33,7 @@ my $dont_link = 0;
 foreach (@ARGV) {
 	if (/\.c$/) {
 		push @src_files, $_;
-	} elsif (/^--(lex|parse|validate|tac|codegen)$/) {
+	} elsif (/^--(lex|parse|validate|tac|tacky|codegen)$/) {
 		$target_phase = $1;
 	} elsif (/^-d(\w*)$/) {
 		$debug{$_} = 1 for (split('', $1 ? $1 : "lpstceS"));
@@ -94,7 +94,7 @@ for my $src_file (@src_files) {
 		say "> TAC tree";
 		print_tree($tac);
 	}
-	if ($target_phase eq 'tac') {
+	if ($target_phase =~ /^tac/) {
 		$error_code = 0; exit;
 	}
 
