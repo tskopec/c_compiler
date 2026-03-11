@@ -60,7 +60,7 @@ sub resolve_fun_declaration_ids {
 
 sub resolve_top_level_var_declaration_ids {
 	my ($name, $init, $type, $storage,
-	   	$ids_map) = @_;
+		$ids_map) = @_;
 	$ids_map->{$name} = { uniq_name => $name, from_this_scope => 1, has_linkage => 1};
 }
 

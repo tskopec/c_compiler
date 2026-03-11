@@ -115,10 +115,12 @@ ASM_TopLevelDeclaration =
 ASM_Instruction =
 	ASM_Mov(ASM_OperandSize opsize, ASM_Operand src, ASM_Operand dst)
 	| ASM_Movsx(ASM_Operand src, ASM_Operand dst)
+	| ASM_MovZeroExtend(ASM_Operand src, ASM_Operand dst)
 	| ASM_Unary(ASM_UnaryOperator op, ASM_OperandSize opsize, ASM_Operand operand)
 	| ASM_Binary(ASM_BinaryOperator op, ASM_OperandSize opsize, ASM_Operand operand1, ASM_Operand operand2)
 	| ASM_Cmp(ASM_OperandSize opsize, ASM_Operand operand1, ASM_Operand operand2)
 	| ASM_Idiv(ASM_OperandSize opsize, ASM_Operand operand)
+	| ASM_Div(ASM_OperandSize opsize, ASM_Operand operand)
 	| ASM_Cdq(ASM_OperandSize opsize)
 	| ASM_Jmp(string target)
 	| ASM_JmpCC(ASM_CondCode cond, string target)
@@ -138,7 +140,7 @@ ASM_Operand =
 	| ASM_Stack(int offset)
 	| ASM_Data(string ident)
 ASM_CondCode =
-	ASM_E | ASM_NE | ASM_G | ASM_GE | ASM_L | ASM_LE
+	ASM_E | ASM_NE | ASM_G | ASM_GE | ASM_L | ASM_LE | ASM_A | ASM_AE | ASM_B | ASM_BE
 ASM_Register =
 	ASM_AX | ASM_CX | ASM_DX | ASM_DI | ASM_SI | ASM_R8 | ASM_R9 | ASM_R10 | ASM_R11 | ASM_SP
 

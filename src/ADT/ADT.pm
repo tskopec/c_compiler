@@ -77,17 +77,17 @@ sub same_type_as {
 }
 
 sub match {
-	my ($self, $cases) = @_;
-	if (!exists $cases->{default}) {
-		my @missing = grep { !exists $cases->{$_} } $variants_info{$self->{':base_type'}}->@*;
+	my ($self, $case_map) = @_;
+	if (!exists $case_map->{default}) {
+		my @missing = grep { !exists $case_map->{$_} } $variants_info{$self->{':base_type'}}->@*;
 		die "missing cases for type " . $self->{':base_type'} . ": @missing" if (@missing);
 	}
-	my %key_split_cases;
-	while (my ($key, $sub) = each %$cases) {
-		$key_split_cases{$_} = $sub for split(/[\s,]+/, $key);
+	my %split_cond_cases;
+	while (my ($condition, $case) = each %$case_map) {
+		$split_cond_cases{$_} = $case for split(/[\s,]+/, $condition);
 	}
-	my $sub = $key_split_cases{$self->{':tag'}} // $key_split_cases{default};
-	return $sub->($self->values_in_order());
+	my $case = $split_cond_cases{$self->{':tag'}} // $split_cond_cases{default};
+	return ref($case) eq 'CODE' ? $case->($self->values_in_order()) : $case;
 }
 
 
