@@ -36,7 +36,7 @@ sub get_int_type_rank {
 
 sub is_signed {
 	my $type = shift;
-	return $type->{':tag'} =~ /^T_U/ ? 0 : 1;
+	return ($type->{':tag'} =~ /^T_U/) ? 0 : 1;
 }
 
 sub convert_type {

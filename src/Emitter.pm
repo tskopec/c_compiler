@@ -61,9 +61,9 @@ sub emit_code {
 			my ($n_bytes, $suffix) = translate_type($type);
 			return emit_code($operator) . $suffix . " " . emit_code($src, $n_bytes) . ", " . emit_code($dst, $n_bytes) . "\n";
 		},
-		ASM_Idiv => sub($type, $operand) {
+		"ASM_Idiv, ASM_Div" => sub($type, $operand) {
 			my ($n_bytes, $suffix) = translate_type($type);
-			return "\tidiv" . $suffix . " " . emit_code($operand, $n_bytes) . "\n";
+			return "\t" . lc(strip_prefix($node->{':tag'})) . $suffix . " " . emit_code($operand, $n_bytes) . "\n";
 		},
 		ASM_Cdq => sub($type) {
 			return "\tcdq\n" if $type->is('ASM_Longword');
@@ -139,8 +139,8 @@ sub translate_type {
 	my $type = shift;
 	return (4, 'l') if $type->is('ASM_Longword');
 	return (8, 'q') if $type->is('ASM_Quadword');
-	return (4, 'long') if $type->is('T_IntType', 'I_IntInit');
-	return (8, 'quad') if $type->is('T_LongType', 'I_LongInit');
+	return (4, 'long') if $type->is('T_IntType', 'I_IntInit', 'I_UIntInit');
+	return (8, 'quad') if $type->is('T_LongType', 'I_LongInit', 'I_ULongInit');
 	die "unknown type $type";
 }
 

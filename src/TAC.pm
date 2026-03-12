@@ -116,7 +116,7 @@ sub emit_TAC {
 			my $dst = make_TAC_var($type);
 			my $expr_type_rank = get_int_type_rank($expr_type);
 			my $cast_type_rank = get_int_type_rank($type);
-			if ($expr_type_rank == $cast_type_rank) {
+			if ($cast_type_rank == $expr_type_rank) {
 				push(@$instructions, TAC_Copy($res, $dst));
 			} elsif ($cast_type_rank < $expr_type_rank) {
 				push(@$instructions, TAC_Truncate($res, $dst));
