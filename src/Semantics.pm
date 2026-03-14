@@ -242,7 +242,7 @@ sub check_types {
 				if ($is_file_scope) {
 					my $init_val;
 					if (is_ADT($init, 'AST_ConstantExpr')) {
-						$init_val = const_to_initval($init->get('constant'), $init->get('type'));
+						$init_val = const_to_initval($init->get('constant'), $type);
 					} elsif (!defined($init)) {
 						$init_val = is_ADT($storage, 'S_Extern') ? I_NoInitializer() : I_Tentative();
 					} else {
@@ -348,7 +348,7 @@ sub check_types {
 					my $common_type = get_common_type($e1->get('type'), $e2->get('type'));
 					$node->set('expr1', convert_type($e1, $common_type));
 					$node->set('expr2', convert_type($e2, $common_type));
-					if ($op->is('AST_Add', 'AST_Subtract', 'AST_Multiply', 'AST_Divide', 'AST_Remainder')) {
+					if ($op->is('AST_Add', 'AST_Subtract', 'AST_Multiply', 'AST_Divide', 'AST_Modulo')) {
 						$node->set('type', $common_type);
 					} else {
 						$node->set('type', T_Int());

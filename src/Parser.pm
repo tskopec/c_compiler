@@ -264,11 +264,11 @@ sub parse_constant {
 	my ($type, $val) = @_;
 	if ($type =~ /^u/) {
 		die "too large $val" if ($val > MAX_ULONG);
-		return AST_ConstantExpr(C_ConstULong($val), T_ULong) if ($type eq "ulong");
+		return AST_ConstantExpr(C_ConstULong($val), T_ULong) if ($type eq "ulong" || $val > MAX_UINT);
 		return AST_ConstantExpr(C_ConstUInt($val), T_UInt);
 	} else {
 		die "too large: $val" if ($val > MAX_LONG);
-		return AST_ConstantExpr(C_ConstLong($val), T_Long) if ($type eq "long");
+		return AST_ConstantExpr(C_ConstLong($val), T_Long) if ($type eq "long" || $val > MAX_INT);
 		return AST_ConstantExpr(C_ConstInt($val), T_Int);
 	}
 }

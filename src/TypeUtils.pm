@@ -19,7 +19,7 @@ sub get_common_type {
 	return $t1 if ($t1->same_type_as($t2));
 	my ($rank1, $rank2) = (get_int_type_rank($t1), get_int_type_rank($t2));
 	if ($rank1 == $rank2) {
-		return is_signed($t1) ? $t1 : $t2;
+		return is_signed($t1) ? $t2 : $t1;
 	} else {
 		return $rank1 > $rank2 ? $t1 : $t2;
 	}
