@@ -6,7 +6,7 @@ use ADT::ADT;
 
 
 my $type_name_re  = qr/[A-Z]\w*/;
-my $param_type_re = qr/[A-Z]\w*|int|string|bool/;
+my $param_type_re = qr/[A-Z]\w*|int|float|string|bool/;
 my $param_name_re = qr/\w+/;
 
 sub parse_file {

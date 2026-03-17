@@ -5,6 +5,7 @@ LEX_Token =
 	| LEX_UIntConstant(int val)
 	| LEX_LongConstant(int val)
 	| LEX_ULongConstant(int val)
+	| LEX_FPConstant(float val)
 	| LEX_Keyword(string word)
 	| LEX_Symbol(string char)
 	| LEX_Operator(string op)
@@ -54,6 +55,7 @@ T_Type =
 	| T_UInt
 	| T_Long
 	| T_ULong
+	| T_Double
 	| T_FunType(T_Type* params, T_Type ret)
 	| T_DummyType
 C_Constant =
@@ -61,6 +63,7 @@ C_Constant =
 	| C_ConstUInt(int val)
 	| C_ConstLong(int val)
 	| C_ConstULong(int val)
+	| C_ConstDouble(float val)
 A_IdentifierAttrs =
 	A_FunAttrs(bool defined, bool global)
 	| A_StaticAttrs(I_InitialValue init_val, bool global)

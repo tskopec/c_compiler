@@ -3,6 +3,8 @@ use strict;
 use warnings;
 use feature qw(isa);
 
+use Scalar::Util 'looks_like_number';
+
 use overload
 	'""' => sub {
 		my $self = shift;
@@ -130,7 +132,10 @@ sub check_value {
 			if ($type->{name} eq 'int') {
 				die "$val not int" if ($val !~ /^-?\d+$/);
 			}
-		} 
+			if ($type->{name} eq 'float') {
+				die "$val not float" unless looks_like_number($val); # TODO staci toto?
+			}
+		}
 	}
 }
 

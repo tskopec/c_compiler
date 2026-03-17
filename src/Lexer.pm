@@ -5,14 +5,19 @@ use feature qw(say);
 
 use ADT::AlgebraicTypes qw(:LEX);
 
-my $sym_re = qr/^([;}{)(,]).*/;
-my $op_re = qr/^(!=|==|<=|>=|<|>|=|!|\|\||&&|--|-|\+|\*|\/|%|~|\?|:).*/;
-my $kw_re = qr/^(int|long|signed|unsigned|void|return|if|else|do|while|for|break|continue|static|extern)\b.*/;
-my $long_const_re = qr/^(([0-9]+)[lL])\b.*/;
-my $ulong_const_re = qr/^(([0-9]+)(lu|ul))\b.*/i;
-my $int_const_re = qr/^([0-9]+)\b.*/;
-my $uint_const_re = qr/^(([0-9]+)u)\b.*/i;
-my $iden_re = qr/^([a-zA-Z_]\w*)\b.*/;
+my $sym_re = qr/^([;}{)(,])/;
+my $op_re = qr/^(!=|==|<=|>=|<|>|=|!|\|\||&&|--|-|\+|\*|\/|%|~|\?|:)/;
+my $kw_re = qr/^(int|long|double|signed|unsigned|void|return|if|else|do|while|for|break|continue|static|extern)\b/;
+my $long_const_re = qr/^(([0-9]+)[lL])[^\w.]/;
+my $ulong_const_re = qr/^(([0-9]+)(lu|ul))[^\w.]/i;
+my $int_const_re = qr/^([0-9]+)[^\w.]/;
+my $uint_const_re = qr/^(([0-9]+)u)[^\w.]/i;
+my $fp_const_re = qr/^(
+	([0-9]*\.[0-9]+|[0-9]+\.?)e[+-]?[0-9]+
+	|[0-9]*\.[0-9]+
+	|[0-9]+\.
+)[^\w.]/xi;
+my $iden_re = qr/^([a-zA-Z_]\w*)\b/;
 
 sub tokenize {
 	my $src = shift;
@@ -41,6 +46,9 @@ sub tokenize {
 		}
 		elsif ($src =~ $uint_const_re) {
 			push(@tokens, LEX_UIntConstant($2));
+		}
+		elsif ($src =~ $fp_const_re) {
+			push(@tokens, LEX_FPConstant($1));
 		}
 		elsif ($src =~ $iden_re) {
 			push(@tokens, LEX_Identifier($1));

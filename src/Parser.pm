@@ -45,7 +45,7 @@ sub parse_specifiers {
 	my (@storage_specs, @type_specs);
 	my $kw;
 	while (1) {
-		if ($kw = try_expect('LEX_Keyword', 'int', 'long', 'signed', 'unsigned')) {
+		if ($kw = try_expect('LEX_Keyword', 'int', 'long', 'double', 'signed', 'unsigned')) {
 			push @type_specs, $kw->get('word');
 		} elsif ($kw = try_expect('LEX_Keyword', 'static', 'extern')) {
 			push @storage_specs, $kw->get('word');
@@ -62,11 +62,13 @@ sub parse_type {
 	my %freqs = map { my $_outer = $_; ($_outer, 0+grep { $_outer eq $_ } @_) } @_;
 	die "duplicate type spec: " . join(",", @_) if (grep { $_ > 1 } (values %freqs));
 	die "type both signed & unsigned" if ($freqs{signed} && $freqs{unsigned});
+	die "double cant be combined with others" if ($freqs{double} && keys(%freqs) > 1);
 
-	return T_ULong() if ($freqs{long} && $freqs{unsigned});
-	return T_UInt() if ($freqs{unsigned});
-	return T_Long() if ($freqs{long});
-	return T_Int();
+	return T_Double if ($freqs{double});
+	return T_ULong if ($freqs{long} && $freqs{unsigned});
+	return T_UInt if ($freqs{unsigned});
+	return T_Long if ($freqs{long});
+	return T_Int;
 }
 
 sub parse_storage_class {
@@ -208,30 +210,31 @@ sub parse_expr {
 sub parse_factor {
 	my $token = shift @TOKENS;
 	my $result = $token->match({
-		LEX_IntConstant => sub($val) {
-			return parse_constant('int', $val);
+		"LEX_IntConstant, LEX_LongConstant" => sub($val) {
+			die "too large: $val" if ($val > MAX_LONG);
+			return AST_ConstantExpr(C_ConstLong($val), T_Long) if ($token->is('LEX_LongConstant') || $val > MAX_INT);
+			return AST_ConstantExpr(C_ConstInt($val), T_Int);
 		},
-		LEX_UIntConstant => sub($val) {
-			return parse_constant('uint', $val);
+		"LEX_UIntConstant, LEX_ULongConstant" => sub($val) {
+			die "too large $val" if ($val > MAX_ULONG);
+			return AST_ConstantExpr(C_ConstULong($val), T_ULong) if ($token->is('LEX_ULongConstant')|| $val > MAX_UINT);
+			return AST_ConstantExpr(C_ConstUInt($val), T_UInt);
 		},
-		LEX_LongConstant => sub($val) {
-			return parse_constant('long', $val);
-		},
-		LEX_ULongConstant => sub($val) {
-			return parse_constant('ulong', $val);
+		LEX_FPConstant => sub($val) {
+			return AST_ConstantExpr(C_ConstDouble($val), T_Double);
 		},
 		LEX_Identifier => sub($name) {
 			if (try_expect('LEX_Symbol', '(')) {
-				return AST_FunctionCall($name, [], T_DummyType()) if (try_expect('LEX_Symbol', ')'));
+				return AST_FunctionCall($name, [], T_DummyType) if (try_expect('LEX_Symbol', ')'));
 				my @args;
 				while (1) {
 					push(@args, parse_expr(0));
 					last if (try_expect('LEX_Symbol', ')'));
 					expect('LEX_Symbol', ',');
 				}
-				return AST_FunctionCall($name, \@args, T_DummyType());
+				return AST_FunctionCall($name, \@args, T_DummyType);
 			} else {
-				return AST_Var($name, T_DummyType());
+				return AST_Var($name, T_DummyType);
 			}
 		},
 		LEX_Operator => sub($op) {
@@ -258,19 +261,6 @@ sub parse_factor {
 		}
 	});
 	return $result;
-}
-
-sub parse_constant {
-	my ($type, $val) = @_;
-	if ($type =~ /^u/) {
-		die "too large $val" if ($val > MAX_ULONG);
-		return AST_ConstantExpr(C_ConstULong($val), T_ULong) if ($type eq "ulong" || $val > MAX_UINT);
-		return AST_ConstantExpr(C_ConstUInt($val), T_UInt);
-	} else {
-		die "too large: $val" if ($val > MAX_LONG);
-		return AST_ConstantExpr(C_ConstLong($val), T_Long) if ($type eq "long" || $val > MAX_INT);
-		return AST_ConstantExpr(C_ConstInt($val), T_Int);
-	}
 }
 
 sub parse_identifier {
