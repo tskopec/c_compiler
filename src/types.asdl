@@ -77,6 +77,7 @@ I_StaticInit =
 	| I_UIntInit(int val)
 	| I_LongInit(int val)
 	| I_ULongInit(int val)
+	| I_DoubleInit(float val)
 S_StorageClass =
 	S_Static | S_Extern
 

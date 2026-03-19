@@ -17,6 +17,8 @@ use constant MAX_INT => 2 ** 31 - 1;
 sub get_common_type {
 	my ($t1, $t2) = @_;
 	return $t1 if ($t1->same_type_as($t2));
+	return $t1 if $t1->is('T_Double');
+	return $t2 if $t2->is('T_Double');
 	my ($rank1, $rank2) = (get_int_type_rank($t1), get_int_type_rank($t2));
 	if ($rank1 == $rank2) {
 		return is_signed($t1) ? $t2 : $t1;
@@ -73,6 +75,9 @@ sub const_to_initval {
 		},
 		T_ULong => sub() {
 			return I_ULongInit($val <= MAX_ULONG ? $val : die "integer $val too large for ulong");
+		},
+		T_Double => sub() {
+			return I_DoubleInit($val);
 		},
 		default => sub() {
 			die "bad type: $type";

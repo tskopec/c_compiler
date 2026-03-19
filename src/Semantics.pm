@@ -6,7 +6,6 @@ use feature qw(say state isa signatures);
 use ADT::AlgebraicTypes qw(:AST :A :I :S :T is_ADT);
 use TypeUtils qw(/^MAX_/ get_common_type convert_type types_equal const_to_initval);
 
-
 our %symbol_table;
 
 sub run {
@@ -61,7 +60,7 @@ sub resolve_fun_declaration_ids {
 sub resolve_top_level_var_declaration_ids {
 	my ($name, $init, $type, $storage,
 		$ids_map) = @_;
-	$ids_map->{$name} = { uniq_name => $name, from_this_scope => 1, has_linkage => 1};
+	$ids_map->{$name} = { uniq_name => $name, from_this_scope => 1, has_linkage => 1 };
 }
 
 sub resolve_local_var_declaration_ids {
@@ -70,7 +69,7 @@ sub resolve_local_var_declaration_ids {
 	if (exists $ids_map->{$name}
 		&& $ids_map->{$name}{from_this_scope}
 		&& !($ids_map->{$name}{has_linkage} && is_ADT($storage, 'S_Extern'))) {
-			die "multiple declarations of $name in this scope, some without linkage";
+		die "multiple declarations of $name in this scope, some without linkage";
 	}
 	if (is_ADT($storage, 'S_Extern')) {
 		$ids_map->{$name} = { uniq_name => $name, from_this_scope => 1, has_linkage => 1 };
@@ -104,7 +103,7 @@ sub resolve_block_item_ids {
 sub resolve_statement_ids {
 	my ($statement, $ids_map) = @_;
 	$statement->match({
-		"AST_Return, AST_ExprStatement"  => sub($e) {
+		"AST_Return, AST_ExprStatement" => sub($e) {
 			resolve_expr_ids($e, $ids_map);
 		},
 		AST_Null => sub() { ; },
@@ -140,7 +139,7 @@ sub resolve_statement_ids {
 			resolve_opt_expr_ids($post, $new_idents);
 			resolve_statement_ids($body, $new_idents);
 		},
-		"AST_Break, AST_Continue" => sub($label) {;},
+		"AST_Break, AST_Continue" => sub($label) { ; },
 		default => sub {
 			die "unknown statement $statement"
 		}
@@ -155,7 +154,7 @@ sub resolve_opt_expr_ids {
 sub resolve_expr_ids {
 	my ($expr, $ids_map) = @_;
 	$expr->match({
-		AST_ConstantExpr => sub($const, $type) {;},
+		AST_ConstantExpr => sub($const, $type) { ; },
 		AST_Cast => sub($expr, $type) {
 			resolve_expr_ids($expr, $ids_map);
 		},
@@ -163,12 +162,12 @@ sub resolve_expr_ids {
 			$expr->set('ident', ($ids_map->{$name}{uniq_name} // die "undeclared variable $name"));
 		},
 		AST_Unary => sub($op, $e, $type) {
-			   resolve_expr_ids($e, $ids_map);
+			resolve_expr_ids($e, $ids_map);
 		},
 		AST_Binary => sub($op, $e1, $e2, $type) {
 			resolve_expr_ids($_, $ids_map) for ($e1, $e2);
 		},
-		AST_Assignment	=> sub($le, $re, $type) {
+		AST_Assignment => sub($le, $re, $type) {
 			die "not a variable $le" if (!$le->is('AST_Var'));
 			resolve_expr_ids($_, $ids_map) for ($le, $re);
 		},
@@ -200,8 +199,6 @@ sub make_inner_scope_map {
 }
 
 
-
-
 #2# TYPE CHECKING ##########################################
 sub check_types {
 	state $current_fun_ret_type;
@@ -217,9 +214,9 @@ sub check_types {
 
 				if (exists $symbol_table{$name}) {
 					$already_defined = get_symbol_attr($name, 'defined');
-					die "incompatible declarations: $name"			if (!types_equal(get_symbol_attr($name, 'type'), $f_type));
-					die "fun defined multiple times: $name"			if ($already_defined && $has_body);
-					die "static fun declaration after non-static"	if (get_symbol_attr($name, 'global') && !$global);
+					die "incompatible declarations: $name" if (!types_equal(get_symbol_attr($name, 'type'), $f_type));
+					die "fun defined multiple times: $name" if ($already_defined && $has_body);
+					die "static fun declaration after non-static" if (get_symbol_attr($name, 'global') && !$global);
 					$global = get_symbol_attr($name, 'global');
 				}
 				$symbol_table{$name} = {
@@ -238,7 +235,7 @@ sub check_types {
 			},
 			AST_VarDeclaration => sub($name, $init, $type, $storage) {
 				my $is_file_scope = $parent_node isa 'ADT::ADT' && $parent_node->is('AST_Program');
-			### file scope var
+###### file scope var
 				if ($is_file_scope) {
 					my $init_val;
 					if (is_ADT($init, 'AST_ConstantExpr')) {
@@ -270,7 +267,7 @@ sub check_types {
 						type => $type,
 						attrs => A_StaticAttrs($init_val, 0+$global)
 					};
-			### local var
+###### local var
 				} else {
 					if ($parent_node isa 'ADT::ADT' && $parent_node->is('AST_ForInitDeclaration') && defined($storage)) {
 						die "for loop header var $name declaration with storage class";
@@ -288,7 +285,7 @@ sub check_types {
 					} elsif (is_ADT($storage, 'S_Static')) {
 						my $init_val;
 						if (is_ADT($init, 'AST_ConstantExpr')) {
-							$init_val = const_to_initval($init->get('constant'), $init->get('type'));
+							$init_val = const_to_initval($init->get('constant'), $type);
 						} elsif (!defined $init) {
 							$init_val = I_Initial(I_IntInit(0));
 						} else {
@@ -326,17 +323,22 @@ sub check_types {
 				die "is not var: $name" if ($type->is('T_FunType'));
 				$node->set('type', $type);
 			},
-			AST_ConstantExpr => sub($const, $type) {;},
+			AST_ConstantExpr => sub($const, $type) { ; },
 			AST_Cast => sub($expr, $type) {
 				check_types($expr, $node);
 				$node->set('type', $type);
 			},
 			AST_Unary => sub($op, $expr, $dummy_type) {
 				check_types($expr, $node);
-				if ($op->is('AST_Not')) {
+				my $expr_type = $expr->get('type');
+				if ($op->is('AST_Complement')) {
+					$node->set('type', $expr_type->is('T_Double')
+						? die "cant complement double"
+						: $expr_type);
+				} elsif ($op->is('AST_Not')) {
 					$node->set('type', T_Int());
-				   } else {
-					$node->set('type', $expr->get('type'));
+				} else {
+					$node->set('type', $expr_type);
 				}
 			},
 			AST_Binary => sub($op, $e1, $e2, $dummy_type) {
@@ -348,8 +350,12 @@ sub check_types {
 					my $common_type = get_common_type($e1->get('type'), $e2->get('type'));
 					$node->set('expr1', convert_type($e1, $common_type));
 					$node->set('expr2', convert_type($e2, $common_type));
-					if ($op->is('AST_Add', 'AST_Subtract', 'AST_Multiply', 'AST_Divide', 'AST_Modulo')) {
+					if ($op->is('AST_Add', 'AST_Subtract', 'AST_Multiply', 'AST_Divide')) {
 						$node->set('type', $common_type);
+					} elsif ($op->is('AST_Modulo')) {
+						$node->set('type', $common_type->is('T_Double')
+							? die "cant modulo double"
+							: $common_type);
 					} else {
 						$node->set('type', T_Int());
 					}
@@ -397,7 +403,7 @@ sub get_symbol_attr {
 			$res = $init_val if ($attr_name eq 'init_value');
 			$res = $global if ($attr_name eq 'global');
 		},
-		A_LocalAttrs => sub() {;},
+		A_LocalAttrs => sub() { ; },
 		default => sub {
 			die "cant get attribute '$attr_name' of $symbol in " . $symbol_table{$symbol}->{attrs};
 		}
