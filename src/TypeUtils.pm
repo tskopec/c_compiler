@@ -61,9 +61,12 @@ sub types_equal {
 }
 
 sub const_to_initval {
-	my ($const, $type) = @_;
+	my ($const, $var_type) = @_;
 	my $val = $const->get('val');
-	return I_Initial($type->match({
+	if ($const->is('C_ConstDouble') && !$var_type->is('T_Double')) {
+		$val = int($val);
+	}
+	return I_Initial($var_type->match({
 		T_Int => sub() {
 			return I_IntInit($val & 0xffffffff);
 		},
@@ -80,7 +83,7 @@ sub const_to_initval {
 			return I_DoubleInit($val);
 		},
 		default => sub() {
-			die "bad type: $type";
+			die "unknown type: $var_type";
 		}
 	}));
 }
