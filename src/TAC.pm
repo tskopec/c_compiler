@@ -114,17 +114,33 @@ sub emit_TAC {
 			return $res if ($type->same_type_as($expr_type));
 
 			my $dst = make_TAC_var($type);
-			my $expr_type_rank = get_int_type_rank($expr_type);
-			my $cast_type_rank = get_int_type_rank($type);
-			if ($cast_type_rank == $expr_type_rank) {
-				push(@$instructions, TAC_Copy($res, $dst));
-			} elsif ($cast_type_rank < $expr_type_rank) {
-				push(@$instructions, TAC_Truncate($res, $dst));
-			} elsif (is_signed($expr_type)) {
-				push(@$instructions, TAC_SignExtend($res, $dst));
+			my $cast_instr;
+			if ($type->is('T_Double')) {
+				$cast_instr = $expr_type->match({
+					'T_Int, T_Long' => TAC_IntToDouble($res, $dst),
+					'T_UInt, T_ULong' => TAC_UIntToDouble($res, $dst),
+					default => sub() { die "bad type" }
+				});
+			} elsif ($expr_type->is('T_Double')) {
+				$cast_instr = $type->match({
+					'T_Int, T_Long' => TAC_DoubleToInt($res, $dst),
+					'T_UInt, T_ULong' => TAC_DoubleToUInt($res, $dst),
+					default => sub() { die "bad type" }
+				});
 			} else {
-				push(@$instructions, TAC_ZeroExtend($res, $dst));
+				my $expr_type_rank = get_int_type_rank($expr_type);
+				my $cast_type_rank = get_int_type_rank($type);
+				if ($cast_type_rank == $expr_type_rank) {
+					$cast_instr = TAC_Copy($res, $dst);
+				} elsif ($cast_type_rank < $expr_type_rank) {
+					$cast_instr = TAC_Truncate($res, $dst);
+				} elsif (is_signed($expr_type)) {
+					$cast_instr = TAC_SignExtend($res, $dst);
+				} else {
+					$cast_instr = TAC_ZeroExtend($res, $dst);
+				}
 			}
+			push(@$instructions, $cast_instr);
 			return $dst;
 		},
 		AST_Unary => sub($op, $exp, $type) {
@@ -269,11 +285,14 @@ sub covert_symbols_to_TAC {
 
 sub get_default_init {
 	my $type = shift;
-	return I_IntInit(0) if ($type->is('T_Int'));
-	return I_UIntInit(0) if ($type->is('T_UInt'));
-	return I_LongInit(0) if ($type->is('T_Long'));
-	return I_ULongInit(0) if ($type->is('T_ULong'));
-	die "unknown type $type";
+	return $type->match({
+		T_Int => I_IntInit(0),
+		T_UInt => I_UIntInit(0),
+		T_Long => I_LongInit(0),
+		T_ULong => I_ULongInit(0),
+		T_Double => I_DoubleInit(0.0),
+		default => sub() { die "unknown type $type" }
+	});
 }
 
 1;
