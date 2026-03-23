@@ -9,13 +9,15 @@ use ADT::AlgebraicTypes qw(:TAC :ASM);
 use Semantics;
 use TypeUtils qw(/^MAX_/ get_type is_signed);
 
-our %asm_symbol_table;
-
 my @arg_regs = (ASM_DI(), ASM_SI(), ASM_DX(), ASM_CX(), ASM_R8(), ASM_R9());
+
+our %asm_symbol_table;
+my @static_constants;
 
 sub generate {
 	my $tac = shift;
 	my $asm = translate_to_ASM($tac);
+	push($asm->get('declarations')->@*, @static_constants);
 	fill_asm_symtable();
 	fix_up($asm);
 	return $asm;
@@ -34,8 +36,18 @@ sub fill_asm_symtable {
 			$asm_symbol_table{$name} = {
 				entry_type => 'Obj',
 				op_size => asm_type_of($entry->{type}),
-				static => 0 + ($attrs->is('A_StaticAttrs'))
+				static => 0 + ($attrs->is('A_StaticAttrs')),
+				is_constant => 0
 			};
+		}
+	}
+	while (@static_constants) {
+		my $static_const = unshift @static_constants;
+		$asm_symbol_table{$static_const->get('label')} = {
+			entry_type => 'Obj',
+			op_size => ASM_Quadword(), # TODO jine typy
+			static => 1,
+			is_constant => 1
 		}
 	}
 }
@@ -43,7 +55,7 @@ sub fill_asm_symtable {
 #1# FIRST PASS ###
 sub translate_to_ASM {
 	my $node = shift;
-	$node->match({
+	return $node->match({
 		TAC_Program => sub($declarations) {
 			return ASM_Program([ map { translate_to_ASM($_) } @$declarations ]);
 		},
@@ -59,7 +71,7 @@ sub translate_to_ASM {
 			return ASM_Function(
 				$ident,
 				$global,
-				[ (map { $move_to_stack->($_) } (keys @$params)),
+				[ 	(map { $move_to_stack->($_) } (keys @$params)),
 					(map { translate_to_ASM($_) } @$instructions) ]
 			);
 		},
@@ -68,18 +80,18 @@ sub translate_to_ASM {
 		},
 		TAC_Return => sub($value) {
 			return (ASM_Mov(asm_type_of($value), translate_to_ASM($value), ASM_Reg(ASM_AX())),
-				ASM_Ret());
+					ASM_Ret());
 		},
 		TAC_Unary => sub($op, $src, $dst) {
 			my $asm_dst = translate_to_ASM($dst);
 			if ($op->is('TAC_Not')) {
 				return (ASM_Cmp(asm_type_of($src), ASM_Imm(0), translate_to_ASM($src)),
-					ASM_Mov(asm_type_of($dst), ASM_Imm(0), $asm_dst),
-					ASM_SetCC(ASM_E(), $asm_dst));
+						ASM_Mov(asm_type_of($dst), ASM_Imm(0), $asm_dst),
+						ASM_SetCC(ASM_E(), $asm_dst));
 			}
 			my $src_op_size = asm_type_of($src);
 			return (ASM_Mov($src_op_size, translate_to_ASM($src), $asm_dst),
-				ASM_Unary(convert_unop($op), $src_op_size, $asm_dst));
+					ASM_Unary(convert_unop($op), $src_op_size, $asm_dst));
 		},
 		TAC_Binary => sub($op, $src1, $src2, $dst) {
 			my $asm_dst = translate_to_ASM($dst);
@@ -101,20 +113,20 @@ sub translate_to_ASM {
 					[ ASM_E(), ASM_NE(), ASM_L(), ASM_LE(), ASM_G(), ASM_GE() ]  # signed
 				);
 				return (ASM_Cmp($src_asm_type, translate_to_ASM($src2), translate_to_ASM($src1)),
-					ASM_Mov(asm_type_of($dst), ASM_Imm(0), $asm_dst),
-					ASM_SetCC($codes[is_signed(get_type($src1))]->[$i], $asm_dst));
+						ASM_Mov(asm_type_of($dst), ASM_Imm(0), $asm_dst),
+						ASM_SetCC($codes[is_signed(get_type($src1))]->[$i], $asm_dst));
 			} else {
 				return (ASM_Mov($src_asm_type, translate_to_ASM($src1), $asm_dst),
-					ASM_Binary(convert_binop($op), $src_asm_type, translate_to_ASM($src2), $asm_dst));
+						ASM_Binary(convert_binop($op), $src_asm_type, translate_to_ASM($src2), $asm_dst));
 			}
 		},
 		TAC_JumpIfZero => sub($val, $target) {
 			return (ASM_Cmp(asm_type_of($val), ASM_Imm(0), translate_to_ASM($val)),
-				ASM_JmpCC(ASM_E(), $target));
+					ASM_JmpCC(ASM_E(), $target));
 		},
 		TAC_JumpIfNotZero => sub($val, $target) {
 			return (ASM_Cmp(asm_type_of($val), ASM_Imm(0), translate_to_ASM($val)),
-				ASM_JmpCC(ASM_NE(), $target));
+					ASM_JmpCC(ASM_NE(), $target));
 		},
 		TAC_Jump => sub($target) {
 			return ASM_Jmp($target);
@@ -142,7 +154,7 @@ sub translate_to_ASM {
 					push(@instructions, ASM_Push($asm_arg));
 				} else {
 					push(@instructions, (ASM_Mov(ASM_Longword(), $asm_arg, ASM_Reg(ASM_AX())),
-						ASM_Push(ASM_Reg(ASM_AX()))));
+										 ASM_Push(ASM_Reg(ASM_AX()))));
 				}
 			}
 			push(@instructions, ASM_Call($ident));
@@ -154,7 +166,19 @@ sub translate_to_ASM {
 			return @instructions;
 		},
 		TAC_Constant => sub($const) {
-			return ASM_Imm($const->get('val'));
+			if ($const->is('C_ConstDouble')) {
+				my $static_init = I_DoubleInit($const->get('val'));
+				for my $existing_const (@static_constants) {
+					if ($existing_const->get('static_init') eq $static_init && $existing_const->get('alignment') == 8) {
+						return ASM_Data($existing_const->get('label'));
+					}
+				}
+				my $label = const_label($const);
+				push(@static_constants, ASM_StaticConstant($label, 8, $static_init));
+				return ASM_Data($label);
+			} else {
+				return ASM_Imm($const->get('val'));
+			}
 		},
 		TAC_Variable => sub($ident) {
 			return ASM_Pseudo($ident);
@@ -210,9 +234,21 @@ sub asm_type_of {
 
 sub size_in_bytes {
 	my $type = shift;
-	return 4 if ($type->is('ASM_Longword'));
-	return 8 if ($type->is('ASM_Quadword'));
-	die "unknown type $type";
+	return $type->match({
+		ASM_Longword => 4,
+		ASM_Quadword => 8,
+		default => sub() { die "unknown type $type" }
+	});
+}
+
+sub const_label {
+	my $const = shift;
+	return $const->match({
+		C_ConstDouble => sub($val) {
+			return "_double_const_" . $::global_counter++;
+		},
+		default => sub() { die "unknown constant type $const" }
+	});
 }
 
 
