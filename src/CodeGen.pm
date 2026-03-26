@@ -79,7 +79,9 @@ sub translate_to_ASM {
 			return ASM_StaticVariable($name, $global, size_in_bytes(asm_type_of($type)), $init);
 		},
 		TAC_Return => sub($value) {
-			return (ASM_Mov(asm_type_of($value), translate_to_ASM($value), ASM_Reg(ASM_AX())),
+			return (ASM_Mov(asm_type_of($value),
+							translate_to_ASM($value),
+							ASM_Reg(get_type($value)->is('T_Double') ? ASM_XMM0 : ASM_AX)),
 					ASM_Ret());
 		},
 		TAC_Unary => sub($op, $src, $dst) {
@@ -135,13 +137,16 @@ sub translate_to_ASM {
 			return (ASM_Mov($src_asm_type, translate_to_ASM($src1), $asm_dst),
 					ASM_Binary(convert_binop($op), $src_asm_type, translate_to_ASM($src2), $asm_dst));
 		},
-		TAC_JumpIfZero => sub($val, $target) {
-			return (ASM_Cmp(asm_type_of($val), ASM_Imm(0), translate_to_ASM($val)),
-					ASM_JmpCC(ASM_E(), $target));
-		},
-		TAC_JumpIfNotZero => sub($val, $target) {
-			return (ASM_Cmp(asm_type_of($val), ASM_Imm(0), translate_to_ASM($val)),
-					ASM_JmpCC(ASM_NE(), $target));
+		"TAC_JumpIfZero, TAC_JumpIfNotZero" => sub($cond, $target) {
+			my $cond_code = $node->is('TAC_JumpIfZero') ? ASM_E : ASM_NE;
+			if (get_type($cond)->is('T_Double')) {
+				return (ASM_Binary(ASM_Xor, ASM_Double, ASM_Reg(ASM_XMMO), ASM_Reg(ASM_XMMO)),
+						ASM_Cmp(ASM_Double, translate_to_ASM($cond), ASM_Reg(ASM_XMM0)),
+						ASM_JumpCC($cond_code, $target));
+			} else {
+				return (ASM_Cmp(asm_type_of($cond), ASM_Imm(0), translate_to_ASM($cond)),
+						ASM_JmpCC($cond_code, $target));
+			}
 		},
 		TAC_Jump => sub($target) {
 			return ASM_Jmp($target);

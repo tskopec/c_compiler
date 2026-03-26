@@ -80,13 +80,13 @@ sub same_type_as {
 
 sub match {
 	my ($self, $case_map) = @_;
-	if (!exists $case_map->{default}) {
-		my @missing = grep { !exists $case_map->{$_} } $variants_info{$self->{':base_type'}}->@*;
-		die "missing cases for type " . $self->{':base_type'} . ": @missing" if (@missing);
-	}
 	my %split_cond_cases;
 	while (my ($condition, $case) = each %$case_map) {
 		$split_cond_cases{$_} = $case for split(/[\s,]+/, $condition);
+	}
+	if (!exists $split_cond_cases{default}) {
+		my @missing = grep { !exists $split_cond_cases{$_} } $variants_info{$self->{':base_type'}}->@*;
+		die "missing cases for type " . $self->{':base_type'} . ": @missing" if (@missing);
 	}
 	my $case = $split_cond_cases{$self->{':tag'}} // $split_cond_cases{default};
 	return ref($case) eq 'CODE' ? $case->($self->values_in_order()) : $case;
