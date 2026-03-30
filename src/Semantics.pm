@@ -182,7 +182,7 @@ sub resolve_expr_ids {
 	});
 }
 
-sub unique_var_name {
+sub unique_var_name { # TODO inline?
 	return shift() . '.' . $::global_counter++;
 }
 
@@ -416,7 +416,7 @@ sub label_loops {
 	my ($node, $current_label) = @_;
 	if ($node isa 'ADT::ADT') {
 		if ($node->is('AST_While', 'AST_DoWhile', 'AST_For')) {
-			$current_label = new_loop_label();
+			$current_label = "_loop_" . $::global_counter++;
 			$node->set('label', $current_label);
 		} elsif ($node->is('AST_Break', 'AST_Continue')) {
 			$node->set('label', $current_label // die("'" . $node->{':tag'} . "' outside loop"));
@@ -426,10 +426,6 @@ sub label_loops {
 	} elsif (ref($node) eq 'ARRAY') {
 		label_loops($_, $current_label) for $node->@*;
 	}
-}
-
-sub new_loop_label {
-	return "_loop_" . $::global_counter++;
 }
 
 1;

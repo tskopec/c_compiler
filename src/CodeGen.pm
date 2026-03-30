@@ -88,7 +88,7 @@ sub translate_to_ASM {
 			my $asm_dst = translate_to_ASM($dst);
 			if ($op->is('TAC_Not')) {
 				if (get_type($src)->is('T_Double')) {
-					my $reg = ASM_Reg(ASM_XMM15); # TODO je jedno kterej registr?
+					my $reg = ASM_Reg(ASM_XMM0); # TODO je jedno kterej registr? - jinej nez pro rewrite fazi
 					return (ASM_Binary(ASM_Xor, ASM_Double, $reg, $reg),
 							ASM_Cmp(ASM_Double, translate_to_ASM($src), $reg),
 							ASM_Mov(asm_type_of($dst), ASM_Imm(0), $asm_dst),
@@ -204,6 +204,32 @@ sub translate_to_ASM {
 		},
 		TAC_ZeroExtend => sub($src, $dst) {
 			return ASM_MovZeroExtend(translate_to_ASM($src), translate_to_ASM($dst));
+		},
+		TAC_DoubleToInt => sub($src, $dst) {
+			return ASM_Cvttsd2si(asm_type_of($dst), translate_to_ASM($src), translate_to_ASM($dst));
+		},
+		TAC_DoubleToUInt => sub($src, $dst) {
+			my $reg = ASM_Reg(ASM_XMM0); # TODO muze byt tenhle?
+			if (get_type($dst)->is('T_UInt')) {
+				return (
+					ASM_Cvttsd2si(ASM_Quadword, translate_to_ASM($src), $reg),
+					ASM_Mov(ASM_Longword, $reg, translate_to_ASM($dst))
+				);
+			} else {
+				my $upper_bound = get_static_constant(MAX_LONG + 1, 8);
+				my ($out_of_range_label, )
+				my $asm_src = translate_to_ASM($src);
+				return (
+					ASM_Cmp(ASM_Double, ASM_Data($upper_bound->get('name'), $asm_src),
+					ASM_JmpCC(ASM_AE, ))
+				);
+			}
+		},
+		TAC_IntToDouble => sub($src, $dst) {
+			return ASM_Cvtsi2sd(asm_type_of($src), translate_to_ASM($src), translate_to_ASM($dst));
+		},
+		TAC_UIntToDouble => sub($src, $dst) {
+
 		},
 		default => sub { die "unknown TAC $node" }
 	});

@@ -12,7 +12,7 @@ BEGIN {
 	push(@INC, $src_dir = abs_path(__FILE__) =~ s|[^/]+$||r);
 }
 
-use ADT::AlgebraicTypes qw(print_tree);
+use Utils qw(print_tree);
 use Lexer;
 use Parser;
 use Semantics;

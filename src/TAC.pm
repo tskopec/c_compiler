@@ -5,6 +5,7 @@ use feature qw(say state signatures);
 
 use ADT::AlgebraicTypes qw(:AST :TAC :T :C :A :I is_ADT);
 use Semantics;
+use Util qw(labels);
 use TypeUtils qw(get_int_type_rank is_signed);
 
 sub emit_TAC {
@@ -255,12 +256,6 @@ sub make_TAC_var {
 
 sub temp_name {
 	return "tmp." . $::global_counter++;
-}
-
-sub labels {
-	my @res = map { "_${_}_" . $::global_counter } @_;
-	$::global_counter++;
-	return @res;
 }
 
 sub covert_symbols_to_TAC {
