@@ -210,18 +210,27 @@ sub translate_to_ASM {
 		},
 		TAC_DoubleToUInt => sub($src, $dst) {
 			my $reg = ASM_Reg(ASM_XMM0); # TODO muze byt tenhle?
+			my ($asm_src, $asm_dst) = (translate_to_ASM($src), translate_to_ASM($dst));
 			if (get_type($dst)->is('T_UInt')) {
 				return (
-					ASM_Cvttsd2si(ASM_Quadword, translate_to_ASM($src), $reg),
-					ASM_Mov(ASM_Longword, $reg, translate_to_ASM($dst))
+					ASM_Cvttsd2si(ASM_Quadword, $asm_src, $reg),
+					ASM_Mov(ASM_Longword, $reg, $asm_dst)
 				);
 			} else {
 				my $upper_bound = get_static_constant(MAX_LONG + 1, 8);
-				my ($out_of_range_label, )
-				my $asm_src = translate_to_ASM($src);
+				my ($out_of_range_label, $end_label) = Utils::labels("oo_range", "end");
 				return (
 					ASM_Cmp(ASM_Double, ASM_Data($upper_bound->get('name'), $asm_src),
-					ASM_JmpCC(ASM_AE, ))
+					ASM_JmpCC(ASM_AE, $out_of_range_label)),
+					ASM_Cvttsd2si(ASM_Quadword, $asm_src, $asm_dst),
+					ASM_Jmp($end_label),
+					ASM_Label($out_of_range_label),
+					ASM_Mov(ASM_Double, $asm_src, $reg),
+					ASM_Binary(ASM_Sub, ASM_Double, ASM_Data($upper_bound->get('name')), $reg),
+					ASM_Cvttsd2si(ASM_Quadword, $reg, $asm_dst),
+					ASM_Mov(ASM_Quadword, ASM_Imm(MAX_LONG + 1), $reg),
+					ASM_Binary(ASM_Add, ASM_Quadword, $reg, $asm_dst),
+					ASM_Label($end_label)
 				);
 			}
 		},
@@ -229,7 +238,32 @@ sub translate_to_ASM {
 			return ASM_Cvtsi2sd(asm_type_of($src), translate_to_ASM($src), translate_to_ASM($dst));
 		},
 		TAC_UIntToDouble => sub($src, $dst) {
-
+			# TODO muze byt tenhle reg?
+			my ($reg1, $reg2) = (ASM_Reg(ASM_AX), ASM_Reg(ASM_DX));
+			my ($asm_src, $asm_dst) = (translate_to_ASM($src), translate_to_ASM($dst));
+			if (get_type($src)->is('T_UInt')) {
+				return (
+					ASM_MovZeroExtend($asm_src, $reg1),
+					ASM_Cvtsi2sd(ASM_Quadword, $reg1, $asm_dst)
+				);
+			} else {
+				my ($out_of_range_label, $end_label) = Utils::labels("oo_range", "end");
+				return (
+					ASM_Cmp(ASM_Quadword, ASM_Imm(0), $asm_src),
+					ASM_JmpCC(ASM_L, $out_of_range_label),
+					ASM_Cvtsi2sd(ASM_Quadword, $asm_src, $asm_dst),
+					ASM_Jmp($end_label),
+					ASM_Label($out_of_range_label),
+					ASM_Mov(ASM_Quadword, $asm_src, $reg1),
+					ASM_Mov(ASM_Quadword, $reg1, $reg2),
+					ASM_Unary(ASM_Shr, ASM_Quadword, $reg2),
+					ASM_Binary(ASM_And, ASM_Quadword, ASM_Imm(1), $reg1),
+					ASM_Binary(ASM_Or, ASM_Quadword, $reg1, $reg2),
+					ASM_Cvtsi2sd(ASM_Quadword, $reg2, $asm_dst),
+					ASM_Binary(ASM_Add, ASM_Double, $asm_dst, $asm_dst),
+					ASM_Label($end_label)
+				);
+			}
 		},
 		default => sub { die "unknown TAC $node" }
 	});
