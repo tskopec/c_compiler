@@ -5,7 +5,7 @@ use feature qw(say state signatures);
 
 use ADT::AlgebraicTypes qw(:AST :TAC :T :C :A :I is_ADT);
 use Semantics;
-use Util qw(labels);
+use Utils qw(labels);
 use TypeUtils qw(get_int_type_rank is_signed);
 
 sub emit_TAC {

@@ -1,12 +1,12 @@
 package TypeUtils;
 use strict;
 use warnings;
-use feature qw(signatures);
+use feature qw(signatures isa);
 
 use ADT::AlgebraicTypes qw(:AST :I :T);
 
 use base 'Exporter';
-our @EXPORT_OK = qw(MAX_ULONG MAX_LONG MAX_UINT MAX_INT get_type get_common_type get_int_type_rank is_signed convert_type
+our @EXPORT_OK = qw(MAX_ULONG MAX_LONG MAX_UINT MAX_INT get_type_of_TAC get_common_type get_int_type_rank is_signed convert_type
 	types_equal const_to_initval);
 
 use constant MAX_ULONG => 2 ** 64;
@@ -88,14 +88,14 @@ sub const_to_initval {
 	}));
 }
 
-sub get_type {
+sub get_type_of_TAC {
 	my $val = shift;
 	return $val->match({
 		TAC_Constant => sub($const) {
 			return get_type_of_constant($const);
 		},
 		TAC_Variable => => sub($name) {
-			return $Semantics::symbol_table{$name}->{type};
+			return ($Semantics::symbol_table{$name} // die "unknown symbol $name")->{type};
 		},
 		default => sub { die "unknown type: $val" }
 	});

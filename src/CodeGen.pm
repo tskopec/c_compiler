@@ -5,11 +5,12 @@ use warnings;
 use feature qw(say isa state current_sub signatures);
 
 use List::Util qw(min);
-use ADT::AlgebraicTypes qw(:TAC :ASM);
+use ADT::AlgebraicTypes qw(is_ADT :T :TAC :ASM);
 use Semantics;
-use TypeUtils qw(/^MAX_/ get_type is_signed);
+use TypeUtils qw(/^MAX_/ get_type_of_TAC is_signed);
 
-my @arg_regs = (ASM_DI(), ASM_SI(), ASM_DX(), ASM_CX(), ASM_R8(), ASM_R9());
+my @arg_gen_regs = (ASM_DI, ASM_SI, ASM_DX, ASM_CX, ASM_R8, ASM_R9);
+my @arg_xmm_regs = (ASM_XMM0, ASM_XMM1, ASM_XMM2, ASM_XMM3, ASM_XMM4, ASM_XMM5, ASM_XMM6, ASM_XMM7);
 
 our %asm_symbol_table;
 my @static_constants;
@@ -60,20 +61,23 @@ sub translate_to_ASM {
 			return ASM_Program([ map { translate_to_ASM($_) } @$declarations ]);
 		},
 		TAC_Function => sub($ident, $global, $params, $instructions) {
-			my $move_to_stack = sub {
-				my $param_i = shift;
-				my $src = ($param_i <= $#arg_regs)
-					? ASM_Reg($arg_regs[$param_i])
-					: ASM_Stack(16 + 8 * ($param_i - @arg_regs));
-				my $op_size = asm_type_of(Semantics::get_symbol_attr($params->[$param_i], 'type'));
-				ASM_Mov($op_size, $src, ASM_Pseudo($params->[$param_i]));
-			};
-			return ASM_Function(
-				$ident,
-				$global,
-				[ 	(map { $move_to_stack->($_) } (keys @$params)),
-					(map { translate_to_ASM($_) } @$instructions) ]
-			);
+			my @asm_instructions;
+			my ($from_gen_regs, $from_xmm_regs, $from_stack) = organize_params($params);
+			while (my ($i, $typed_param) = each @$from_gen_regs) {
+				my $reg = ASM_Reg($arg_gen_regs[$i] // die "out of registers");
+				push(@asm_instructions, ASM_Mov(asm_type_of($typed_param->{type}), $reg, ASM_Pseudo($typed_param->{value})));
+			}
+			while (my ($i, $typed_param) = each @$from_xmm_regs) {
+				my $reg = ASM_Reg($arg_xmm_regs[$i] // die "out of registers");
+				push(@asm_instructions, ASM_Mov(T_Double, $reg, ASM_Pseudo($typed_param->{value})));
+			}
+			my $offset = 16;
+			for my $typed_param (@$from_stack) {
+				push(@asm_instructions, ASM_Mov(asm_type_of($typed_param->{type}), ASM_Stack($offset), ASM_Pseudo($typed_param->{value})));
+				$offset += 8;
+			}
+			push(@asm_instructions, map { translate_to_ASM($_) } @$instructions );
+			return ASM_Function($ident, $global, \@asm_instructions);
 		},
 		TAC_StaticVariable => sub($name, $global, $type, $init) {
 			return ASM_StaticVariable($name, $global, size_in_bytes(asm_type_of($type)), $init);
@@ -81,13 +85,13 @@ sub translate_to_ASM {
 		TAC_Return => sub($value) {
 			return (ASM_Mov(asm_type_of($value),
 							translate_to_ASM($value),
-							ASM_Reg(get_type($value)->is('T_Double') ? ASM_XMM0 : ASM_AX)),
+							ASM_Reg(get_type_of_TAC($value)->is('T_Double') ? ASM_XMM0 : ASM_AX)),
 					ASM_Ret());
 		},
 		TAC_Unary => sub($op, $src, $dst) {
 			my $asm_dst = translate_to_ASM($dst);
 			if ($op->is('TAC_Not')) {
-				if (get_type($src)->is('T_Double')) {
+				if (get_type_of_TAC($src)->is('T_Double')) {
 					my $reg = ASM_Reg(ASM_XMM0); # TODO je jedno kterej registr? - jinej nez pro rewrite fazi
 					return (ASM_Binary(ASM_Xor, ASM_Double, $reg, $reg),
 							ASM_Cmp(ASM_Double, translate_to_ASM($src), $reg),
@@ -98,7 +102,7 @@ sub translate_to_ASM {
 							ASM_Mov(asm_type_of($dst), ASM_Imm(0), $asm_dst),
 							ASM_SetCC(ASM_E, $asm_dst));
 				}
-			} elsif ($op->is('TAC_Negate') && get_type($src)->is('T_Double')) {
+			} elsif ($op->is('TAC_Negate') && get_type_of_TAC($src)->is('T_Double')) {
 				my $neg_zero = get_static_constant(C_ConstDouble(-0.0), 16);
 				return (ASM_Mov(ASM_Double, translate_to_ASM($src), $asm_dst),
 						ASM_Binary(ASM_Xor, ASM_Double, ASM_Data($neg_zero->get('name')), $dst));
@@ -114,7 +118,7 @@ sub translate_to_ASM {
 				if (-1 != (my $i = $op->index_of_in(qw(TAC_Divide TAC_Modulo)))) {
 					return (
 						ASM_Mov($src_asm_type, translate_to_ASM($src1), ASM_Reg(ASM_AX())),
-						(is_signed(get_type($src1)) ? (
+						(is_signed(get_type_of_TAC($src1)) ? (
 							ASM_Cdq($src_asm_type),
 							ASM_Idiv($src_asm_type, translate_to_ASM($src2))
 						) : (
@@ -127,7 +131,7 @@ sub translate_to_ASM {
 						[ ASM_E(), ASM_NE(), ASM_B(), ASM_BE(), ASM_A(), ASM_AE() ], # unsigned or floating point
 						[ ASM_E(), ASM_NE(), ASM_L(), ASM_LE(), ASM_G(), ASM_GE() ]  # signed
 					);
-					my $used_codes = $codes[$src_asm_type->is('T_Double') || is_signed(get_type($src1))];
+					my $used_codes = $codes[$src_asm_type->is('T_Double') || is_signed(get_type_of_TAC($src1))];
 					return (ASM_Cmp($src_asm_type, translate_to_ASM($src2), translate_to_ASM($src1)),
 							ASM_Mov(asm_type_of($dst), ASM_Imm(0), $asm_dst),
 							ASM_SetCC($used_codes->[$i], $asm_dst));
@@ -139,8 +143,8 @@ sub translate_to_ASM {
 		},
 		"TAC_JumpIfZero, TAC_JumpIfNotZero" => sub($cond, $target) {
 			my $cond_code = $node->is('TAC_JumpIfZero') ? ASM_E : ASM_NE;
-			if (get_type($cond)->is('T_Double')) {
-				return (ASM_Binary(ASM_Xor, ASM_Double, ASM_Reg(ASM_XMMO), ASM_Reg(ASM_XMMO)),
+			if (get_type_of_TAC($cond)->is('T_Double')) {
+				return (ASM_Binary(ASM_Xor, ASM_Double, ASM_Reg(ASM_XMM0), ASM_Reg(ASM_XMM0)),
 						ASM_Cmp(ASM_Double, translate_to_ASM($cond), ASM_Reg(ASM_XMM0)),
 						ASM_JumpCC($cond_code, $target));
 			} else {
@@ -158,31 +162,37 @@ sub translate_to_ASM {
 			return ASM_Mov(asm_type_of($src), translate_to_ASM($src), translate_to_ASM($dst));
 		},
 		TAC_FunCall => sub($ident, $args, $dst) {
-			my (@instructions, @reg_args, @stack_args);
-			(@reg_args[0 .. ($#$args < 5 ? $#$args : 5)], @stack_args) = @$args;
-			my $stack_padding = 8 * (@stack_args % 2);
+			my @instructions;
+			my ($to_int_regs, $to_xmm_regs, $to_stack) = organize_params($args);
+			my $stack_padding = 8 * (@$to_stack % 2);
 			if ($stack_padding) {
 				push(@instructions, allocate_stack($stack_padding));
 			}
-			while (my ($i, $tac_arg) = each @reg_args) {
-				my $asm_arg = translate_to_ASM($tac_arg);
-				push(@instructions, ASM_Mov(asm_type_of($tac_arg), $asm_arg, ASM_Reg($arg_regs[$i])));
+			while (my ($i, $typed_arg) = each @$to_int_regs) {
+				my $asm_arg = translate_to_ASM($typed_arg->{value});
+				push(@instructions, ASM_Mov(asm_type_of($typed_arg->{type}), $asm_arg, ASM_Reg($arg_gen_regs[$i])));
 			}
-			for my $tac_arg (reverse @stack_args) {
-				my $asm_arg = translate_to_ASM($tac_arg);
-				if ($asm_arg->is(qw(ASM_Imm ASM_Reg)) || (asm_type_of($tac_arg))->is('ASM_Quadword')) {
+			while (my ($i, $typed_arg) = each @$to_xmm_regs) {
+				my $asm_arg = translate_to_ASM($typed_arg->{value});
+				push(@instructions, ASM_Mov(T_Double, $asm_arg, ASM_Reg($arg_xmm_regs[$i])));
+			}
+			for my $typed_arg (reverse @$to_stack) {
+				my $asm_arg = translate_to_ASM($typed_arg->{value});
+				my $asm_type = asm_type_of($typed_arg->{value});
+				if ($asm_arg->is(qw(ASM_Imm ASM_Reg)) || ($asm_type->is('ASM_Quadword', 'ASM_Double'))) {
 					push(@instructions, ASM_Push($asm_arg));
 				} else {
-					push(@instructions, (ASM_Mov(ASM_Longword(), $asm_arg, ASM_Reg(ASM_AX())),
-										 ASM_Push(ASM_Reg(ASM_AX()))));
+					push(@instructions, (ASM_Mov($asm_type, $asm_arg, ASM_Reg(ASM_AX)),
+										 ASM_Push(ASM_Reg(ASM_AX))));
 				}
 			}
 			push(@instructions, ASM_Call($ident));
-			my $remove_bytes = 8 * @stack_args + $stack_padding;
+			my $remove_bytes = 8 * @$to_stack + $stack_padding;
 			if ($remove_bytes) {
 				push(@instructions, deallocate_stack($remove_bytes));
 			}
-			push(@instructions, ASM_Mov(asm_type_of($dst), ASM_Reg(ASM_AX()), translate_to_ASM($dst)));
+			my $ret_type = asm_type_of($dst);
+			push(@instructions, ASM_Mov($ret_type, ASM_Reg($ret_type->is('T_Double') ? ASM_XMM0 : ASM_AX), translate_to_ASM($dst)));
 			return @instructions;
 		},
 		TAC_Constant => sub($const) {
@@ -211,12 +221,12 @@ sub translate_to_ASM {
 		TAC_DoubleToUInt => sub($src, $dst) {
 			my $reg = ASM_Reg(ASM_XMM0); # TODO muze byt tenhle?
 			my ($asm_src, $asm_dst) = (translate_to_ASM($src), translate_to_ASM($dst));
-			if (get_type($dst)->is('T_UInt')) {
+			if (get_type_of_TAC($dst)->is('T_UInt')) { # uint
 				return (
 					ASM_Cvttsd2si(ASM_Quadword, $asm_src, $reg),
 					ASM_Mov(ASM_Longword, $reg, $asm_dst)
 				);
-			} else {
+			} else {									# ulong
 				my $upper_bound = get_static_constant(MAX_LONG + 1, 8);
 				my ($out_of_range_label, $end_label) = Utils::labels("oo_range", "end");
 				return (
@@ -241,19 +251,19 @@ sub translate_to_ASM {
 			# TODO muze byt tenhle reg?
 			my ($reg1, $reg2) = (ASM_Reg(ASM_AX), ASM_Reg(ASM_DX));
 			my ($asm_src, $asm_dst) = (translate_to_ASM($src), translate_to_ASM($dst));
-			if (get_type($src)->is('T_UInt')) {
+			if (get_type_of_TAC($src)->is('T_UInt')) {	# uint
 				return (
 					ASM_MovZeroExtend($asm_src, $reg1),
 					ASM_Cvtsi2sd(ASM_Quadword, $reg1, $asm_dst)
 				);
-			} else {
+			} else {									# ulong
 				my ($out_of_range_label, $end_label) = Utils::labels("oo_range", "end");
 				return (
 					ASM_Cmp(ASM_Quadword, ASM_Imm(0), $asm_src),
-					ASM_JmpCC(ASM_L, $out_of_range_label),
+					ASM_JmpCC(ASM_L, $out_of_range_label), # is in range of signed?
 					ASM_Cvtsi2sd(ASM_Quadword, $asm_src, $asm_dst),
 					ASM_Jmp($end_label),
-					ASM_Label($out_of_range_label),
+					ASM_Label($out_of_range_label), # /2, round to odd, conv to double, *2
 					ASM_Mov(ASM_Quadword, $asm_src, $reg1),
 					ASM_Mov(ASM_Quadword, $reg1, $reg2),
 					ASM_Unary(ASM_Shr, ASM_Quadword, $reg2),
@@ -270,17 +280,34 @@ sub translate_to_ASM {
 }
 
 sub allocate_stack {
-	return ASM_Binary(ASM_Sub(), ASM_Quadword(), ASM_Imm(shift()), ASM_Reg(ASM_SP()));
+	return ASM_Binary(ASM_Sub, ASM_Quadword, ASM_Imm(shift()), ASM_Reg(ASM_SP));
 }
 sub deallocate_stack {
-	return ASM_Binary(ASM_Add(), ASM_Quadword(), ASM_Imm(shift()), ASM_Reg(ASM_SP()));
+	return ASM_Binary(ASM_Add, ASM_Quadword, ASM_Imm(shift()), ASM_Reg(ASM_SP));
+}
+
+sub organize_params {
+	my (@int_reg_params, @double_reg_params, @stack_params);
+	for my $param (@$_) {
+		my $type = is_ADT($param, 'TAC_Variable')
+			? get_type_of_TAC($param)
+			: ($Semantics::symbol_table{$param} // die "param not in symtable");
+		my @target;
+		if ($type->is('T_Double')) {
+			@target = @double_reg_params < 8 ? @double_reg_params : @stack_params;
+		} else {
+			@target = @int_reg_params < 6 ? @int_reg_params : @stack_params;
+		}
+		push(@target, { type => $type, value => $param });
+	}
+	return (\@int_reg_params, \@double_reg_params, \@stack_params);
 }
 
 sub convert_unop {
 	my $op = shift;
 	$op->match({
-		TAC_Complement => sub() { return ASM_Not() },
-		TAC_Negate => sub() { return ASM_Neg() },
+		TAC_Complement => sub() { return ASM_Not },
+		TAC_Negate => sub() { return ASM_Neg },
 		default => sub { die "unknown op $op" },
 	});
 }
@@ -298,7 +325,7 @@ sub convert_binop {
 
 sub asm_type_of {
 	my $val = shift;
-	my $type = $val->is('T_Type') ? $val : get_type($val);
+	my $type = $val->is('T_Type') ? $val : get_type_of_TAC($val);
 	return $type->match({
 		"T_Int, T_UInt" => ASM_Longword(),
 		"T_Long, T_ULong" => ASM_Quadword(),

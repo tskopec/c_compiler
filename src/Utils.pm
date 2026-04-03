@@ -27,7 +27,7 @@ sub print_tree {
 		} elsif (ref($node) eq 'HASH') {
 			if (keys %$node) {
 				say(($tab x $indent) . "$key: {");
-				__SUB__->($_, $node->{$_}, $indent + 1) for (keys %$node);
+				__SUB__->($_, $node->{$_}, $indent + 1) for (sort keys %$node);
 				say(($tab x $indent) . "}");
 			} else {
 				say(($tab x $indent) . "$key: {}");
