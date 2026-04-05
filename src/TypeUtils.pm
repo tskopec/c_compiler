@@ -92,23 +92,18 @@ sub get_type_of_TAC {
 	my $val = shift;
 	return $val->match({
 		TAC_Constant => sub($const) {
-			return get_type_of_constant($const);
+			return $const->match({
+				C_ConstInt => T_Int(),
+				C_ConstUInt => T_UInt(),
+				C_ConstLong => T_Long(),
+				C_ConstULong => T_ULong(),
+				default => => sub { die "unknown constant type $const" }
+			});
 		},
 		TAC_Variable => => sub($name) {
 			return ($Semantics::symbol_table{$name} // die "unknown symbol $name")->{type};
 		},
 		default => sub { die "unknown type: $val" }
-	});
-}
-
-sub get_type_of_constant {
-	my $c = shift;
-	return $c->match({
-		C_ConstInt => T_Int(),
-		C_ConstUInt => T_UInt(),
-		C_ConstLong => T_Long(),
-		C_ConstULong => T_ULong(),
-		default => => sub() { die "unknown constant type $c" }
 	});
 }
 

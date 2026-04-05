@@ -30,7 +30,8 @@ sub emit_code {
 				$code .= "\t.data\n";
 				$code .= "\t.align $alignment\n";
 				$code .= "$name:\n";
-				$code .= "\t.$init_word " . sprintf("%a", $init->get('val')) . "\n";
+				my $formatted_val = $init_word eq 'double' ? sprintf("%a", $init->get('val')) : $init->get('val');
+				$code .= "\t.$init_word " . $formatted_val . "\n";
 			} else {
 				$code .= "\t.bss\n";
 				$code .= "\t.align $alignment\n";
@@ -62,11 +63,11 @@ sub emit_code {
 		},
 		ASM_Cvtsi2sd => sub($type, $src, $dst) {
 			my ($n_bytes, $suffix) = translate_type($type);
-			return "\tcvtsi2sd" . $suffix . emit_code($src) . ", " . emit_code($dst);
+			return "\tcvtsi2sd" . $suffix . emit_code($src) . ", " . emit_code($dst) . "\n";
 		},
 		ASM_Cvttsd2si => sub($type, $src, $dst) {
 			my ($n_bytes, $suffix) = translate_type($type);
-			return "\tcvttsd2si" . $suffix . emit_code($src) . ", " . emit_code($dst);
+			return "\tcvttsd2si" . $suffix . emit_code($src) . ", " . emit_code($dst) . "\n";
 		},
 		ASM_Unary => sub($operator, $type, $operand) {
 			my ($n_bytes, $suffix) = translate_type($type);
@@ -74,11 +75,14 @@ sub emit_code {
 		},
 		ASM_Binary => sub($operator, $type, $src, $dst) {
 			my ($n_bytes, $suffix) = translate_type($type);
-			return $operator->match({
-				ASM_Xor => "\txorpd " . emit_code($src, 8) . ", " . emit_code($dst, 8) . "\n",
-				ASM_Mult => "\tmulsd " . emit_code($src, 8) . ", " . emit_code($dst, 8) . "\n",
-				default => emit_code($operator) . $suffix . " " . emit_code($src, $n_bytes) . ", " . emit_code($dst, $n_bytes) . "\n"
-			});
+			if ($type->is('ASM_Double')) {
+				if ($operator->is('ASM_Xor')) {
+					return "\txorpd " . emit_code($src, 8) . ", " . emit_code($dst, 8) . "\n";
+				} elsif ($operator->is('ASM_Mult')) {
+					return "\tmulsd " . emit_code($src, 8) . ", " . emit_code($dst, 8) . "\n";
+				}
+			}
+			return emit_code($operator) . $suffix . " " . emit_code($src, $n_bytes) . ", " . emit_code($dst, $n_bytes) . "\n";
 		},
 		"ASM_Idiv, ASM_Div" => sub($type, $operand) {
 			my ($n_bytes, $suffix) = translate_type($type);
@@ -164,17 +168,13 @@ sub emit_code {
 
 sub translate_type {
 	my $type = shift;
-	return $type->match({
-		ASM_Longword => (4, 'l'),
-		ASM_Quadword => (8, 'q'),
-		ASM_Double => (8, 'sd'),
-		'T_Int, I_IntInit, I_UIntInit' => (4, 'long'),
-		'T_Long, I_LongInit, I_ULongInit' => (8, 'quad'),
-		T_DoubleInit => (8, 'double'),
-		default => sub() {
-			die "unknown type $type";
-		}
-	});
+	if ($type->is('ASM_Longword')) { return (4, 'l') }
+	if ($type->is('ASM_Quadword')) { return (8, 'q') }
+	if ($type->is('ASM_Double')) { return (8, 'sd') }
+	if ($type->is('T_Int', 'I_IntInit', 'I_UIntInit')) { return (4, 'long') }
+	if ($type->is('T_Long', 'I_LongInit', 'I_ULongInit')) { return (8, 'quad') }
+	if ($type->is('T_DoubleInit')) { return (8, 'double') }
+	die "unknown type $type";
 }
 
 sub strip_prefix {
