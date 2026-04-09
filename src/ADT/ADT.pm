@@ -50,14 +50,15 @@ sub get {
 sub set {
 	my ($self, $key, $val) = @_;
 	check_value($val, $constr_info{$self->{':tag'}}->{param_types}{$key});
+	my $old_val = $self->{$key};
 	$self->{$key} = $val;
+	return $old_val;
 }
 
 sub value_by_index {
 	my ($self, $i) = @_;
 	return $self->{$constr_info{$self->{':tag'}}->{params_order}->[$i]};
 }
-
 
 sub is {
 	my ($self, @tags) = @_;

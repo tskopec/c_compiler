@@ -433,59 +433,59 @@ sub fix_instr {
 			ASM_Binary => sub($op, $op_size, $src, $dst) {
 				if ($op->is('ASM_Mult')) {
 					if (check_imm_too_large($src, $op_size)) {
-						$res = relocate_instr_operand($res, { when => 'before', from => $src, to => ASM_R10(), op_size => $op_size });
+						$res = toScratch($res, "operand1", $op_size);
 					}
 					if (is_mem_addr($dst)) {
-						$res = relocate_instr_operand($res, { when => 'both', from => $dst, to => ASM_R11(), op_size => $op_size });
+						$res = toScratchAndBack($res, "operand2", $op_size);
 					}
 				} elsif ($op->is('ASM_Add', 'ASM_Sub')) {
 					if ((is_mem_addr($src) && is_mem_addr($dst)) || check_imm_too_large($src, $op_size)) {
-						$res = relocate_instr_operand($res, { when => 'before', from => $src, to => ASM_R10(), op_size => $op_size });
+						$res = toScratch($res, "operand1", $op_size);
 					}
 				}
 			},
 			ASM_Mov => sub($op_size, $src, $dst) {
 				if (is_mem_addr($src) && is_mem_addr($dst)) {
-					$res = relocate_instr_operand($res, { when => 'before', from => $src, to => ASM_R10(), op_size => $op_size });
+					$res = toScratch($res, "src", $op_size);
 				} elsif ($src->is('ASM_Imm')) {
 					if ($op_size->is('ASM_Longword')) {
 						$src->set('val', $src->get('val') & 0xffffffff);
 					} elsif ($op_size->is('ASM_Quadword') && $src->get('val') > MAX_INT) {
-						$res = relocate_instr_operand($res, { when => 'before', from => $src, to => ASM_R10(), op_size => $op_size });
+						$res = toScratch($res, "src", $op_size);
 					}
 				}
 			},
 			ASM_Cmp => sub($op_size, $src, $dst) {
 				if ((is_mem_addr($src) && is_mem_addr($dst)) || check_imm_too_large($src, $op_size)) {
-					$res = relocate_instr_operand($res, { when => 'before', from => $src, to => ASM_R10(), op_size => $op_size });
+					$res = toScratch($res, "operand1", $op_size);
 				}
 				if ($dst->is('ASM_Imm')) {
-					$res = relocate_instr_operand($res, { when => 'before', from => $dst, to => ASM_R11(), op_size => $op_size });
+					$res = toScratch($res, "operand2", $op_size);
 				}
 			},
 			"ASM_Idiv, ASM_Div" => sub($op_size, $operand) {
 				if ($operand->is('ASM_Imm')) {
-					$res = relocate_instr_operand($res, { when => 'before', from => $operand, to => ASM_R10(), op_size => $op_size });
+					$res = toScratch($res, "operand", $op_size);
 				}
 			},
 			ASM_Movsx => sub($src, $dst) {
 				if ($src->is('ASM_Imm')) {
-					$res = relocate_instr_operand($res, { when => 'before', from => $src, to => ASM_R10(), op_size => ASM_Longword() });
+					$res = toScratch($res, "src", ASM_Longword);
 				}
 				if (is_mem_addr($dst)) {
-					$res = relocate_instr_operand($res, { when => 'after', from => ASM_R11(), to => $dst, op_size => ASM_Quadword() });
+					$res = fromScratch($res, "dst", ASM_Quadword);
 				}
 			},
 			ASM_MovZeroExtend => sub($src, $dst) {
 				if ($dst->is('ASM_Reg')) {
 					$res = [ ASM_Mov(ASM_Longword(), $src, $dst) ];
 				} else {
-					$res = relocate_instr_operand([ ASM_Mov(ASM_Quadword(), $src, $dst) ], { when => 'before', from => $src, to => ASM_R11(), op_size => ASM_Longword() });
+					$res = toScratch([ ASM_Mov(ASM_Quadword(), $src, $dst) ], "src", ASM_Longword);
 				}
 			},
 			ASM_Push => sub($operand) {
 				if (check_imm_too_large($operand, ASM_Quadword())) {
-					$res = relocate_instr_operand($res, { when => 'before', from => $operand, to => ASM_R10(), op_size => ASM_Quadword() });
+					$res = toScratch($res, "operand", ASM_Quadword);
 				}
 			},
 			default => sub { ; }
@@ -497,15 +497,6 @@ sub fix_instr {
 }
 
 # FIX utils
-sub scratch_for { # scratch registers
-	my ($pos, $type) = @_;
-	if ($type->is('ASM_Double')) {
-		return ASM_Reg($pos eq 'src' ? ASM_XMM14 : $pos eq 'dst' ? ASM_XMM15 : die "bad arg");
-	} else {
-		return ASM_Reg($pos eq 'src' ? ASM_R10 : $pos eq 'dst' ? ASM_R11 : die "bad arg");
-	}
-}
-
 sub is_mem_addr {
 	return (shift())->is('ASM_Stack', 'ASM_Data');
 }
@@ -516,33 +507,31 @@ sub check_imm_too_large {
 	return $op_size->is('ASM_Quadword') && $src->is('ASM_Imm') && $src->get('val') > MAX_INT;
 }
 
-sub relocate_instr_operand {
-	my ($instructions, $move) = @_;
-	if (%$move) {
-		my $instruction = $instructions->[-1];
-		my ($from, $to) = map { $_->is('ASM_Register') ? ASM_Reg($_) : $_ } (@$move{'from', 'to'});
-		if ($move->{when} eq 'before') {
-			unshift(@$instructions, ASM_Mov($move->{op_size}, $from, $to));
-			$instruction->remap_values(sub {
-				my $val = shift;
-				$val eq $from ? $to : $val
-			});
-		} elsif ($move->{when} eq 'after') {
-			push(@$instructions, ASM_Mov($move->{op_size}, $from, $to));
-			$instruction->remap_values(sub {
-				my $val = shift;
-				$val eq $to ? $from : $val
-			});
-		} elsif ($move->{when} eq 'both') {
-			unshift(@$instructions, ASM_Mov($move->{op_size}, $from, $to));
-			$instruction->remap_values(sub {
-				my $val = shift;
-				$val eq $from ? $to : $val
-			});
-			push(@$instructions, ASM_Mov($move->{op_size}, $to, $from));
-		}
-	}
-	return $instructions;
+sub toScratch {
+	my ($instructions, $key, $op_size) = @_;
+	my $scratch = $key =~ /src|operand1/
+				? $op_size->is('ASM_Double') ? ASM_Reg(ASM_XMM14) : ASM_Reg(ASM_R10)	# registry pro src
+				: $op_size->is('ASM_Double') ? ASM_Reg(ASM_XMM15) : ASM_Reg(ASM_R11);	# registry pro dst
+	my $old_op = $instructions->[-1]->set($key, $scratch);
+	return [ ASM_Mov($op_size, $old_op, $scratch),
+			 @$instructions ];
+}
+
+sub fromScratch {
+	my ($instructions, $key, $op_size) = @_;
+	my $scratch = $op_size->is('ASM_Double') ? ASM_Reg(ASM_XMM15) : ASM_Reg(ASM_R11); # asi ma smysl jenom pro dst
+	my $old_op = $instructions->[-1]->set($key, $scratch);
+	return [ @$instructions,
+			 ASM_Mov($op_size, $scratch, $old_op) ];
+}
+
+sub toScratchAndBack {
+	my ($instructions, $key, $op_size) = @_;
+	my $scratch = $op_size->is('ASM_Double') ? ASM_Reg(ASM_XMM15) : ASM_Reg(ASM_R11); # asi ma smysl jenom pro dst
+	my $old_op = $instructions->[-1]->set($key, $scratch);
+	return [ ASM_Mov($op_size, $old_op, $scratch),
+			 @$instructions,
+			 ASM_Mov($op_size, $scratch, $old_op) ];
 }
 
 1;
