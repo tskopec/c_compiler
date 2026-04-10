@@ -428,69 +428,96 @@ sub fix_instr {
 	my $function = shift;
 	my $fix = sub {
 		my $instruction = shift;
-		my $res = [ $instruction ];
+		my $instructions = [ $instruction ];
 		$instruction->match({
 			ASM_Binary => sub($op, $op_size, $src, $dst) {
-				if ($op->is('ASM_Mult')) {
-					if (check_imm_too_large($src, $op_size)) {
-						$res = toScratch($res, "operand1", $op_size);
+				if ($op_size->is('ASM_Double')) {
+					if ($op->is('ASM_Add', 'ASM_Sub', 'ASM_Mult', 'ASM_DivDouble', 'ASM_Xor')) {
+						unless ($dst->is('ASM_Reg')) {
+							$instructions = prependMovToScratch($instructions, "operand2", $op_size);
+						}
 					}
-					if (is_mem_addr($dst)) {
-						$res = toScratchAndBack($res, "operand2", $op_size);
-					}
-				} elsif ($op->is('ASM_Add', 'ASM_Sub')) {
-					if ((is_mem_addr($src) && is_mem_addr($dst)) || check_imm_too_large($src, $op_size)) {
-						$res = toScratch($res, "operand1", $op_size);
+				} else {
+					if ($op->is('ASM_Mult')) {
+						if (check_imm_too_large($src, $op_size)) {
+							$instructions = prependMovToScratch($instructions, "operand1", $op_size);
+						}
+						if (is_mem_addr($dst)) {
+							$instructions = toScratchAndBack($instructions, "operand2", $op_size);
+						}
+					} elsif ($op->is('ASM_Add', 'ASM_Sub', 'ASM_And', 'ASM_Or')) {
+						if ((is_mem_addr($src) && is_mem_addr($dst)) || check_imm_too_large($src, $op_size)) {
+							$instructions = prependMovToScratch($instructions, "operand1", $op_size);
+						}
 					}
 				}
 			},
 			ASM_Mov => sub($op_size, $src, $dst) {
 				if (is_mem_addr($src) && is_mem_addr($dst)) {
-					$res = toScratch($res, "src", $op_size);
+					$instructions = prependMovToScratch($instructions, "src", $op_size);
 				} elsif ($src->is('ASM_Imm')) {
 					if ($op_size->is('ASM_Longword')) {
 						$src->set('val', $src->get('val') & 0xffffffff);
 					} elsif ($op_size->is('ASM_Quadword') && $src->get('val') > MAX_INT) {
-						$res = toScratch($res, "src", $op_size);
+						$instructions = prependMovToScratch($instructions, "src", $op_size);
 					}
 				}
 			},
 			ASM_Cmp => sub($op_size, $src, $dst) {
-				if ((is_mem_addr($src) && is_mem_addr($dst)) || check_imm_too_large($src, $op_size)) {
-					$res = toScratch($res, "operand1", $op_size);
-				}
-				if ($dst->is('ASM_Imm')) {
-					$res = toScratch($res, "operand2", $op_size);
+				if ($op_size->is('ASM_Double')) {
+					unless ($dst->is('ASM_Reg')) {
+						$instructions = prependMovToScratch($instructions, "operand2", $op_size);
+					}
+				} else {
+					if ((is_mem_addr($src) && is_mem_addr($dst)) || check_imm_too_large($src, $op_size)) {
+						$instructions = prependMovToScratch($instructions, "operand1", $op_size);
+					}
+					if ($dst->is('ASM_Imm')) {
+						$instructions = prependMovToScratch($instructions, "operand2", $op_size);
+					}
 				}
 			},
 			"ASM_Idiv, ASM_Div" => sub($op_size, $operand) {
 				if ($operand->is('ASM_Imm')) {
-					$res = toScratch($res, "operand", $op_size);
+					$instructions = prependMovToScratch($instructions, "operand", $op_size);
 				}
 			},
 			ASM_Movsx => sub($src, $dst) {
 				if ($src->is('ASM_Imm')) {
-					$res = toScratch($res, "src", ASM_Longword);
+					$instructions = prependMovToScratch($instructions, "src", ASM_Longword);
 				}
 				if (is_mem_addr($dst)) {
-					$res = fromScratch($res, "dst", ASM_Quadword);
+					$instructions = appendMovFromScratch($instructions, "dst", ASM_Quadword);
 				}
 			},
 			ASM_MovZeroExtend => sub($src, $dst) {
 				if ($dst->is('ASM_Reg')) {
-					$res = [ ASM_Mov(ASM_Longword(), $src, $dst) ];
+					$instructions = [ ASM_Mov(ASM_Longword(), $src, $dst) ];
 				} else {
-					$res = toScratch([ ASM_Mov(ASM_Quadword(), $src, $dst) ], "src", ASM_Longword);
+					$instructions = prependMovToScratch([ ASM_Mov(ASM_Quadword(), $src, $dst) ], "src", ASM_Longword);
 				}
 			},
 			ASM_Push => sub($operand) {
 				if (check_imm_too_large($operand, ASM_Quadword())) {
-					$res = toScratch($res, "operand", ASM_Quadword);
+					$instructions = prependMovToScratch($instructions, "operand", ASM_Quadword);
+				}
+			},
+			ASM_Cvttsd2si => sub($op_size, $src, $dst) {
+				unless ($dst->is('ASM_Reg')) {
+					$instructions = appendMovFromScratch($instructions, "dst", $op_size);
+				}
+			},
+			ASM_Cvtsi2sd => sub($op_size, $src, $dst) {
+				if ($src->is('ASM_Imm')) {
+					$instructions = prependMovToScratch($instructions, "src", $op_size);
+				}
+				unless ($dst->is('ASM_Reg')) {
+					$instructions = appendMovFromScratch($instructions, "dst", $op_size);
 				}
 			},
 			default => sub { ; }
 		});
-		return @$res;
+		return @$instructions;
 	};
 	my ($name, $global, $instructions) = $function->values_in_order('ASM_Function');
 	$function->set('instructions', [ map { $fix->($_) } @$instructions ]);
@@ -507,22 +534,22 @@ sub check_imm_too_large {
 	return $op_size->is('ASM_Quadword') && $src->is('ASM_Imm') && $src->get('val') > MAX_INT;
 }
 
-sub toScratch {
+sub prependMovToScratch {
 	my ($instructions, $key, $op_size) = @_;
 	my $scratch = $key =~ /src|operand1/
-				? $op_size->is('ASM_Double') ? ASM_Reg(ASM_XMM14) : ASM_Reg(ASM_R10)	# registry pro src
-				: $op_size->is('ASM_Double') ? ASM_Reg(ASM_XMM15) : ASM_Reg(ASM_R11);	# registry pro dst
+		? $op_size->is('ASM_Double') ? ASM_Reg(ASM_XMM14) : ASM_Reg(ASM_R10)  # registry pro src
+		: $op_size->is('ASM_Double') ? ASM_Reg(ASM_XMM15) : ASM_Reg(ASM_R11); # registry pro dst
 	my $old_op = $instructions->[-1]->set($key, $scratch);
 	return [ ASM_Mov($op_size, $old_op, $scratch),
-			 @$instructions ];
+		@$instructions ];
 }
 
-sub fromScratch {
+sub appendMovFromScratch {
 	my ($instructions, $key, $op_size) = @_;
 	my $scratch = $op_size->is('ASM_Double') ? ASM_Reg(ASM_XMM15) : ASM_Reg(ASM_R11); # asi ma smysl jenom pro dst
 	my $old_op = $instructions->[-1]->set($key, $scratch);
 	return [ @$instructions,
-			 ASM_Mov($op_size, $scratch, $old_op) ];
+		ASM_Mov($op_size, $scratch, $old_op) ];
 }
 
 sub toScratchAndBack {
@@ -530,8 +557,8 @@ sub toScratchAndBack {
 	my $scratch = $op_size->is('ASM_Double') ? ASM_Reg(ASM_XMM15) : ASM_Reg(ASM_R11); # asi ma smysl jenom pro dst
 	my $old_op = $instructions->[-1]->set($key, $scratch);
 	return [ ASM_Mov($op_size, $old_op, $scratch),
-			 @$instructions,
-			 ASM_Mov($op_size, $scratch, $old_op) ];
+		@$instructions,
+		ASM_Mov($op_size, $scratch, $old_op) ];
 }
 
 1;
