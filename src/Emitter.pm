@@ -3,7 +3,7 @@ use strict;
 use warnings;
 use feature qw(say state signatures);
 
-use ADT::AlgebraicTypes qw(:ASM);
+use ADT::AlgebraicTypes qw(:I :ASM);
 
 sub emit_code {
 	my $node = shift;
@@ -30,7 +30,7 @@ sub emit_code {
 				$code .= "\t.data\n";
 				$code .= "\t.align $alignment\n";
 				$code .= "$name:\n";
-				my $formatted_val = $init_word eq 'double' ? sprintf("%a", $init->get('val')) : $init->get('val');
+				my $formatted_val = $init_word eq 'double' ? raw_double_bytes_to_int($init->get('val')) : $init->get('val'); # TODO quad
 				$code .= "\t.$init_word " . $formatted_val . "\n";
 			} else {
 				$code .= "\t.bss\n";
@@ -42,10 +42,14 @@ sub emit_code {
 		},
 		ASM_StaticConstant => sub($name, $alignment, $init) {
 			my ($init_bytes, $init_word) = translate_type($init);
-			my $code = ".section .rodata\n";
+			my $code = ".section .rodata\n"; # TODO aby se tohle nezapisovalo pro kazdou konstantu
 			$code .= "\t.align $alignment\n";
 			$code .= "$name:\n";
-			$code .= "\t.$init_word " . $init->get('val') . "\n";
+			if ($init_word eq 'double') {
+				$code .= "\t.quad " . raw_double_bytes_to_int($init->get('val')) . "\n";
+			} else {
+				die "TODO";
+			}
 			return $code;
 		},
 		ASM_Mov => sub($type, $src, $dst) {
@@ -63,11 +67,11 @@ sub emit_code {
 		},
 		ASM_Cvtsi2sd => sub($type, $src, $dst) {
 			my ($n_bytes, $suffix) = translate_type($type);
-			return "\tcvtsi2sd" . $suffix . emit_code($src) . ", " . emit_code($dst) . "\n";
+			return "\tcvtsi2sd" . $suffix . " " . emit_code($src, $n_bytes) . ", " . emit_code($dst, $n_bytes) . "\n";
 		},
 		ASM_Cvttsd2si => sub($type, $src, $dst) {
 			my ($n_bytes, $suffix) = translate_type($type);
-			return "\tcvttsd2si" . $suffix . emit_code($src) . ", " . emit_code($dst) . "\n";
+			return "\tcvttsd2si" . $suffix . " " . emit_code($src, $n_bytes) . ", " . emit_code($dst, $n_bytes) . "\n";
 		},
 		ASM_Unary => sub($operator, $type, $operand) {
 			my ($n_bytes, $suffix) = translate_type($type);
@@ -124,26 +128,26 @@ sub emit_code {
 		ASM_Mult => "\timul",
 		ASM_Reg => sub($reg) {
 			state $register_names = {
-				ASM_AX => { 1 => "%al", 4 => "%eax", 8 => "%rax" },
-				ASM_CX => { 1 => "%cl", 4 => "%ecx", 8 => "%rcx" },
-				ASM_DX => { 1 => "%dl", 4 => "%edx", 8 => "%rdx" },
-				ASM_DI => { 1 => "%dil", 4 => "%edi", 8 => "%rdi" },
-				ASM_SI => { 1 => "%sil", 4 => "%esi", 8 => "%rsi" },
-				ASM_R8 => { 1 => "%r8b", 4 => "%r8d", 8 => "%r8" },
-				ASM_R9 => { 1 => "%r9b", 4 => "%r9d", 8 => "%r9" },
-				ASM_R10 => { 1 => "%r10b", 4 => "%r10d", 8 => "%r10" },
-				ASM_R11 => { 1 => "%r11b", 4 => "%r11d", 8 => "%r11" },
-				ASM_SP => { 1 => "%rsp", 4 => "%rsp", 8 => "%rsp" },
-				ASM_XMM0 => => { 8 => "%xmm0" },
-				ASM_XMM1 => => { 8 => "%xmm1" },
-				ASM_XMM2 => => { 8 => "%xmm2" },
-				ASM_XMM3 => => { 8 => "%xmm3" },
-				ASM_XMM4 => => { 8 => "%xmm4" },
-				ASM_XMM5 => => { 8 => "%xmm5" },
-				ASM_XMM6 => => { 8 => "%xmm6" },
-				ASM_XMM7 => => { 8 => "%xmm7" },
-				ASM_XMM14 => => { 8 => "%xmm14" },
-				ASM_XMM15 => => { 8 => "%xmm15" },
+				ASM_AX => { 	1 => "%al", 	4 => "%eax", 	8 => "%rax" },
+				ASM_CX => { 	1 => "%cl", 	4 => "%ecx", 	8 => "%rcx" },
+				ASM_DX => {	 	1 => "%dl", 	4 => "%edx", 	8 => "%rdx" },
+				ASM_DI => {	 	1 => "%dil", 	4 => "%edi", 	8 => "%rdi" },
+				ASM_SI => {	 	1 => "%sil", 	4 => "%esi", 	8 => "%rsi" },
+				ASM_R8 => {	 	1 => "%r8b", 	4 => "%r8d", 	8 => "%r8" },
+				ASM_R9 => {	 	1 => "%r9b", 	4 => "%r9d", 	8 => "%r9" },
+				ASM_R10 => { 	1 => "%r10b", 	4 => "%r10d", 	8 => "%r10" },
+				ASM_R11 => { 	1 => "%r11b", 	4 => "%r11d", 	8 => "%r11" },
+				ASM_SP => { 	1 => "%rsp", 	4 => "%rsp", 	8 => "%rsp" },
+				ASM_XMM0 => { 									8 => "%xmm0" },
+				ASM_XMM1 => { 									8 => "%xmm1" },
+				ASM_XMM2 => { 									8 => "%xmm2" },
+				ASM_XMM3 => { 									8 => "%xmm3" },
+				ASM_XMM4 => { 									8 => "%xmm4" },
+				ASM_XMM5 => { 									8 => "%xmm5" },
+				ASM_XMM6 => { 									8 => "%xmm6" },
+				ASM_XMM7 => { 									8 => "%xmm7" },
+				ASM_XMM14 => {									8 => "%xmm14" },
+				ASM_XMM15 => {									8 => "%xmm15" },
 			};
 			return $register_names->{$reg->{':tag'}}->{$register_width} // die "unknown register $reg w: $register_width";
 		},
@@ -173,12 +177,17 @@ sub translate_type {
 	if ($type->is('ASM_Double')) { return (8, 'sd') }
 	if ($type->is('T_Int', 'I_IntInit', 'I_UIntInit')) { return (4, 'long') }
 	if ($type->is('T_Long', 'I_LongInit', 'I_ULongInit')) { return (8, 'quad') }
-	if ($type->is('T_DoubleInit')) { return (8, 'double') }
+	if ($type->is('T_Double', 'I_DoubleInit')) { return (8, 'double') }
 	die "unknown type $type";
 }
 
 sub strip_prefix {
 	return shift() =~ s/^[A-Z]*_//r;
+}
+
+# GCC neumi hex floaty
+sub raw_double_bytes_to_int {
+	return unpack("Q>", pack("d>", shift()));
 }
 
 1;

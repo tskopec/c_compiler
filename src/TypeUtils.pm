@@ -93,10 +93,11 @@ sub get_type_of_TAC {
 	return $val->match({
 		TAC_Constant => sub($const) {
 			return $const->match({
-				C_ConstInt => T_Int(),
-				C_ConstUInt => T_UInt(),
-				C_ConstLong => T_Long(),
-				C_ConstULong => T_ULong(),
+				C_ConstInt => T_Int,
+				C_ConstUInt => T_UInt,
+				C_ConstLong => T_Long,
+				C_ConstULong => T_ULong,
+				C_ConstDouble => T_Double,
 				default => => sub { die "unknown constant type $const" }
 			});
 		},

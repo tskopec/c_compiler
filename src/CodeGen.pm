@@ -5,7 +5,7 @@ use warnings;
 use feature qw(say isa state current_sub signatures);
 
 use List::Util qw(min);
-use ADT::AlgebraicTypes qw(is_ADT :T :TAC :ASM);
+use ADT::AlgebraicTypes qw(is_ADT :T :I :TAC :ASM);
 use Semantics;
 use TypeUtils qw(/^MAX_/ get_type_of_TAC is_signed);
 
@@ -42,7 +42,7 @@ sub fill_asm_symtable {
 		}
 	}
 	for my $stat_const (@static_constants) {
-		$asm_symbol_table{$stat_const->get('label')} = {
+		$asm_symbol_table{$stat_const->get('name')} = {
 			entry_type => 'Obj',
 			op_size => ASM_Quadword(), # TODO jine typy
 			static => 1,
@@ -56,10 +56,9 @@ sub translate_to_ASM {
 	my $node = shift;
 	return $node->match({
 		TAC_Program => sub($declarations) {
-			return ASM_Program([
-				map { translate_to_ASM($_) } @$declarations,
-					@static_constants
-			]);
+			my $program = ASM_Program([ map { translate_to_ASM($_) } @$declarations ]);
+			unshift($program->get('declarations')->@*, @static_constants);
+			return $program;
 		},
 		TAC_Function => sub($ident, $global, $params, $instructions) {
 			my @asm_instructions;
@@ -222,13 +221,14 @@ sub translate_to_ASM {
 		TAC_DoubleToUInt => sub($src, $dst) {
 			my $reg = ASM_Reg(ASM_XMM0); # TODO muze byt tenhle?
 			my ($asm_src, $asm_dst) = (translate_to_ASM($src), translate_to_ASM($dst));
-			if (get_type_of_TAC($dst)->is('T_UInt')) { # uint
+			if (get_type_of_TAC($dst)->is('T_UInt')) {
+		# uint
 				return (
 					ASM_Cvttsd2si(ASM_Quadword, $asm_src, $reg),
 					ASM_Mov(ASM_Longword, $reg, $asm_dst)
 				);
 			} else {
-				# ulong
+		# ulong
 				my $upper_bound = get_static_constant(MAX_LONG +1, 8);
 				my ($out_of_range_label, $end_label) = Utils::labels("oo_range", "end");
 				return (
@@ -253,20 +253,21 @@ sub translate_to_ASM {
 			# TODO muze byt tenhle reg?
 			my ($reg1, $reg2) = (ASM_Reg(ASM_AX), ASM_Reg(ASM_DX));
 			my ($asm_src, $asm_dst) = (translate_to_ASM($src), translate_to_ASM($dst));
-			if (get_type_of_TAC($src)->is('T_UInt')) { # uint
+			if (get_type_of_TAC($src)->is('T_UInt')) {
+		# uint
 				return (
 					ASM_MovZeroExtend($asm_src, $reg1),
 					ASM_Cvtsi2sd(ASM_Quadword, $reg1, $asm_dst)
 				);
 			} else {
-				# ulong
+		# ulong
 				my ($out_of_range_label, $end_label) = Utils::labels("oo_range", "end");
 				return (
 					ASM_Cmp(ASM_Quadword, ASM_Imm(0), $asm_src),
 					ASM_JmpCC(ASM_L, $out_of_range_label), # is in range of signed?
 					ASM_Cvtsi2sd(ASM_Quadword, $asm_src, $asm_dst),
 					ASM_Jmp($end_label),
-					ASM_Label($out_of_range_label), # /2, round to odd, conv to double, *2
+					ASM_Label($out_of_range_label), # div by 2, round to odd, conv to double, mult by 2
 					ASM_Mov(ASM_Quadword, $asm_src, $reg1),
 					ASM_Mov(ASM_Quadword, $reg1, $reg2),
 					ASM_Unary(ASM_Shr, ASM_Quadword, $reg2),
@@ -370,7 +371,7 @@ sub get_static_constant {
 #2# SECOND PASS ###
 sub fix_up {
 	my $program = shift;
-	for my $declaration (@{$program->get('declarations')}) {
+	for my $declaration ($program->get('declarations')->@*) {
 		$declaration->match({
 			ASM_Function => sub($name, $global, $instructions) {
 				replace_pseudo($declaration);
@@ -430,23 +431,23 @@ sub fix_instr {
 		my $instruction = shift;
 		my $instructions = [ $instruction ];
 		$instruction->match({
-			ASM_Binary => sub($op, $op_size, $src, $dst) {
+			ASM_Binary => sub($op, $op_size, $op1, $op2) {
 				if ($op_size->is('ASM_Double')) {
 					if ($op->is('ASM_Add', 'ASM_Sub', 'ASM_Mult', 'ASM_DivDouble', 'ASM_Xor')) {
-						unless ($dst->is('ASM_Reg')) {
-							$instructions = prependMovToScratch($instructions, "operand2", $op_size);
+						unless ($op2->is('ASM_Reg')) {
+							$instructions = toScratchAndBack($instructions, "operand2", $op_size); # TODO alsi tyhle chyby
 						}
 					}
 				} else {
 					if ($op->is('ASM_Mult')) {
-						if (check_imm_too_large($src, $op_size)) {
+						if (check_imm_too_large($op1, $op_size)) {
 							$instructions = prependMovToScratch($instructions, "operand1", $op_size);
 						}
-						if (is_mem_addr($dst)) {
+						if (is_mem_addr($op2)) {
 							$instructions = toScratchAndBack($instructions, "operand2", $op_size);
 						}
 					} elsif ($op->is('ASM_Add', 'ASM_Sub', 'ASM_And', 'ASM_Or')) {
-						if ((is_mem_addr($src) && is_mem_addr($dst)) || check_imm_too_large($src, $op_size)) {
+						if ((is_mem_addr($op1) && is_mem_addr($op2)) || check_imm_too_large($op1, $op_size)) {
 							$instructions = prependMovToScratch($instructions, "operand1", $op_size);
 						}
 					}
