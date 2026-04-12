@@ -30,8 +30,11 @@ sub emit_code {
 				$code .= "\t.data\n";
 				$code .= "\t.align $alignment\n";
 				$code .= "$name:\n";
-				my $formatted_val = $init_word eq 'double' ? raw_double_bytes_to_int($init->get('val')) : $init->get('val'); # TODO quad
-				$code .= "\t.$init_word " . $formatted_val . "\n";
+				if ($init_word eq 'double') {
+					$code .= "\t.quad " . raw_double_bytes_to_int($init->get('val')) . "\n";
+				} else {
+					$code .= "\t.$init_word " . $init->get('val') . "\n";
+				}
 			} else {
 				$code .= "\t.bss\n";
 				$code .= "\t.align $alignment\n";
@@ -48,7 +51,7 @@ sub emit_code {
 			if ($init_word eq 'double') {
 				$code .= "\t.quad " . raw_double_bytes_to_int($init->get('val')) . "\n";
 			} else {
-				die "TODO";
+				$code .= "\t.$init_word " . $init->get('val') . "\n";
 			}
 			return $code;
 		},
@@ -127,7 +130,7 @@ sub emit_code {
 		ASM_Sub => "\tsub",
 		ASM_Mult => "\timul",
 		ASM_Reg => sub($reg) {
-			state $register_names = {
+			state $register_names = { # TODO je spravne ze pro xmm sem nekdy posilam width=4 ?
 				ASM_AX => { 	1 => "%al", 	4 => "%eax", 	8 => "%rax" },
 				ASM_CX => { 	1 => "%cl", 	4 => "%ecx", 	8 => "%rcx" },
 				ASM_DX => {	 	1 => "%dl", 	4 => "%edx", 	8 => "%rdx" },
@@ -138,16 +141,16 @@ sub emit_code {
 				ASM_R10 => { 	1 => "%r10b", 	4 => "%r10d", 	8 => "%r10" },
 				ASM_R11 => { 	1 => "%r11b", 	4 => "%r11d", 	8 => "%r11" },
 				ASM_SP => { 	1 => "%rsp", 	4 => "%rsp", 	8 => "%rsp" },
-				ASM_XMM0 => { 									8 => "%xmm0" },
-				ASM_XMM1 => { 									8 => "%xmm1" },
-				ASM_XMM2 => { 									8 => "%xmm2" },
-				ASM_XMM3 => { 									8 => "%xmm3" },
-				ASM_XMM4 => { 									8 => "%xmm4" },
-				ASM_XMM5 => { 									8 => "%xmm5" },
-				ASM_XMM6 => { 									8 => "%xmm6" },
-				ASM_XMM7 => { 									8 => "%xmm7" },
-				ASM_XMM14 => {									8 => "%xmm14" },
-				ASM_XMM15 => {									8 => "%xmm15" },
+				ASM_XMM0 => { 	1 => "%xmm0",	4 => "%xmm0",	8 => "%xmm0" },
+				ASM_XMM1 => { 	1 => "%xmm1", 	4 => "%xmm1", 	8 => "%xmm1" },
+				ASM_XMM2 => { 	1 => "%xmm2", 	4 => "%xmm2", 	8 => "%xmm2" },
+				ASM_XMM3 => { 	1 => "%xmm3", 	4 => "%xmm3", 	8 => "%xmm3" },
+				ASM_XMM4 => { 	1 => "%xmm4", 	4 => "%xmm4", 	8 => "%xmm4" },
+				ASM_XMM5 => { 	1 => "%xmm5", 	4 => "%xmm5", 	8 => "%xmm5" },
+				ASM_XMM6 => { 	1 => "%xmm6", 	4 => "%xmm6", 	8 => "%xmm6" },
+				ASM_XMM7 => { 	1 => "%xmm7", 	4 => "%xmm7", 	8 => "%xmm7" },
+				ASM_XMM14 => {	1 => "%xmm14",	4 => "%xmm14",	8 => "%xmm14" },
+				ASM_XMM15 => {	1 => "%xmm15",	4 => "%xmm15",	8 => "%xmm15" },
 			};
 			return $register_names->{$reg->{':tag'}}->{$register_width} // die "unknown register $reg w: $register_width";
 		},
