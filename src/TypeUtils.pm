@@ -98,10 +98,10 @@ sub get_type_of_TAC {
 				C_ConstLong => T_Long,
 				C_ConstULong => T_ULong,
 				C_ConstDouble => T_Double,
-				default => => sub { die "unknown constant type $const" }
+				default => sub { die "unknown constant type $const" }
 			});
 		},
-		TAC_Variable => => sub($name) {
+		TAC_Variable => sub($name) {
 			return ($Semantics::symbol_table{$name} // die "unknown symbol $name")->{type};
 		},
 		default => sub { die "unknown type: $val" }

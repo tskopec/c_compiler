@@ -98,7 +98,7 @@ sub emit_code {
 		ASM_Cdq => sub($type) {
 			return "\tcdq\n" if $type->is('ASM_Longword');
 			return "\tcqo\n" if $type->is('ASM_Quadword');
-			die 'unknown cdq type $type';
+			die "unknown cdq type $type";
 		},
 		ASM_Cmp => sub($type, $first, $second) {
 			my ($n_bytes, $suffix) = translate_type($type);

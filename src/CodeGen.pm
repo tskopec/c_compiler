@@ -114,8 +114,17 @@ sub translate_to_ASM {
 		TAC_Binary => sub($op, $src1, $src2, $dst) {
 			my $asm_dst = translate_to_ASM($dst);
 			my $src_asm_type = asm_type_of($src1);
-			if (not $src_asm_type->is('T_Double')) {
-				if (-1 != (my $i = $op->index_of_in(qw(TAC_Divide TAC_Modulo)))) {
+			if (-1 != (my $i = $op->index_of_in(qw(TAC_Equal TAC_NotEqual TAC_LessThan TAC_LessOrEqual TAC_GreaterThan TAC_GreaterOrEqual)))) {
+				my $codes = get_type_of_TAC($src1)->match({
+					"T_Int, T_Long" => [ ASM_E(), ASM_NE(), ASM_L(), ASM_LE(), ASM_G(), ASM_GE() ],
+					"T_UInt, T_ULong, T_Double" => [ ASM_E(), ASM_NE(), ASM_B(), ASM_BE(), ASM_A(), ASM_AE() ],
+					default => sub { die "bad type of $src1" }
+				});
+				return (ASM_Cmp($src_asm_type, translate_to_ASM($src2), translate_to_ASM($src1)),
+						ASM_Mov(asm_type_of($dst), ASM_Imm(0), $asm_dst),
+						ASM_SetCC($codes->[$i], $asm_dst));
+			} elsif (not $src_asm_type->is('ASM_Double')) {
+				if (-1 != ($i = $op->index_of_in(qw(TAC_Divide TAC_Modulo)))) {
 					return (
 						ASM_Mov($src_asm_type, translate_to_ASM($src1), ASM_Reg(ASM_AX())),
 						(is_signed(get_type_of_TAC($src1)) ? (
@@ -126,15 +135,6 @@ sub translate_to_ASM {
 							ASM_Div($src_asm_type, translate_to_ASM($src2)))
 						),
 						ASM_Mov($src_asm_type, ASM_Reg((ASM_AX(), ASM_DX())[$i]), $asm_dst));
-				} elsif (-1 != ($i = $op->index_of_in(qw(TAC_Equal TAC_NotEqual TAC_LessThan TAC_LessOrEqual TAC_GreaterThan TAC_GreaterOrEqual)))) {
-					state @codes = (
-						[ ASM_E(), ASM_NE(), ASM_B(), ASM_BE(), ASM_A(), ASM_AE() ], # unsigned or floating point
-						[ ASM_E(), ASM_NE(), ASM_L(), ASM_LE(), ASM_G(), ASM_GE() ]  # signed
-					);
-					my $used_codes = $codes[$src_asm_type->is('T_Double') || is_signed(get_type_of_TAC($src1))];
-					return (ASM_Cmp($src_asm_type, translate_to_ASM($src2), translate_to_ASM($src1)),
-							ASM_Mov(asm_type_of($dst), ASM_Imm(0), $asm_dst),
-							ASM_SetCC($used_codes->[$i], $asm_dst));
 				}
 			}
 			# vsechny double operace + int operace co nejsou pokryte vyse
@@ -146,7 +146,7 @@ sub translate_to_ASM {
 			if (get_type_of_TAC($cond)->is('T_Double')) {
 				return (ASM_Binary(ASM_Xor, ASM_Double, ASM_Reg(ASM_XMM0), ASM_Reg(ASM_XMM0)),
 						ASM_Cmp(ASM_Double, translate_to_ASM($cond), ASM_Reg(ASM_XMM0)),
-						ASM_JumpCC($cond_code, $target));
+						ASM_JmpCC($cond_code, $target));
 			} else {
 				return (ASM_Cmp(asm_type_of($cond), ASM_Imm(0), translate_to_ASM($cond)),
 						ASM_JmpCC($cond_code, $target));
@@ -219,29 +219,31 @@ sub translate_to_ASM {
 			return ASM_Cvttsd2si(asm_type_of($dst), translate_to_ASM($src), translate_to_ASM($dst));
 		},
 		TAC_DoubleToUInt => sub($src, $dst) {
-			my $reg = ASM_Reg(ASM_XMM0); # TODO muze byt tenhle?
 			my ($asm_src, $asm_dst) = (translate_to_ASM($src), translate_to_ASM($dst));
 			if (get_type_of_TAC($dst)->is('T_UInt')) {
 		# uint
+				my $ax = ASM_Reg(ASM_AX);
 				return (
-					ASM_Cvttsd2si(ASM_Quadword, $asm_src, $reg),
-					ASM_Mov(ASM_Longword, $reg, $asm_dst)
+					ASM_Cvttsd2si(ASM_Quadword, $asm_src, $ax),
+					ASM_Mov(ASM_Longword, $ax, $asm_dst)
 				);
 			} else {
 		# ulong
 				my $upper_bound = get_static_constant(C_ConstDouble(MAX_LONG + 1), 8);
 				my ($out_of_range_label, $end_label) = Utils::labels("oo_range", "end");
+				my $xmm0 = ASM_Reg(ASM_XMM1);
+				my $dx = ASM_Reg(ASM_DX);
 				return (
 					ASM_Cmp(ASM_Double, ASM_Data($upper_bound->get('name')), $asm_src),
 					ASM_JmpCC(ASM_AE, $out_of_range_label),
 					ASM_Cvttsd2si(ASM_Quadword, $asm_src, $asm_dst),
 					ASM_Jmp($end_label),
 					ASM_Label($out_of_range_label),
-					ASM_Mov(ASM_Double, $asm_src, $reg),
-					ASM_Binary(ASM_Sub, ASM_Double, ASM_Data($upper_bound->get('name')), $reg),
-					ASM_Cvttsd2si(ASM_Quadword, $reg, $asm_dst),
-					ASM_Mov(ASM_Quadword, ASM_Imm(sprintf("%u", MAX_LONG + 1)), $reg),
-					ASM_Binary(ASM_Add, ASM_Quadword, $reg, $asm_dst),
+					ASM_Mov(ASM_Double, $asm_src, $xmm0),
+					ASM_Binary(ASM_Sub, ASM_Double, ASM_Data($upper_bound->get('name')), $xmm0),
+					ASM_Cvttsd2si(ASM_Quadword, $xmm0, $asm_dst),
+					ASM_Mov(ASM_Quadword, ASM_Imm(sprintf("%u", MAX_LONG + 1)), $dx),
+					ASM_Binary(ASM_Add, ASM_Quadword, $dx, $asm_dst),
 					ASM_Label($end_label)
 				);
 			}
@@ -250,14 +252,13 @@ sub translate_to_ASM {
 			return ASM_Cvtsi2sd(asm_type_of($src), translate_to_ASM($src), translate_to_ASM($dst));
 		},
 		TAC_UIntToDouble => sub($src, $dst) {
-			# TODO muze byt tenhle reg?
-			my ($reg1, $reg2) = (ASM_Reg(ASM_AX), ASM_Reg(ASM_DX));
+			my ($ax, $dx) = (ASM_Reg(ASM_AX), ASM_Reg(ASM_DX));
 			my ($asm_src, $asm_dst) = (translate_to_ASM($src), translate_to_ASM($dst));
 			if (get_type_of_TAC($src)->is('T_UInt')) {
 		# uint
 				return (
-					ASM_MovZeroExtend($asm_src, $reg1),
-					ASM_Cvtsi2sd(ASM_Quadword, $reg1, $asm_dst)
+					ASM_MovZeroExtend($asm_src, $ax),
+					ASM_Cvtsi2sd(ASM_Quadword, $ax, $asm_dst)
 				);
 			} else {
 		# ulong
@@ -268,12 +269,12 @@ sub translate_to_ASM {
 					ASM_Cvtsi2sd(ASM_Quadword, $asm_src, $asm_dst),
 					ASM_Jmp($end_label),
 					ASM_Label($out_of_range_label), # div by 2, round to odd, conv to double, mult by 2
-					ASM_Mov(ASM_Quadword, $asm_src, $reg1),
-					ASM_Mov(ASM_Quadword, $reg1, $reg2),
-					ASM_Unary(ASM_Shr, ASM_Quadword, $reg2),
-					ASM_Binary(ASM_And, ASM_Quadword, ASM_Imm(1), $reg1),
-					ASM_Binary(ASM_Or, ASM_Quadword, $reg1, $reg2),
-					ASM_Cvtsi2sd(ASM_Quadword, $reg2, $asm_dst),
+					ASM_Mov(ASM_Quadword, $asm_src, $ax),
+					ASM_Mov(ASM_Quadword, $ax, $dx),
+					ASM_Unary(ASM_Shr, ASM_Quadword, $dx),
+					ASM_Binary(ASM_And, ASM_Quadword, ASM_Imm(1), $ax),
+					ASM_Binary(ASM_Or, ASM_Quadword, $ax, $dx),
+					ASM_Cvtsi2sd(ASM_Quadword, $dx, $asm_dst),
 					ASM_Binary(ASM_Add, ASM_Double, $asm_dst, $asm_dst),
 					ASM_Label($end_label)
 				);
@@ -352,7 +353,7 @@ sub get_static_constant {
 	my ($constant, $alignment) = @_;
 	my $static_init = I_DoubleInit($constant->get('val'));
 	for my $existing_constant (@static_constants) {
-		if ($existing_constant->get('static_init') eq $static_init
+		if ($existing_constant->get('static_init')->get('val') == $constant->get('val')
 			&& $existing_constant->get('alignment') == $alignment) {
 			return $existing_constant;
 		}
@@ -513,7 +514,7 @@ sub fix_instr {
 					$instructions = prependMovToScratch($instructions, "src", $op_size);
 				}
 				unless ($dst->is('ASM_Reg')) {
-					$instructions = appendMovFromScratch($instructions, "dst", $op_size);
+					$instructions = appendMovFromScratch($instructions, "dst", ASM_Double);
 				}
 			},
 			default => sub { ; }
