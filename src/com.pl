@@ -130,9 +130,9 @@ for my $src_file (@src_files) {
 $error_code = 7;
 if ($dont_link != 0) {
 	qx(gcc -c $_ -o @{[ s/\.s$/.o/r ]}) for @asm_files;
-}
-else {
-	qx(gcc @asm_files -o @{[ $asm_files[0] =~ s/\.s$//r ]});
+} else {
+	# bez toho -lm nefunguje test: chapter_13/valid/function_calls/standard_library_call.c
+	qx(gcc @asm_files -lm -o @{[ $asm_files[0] =~ s/\.s$//r ]});
 }
 unlink($_) for (@asm_files);
 $error_code = 0;

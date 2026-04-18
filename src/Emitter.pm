@@ -5,18 +5,29 @@ use feature qw(say state signatures);
 
 use ADT::AlgebraicTypes qw(:I :ASM);
 
+my $current_section;
+sub set_section {
+	my ($code, $section) = @_;
+	if ($current_section ne $section) {
+		$code .= "\t.section $section\n";
+		$current_section = $section;
+	}
+	return $code;
+}
+
 sub emit_code {
 	my $node = shift;
 	my $register_width = shift // 4;
 	return $node->match({
 		ASM_Program => sub($definitions) {
+			$current_section = "";
 			my $code = join "\n", map { emit_code($_) } @$definitions;
 			$code .= '.section .note.GNU-stack,"",@progbits' . "\n";
 			return $code;
 		},
 		ASM_Function => sub($name, $global, $instructions) {
 			my $code = $global ? "\t.globl $name\n" : "";
-			$code .= "\t.text\n";
+			$code = set_section($code, ".text");
 			$code .= "$name:\n";
 			$code .= "\tpushq %rbp\n";
 			$code .= "\tmovq %rsp, %rbp\n";
@@ -27,7 +38,7 @@ sub emit_code {
 			my $code = $global ? "\t.globl $name\n" : "";
 			my ($init_bytes, $init_word) = translate_type($init);
 			if ($init->get('val') != 0 || $init_word eq 'double') {
-				$code .= "\t.data\n";
+				$code = set_section($code, ".data");
 				$code .= "\t.align $alignment\n";
 				$code .= "$name:\n";
 				if ($init_word eq 'double') {
@@ -36,7 +47,7 @@ sub emit_code {
 					$code .= "\t.$init_word " . $init->get('val') . "\n";
 				}
 			} else {
-				$code .= "\t.bss\n";
+				$code = set_section($code, ".bss");
 				$code .= "\t.align $alignment\n";
 				$code .= "$name:\n";
 				$code .= "\t.zero $init_bytes\n";
@@ -45,11 +56,11 @@ sub emit_code {
 		},
 		ASM_StaticConstant => sub($name, $alignment, $init) {
 			my ($init_bytes, $init_word) = translate_type($init);
-			my $code = ".section .rodata\n"; # TODO aby se tohle nezapisovalo pro kazdou konstantu
+			my $code = set_section("", ".rodata");
 			$code .= "\t.align $alignment\n";
 			$code .= "$name:\n";
 			if ($init_word eq 'double') {
-				$code .= "\t.quad " . raw_double_bytes_to_int($init->get('val')) . "\n";
+				$code .= "\t.quad " . raw_double_bytes_to_int($init->get('val'));
 			} else {
 				$code .= "\t.$init_word " . $init->get('val') . "\n";
 			}
