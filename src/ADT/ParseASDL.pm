@@ -9,13 +9,12 @@ my $type_name_re  = qr/[A-Z]\w*/;
 my $param_type_re = qr/[A-Z]\w*|int|float|string|bool/;
 my $param_name_re = qr/\w+/;
 
-sub parse_file {
-	my $fh = shift;
+sub parse_types {
 	my @declarations;
-	while (<$fh>) {
-		next if /^#|^\s+$/;
-		push(@declarations, "") if (/=/);
-		$declarations[-1] .= $_;
+	for my $line (@_) {
+		next if $line =~ /^#|^\s*$/;
+		push(@declarations, "") if ($line =~ /=/);
+		$declarations[-1] .= $line;
 	}
 	return map { parse_declaration($_) } @declarations;
 }

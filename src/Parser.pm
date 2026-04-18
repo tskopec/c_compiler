@@ -3,8 +3,23 @@ use strict;
 use warnings;
 use feature qw(say state signatures);
 
+use ADT::ParseASDL;
 use ADT::AlgebraicTypes qw(:LEX :AST :T :C :S);
 use TypeUtils qw(/^MAX_/);
+
+BEGIN { # Local data types
+	my @lines = split /\n/, q{
+		D_Declarator =
+			D_Ident(string identifier)
+			| D_PointerDeclarator(D_Declarator declarator)
+			| D_FunDeclarator(D_ParamInfo* params, D_Declarator declarator)
+		D_ParamInfo = D_Param(T_Type type, D_Declarator declarator)
+	};
+	my %constructors = ADT::ParseASDL::parse_types(@lines);
+	while (my ($name, $sub) = each %constructors) {
+		{ no strict 'refs'; *{$name} = $sub }
+	}
+}
 
 my @TOKENS;
 
@@ -238,8 +253,13 @@ sub parse_factor {
 			}
 		},
 		LEX_Operator => sub($op) {
-			my $op_node = parse_unop($op);
-			return AST_Unary($op_node, parse_factor(), T_DummyType());
+			if ($op eq '*') {
+				return AST_Dereference(parse_factor(), T_DummyType);
+			} elsif ($op eq '&') {
+				return AST_AddrOf(parse_factor(), T_DummyType);
+			} else {
+				return AST_Unary(parse_unop($op), parse_factor(), T_DummyType);
+			}
 		},
 		LEX_Symbol => sub($char) {
 			if ($char eq '(') {

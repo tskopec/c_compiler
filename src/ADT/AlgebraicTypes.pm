@@ -16,7 +16,8 @@ our %EXPORT_TAGS;
 BEGIN {
 	#$Exporter::Verbose = 1;
 	open(my $fh, "<", $main::src_dir . "/types.asdl") or die $!;
-	my %constructors = ADT::ParseASDL::parse_file($fh);
+	my @lines = <$fh>;
+	my %constructors = ADT::ParseASDL::parse_types(@lines);
 	while (my ($name, $sub) = each %constructors) {
 		{ no strict 'refs'; *{$name} = $sub } 
 		if ($name =~ /^([A-Z][A-Za-z0-9]*)_.*/) {

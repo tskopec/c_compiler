@@ -141,7 +141,7 @@ sub emit_code {
 		ASM_Sub => "\tsub",
 		ASM_Mult => "\timul",
 		ASM_Reg => sub($reg) {
-			state $register_names = { # TODO je spravne ze pro xmm sem nekdy posilam width=4 ?
+			state $register_names = {
 				ASM_AX => { 	1 => "%al", 	4 => "%eax", 	8 => "%rax" },
 				ASM_CX => { 	1 => "%cl", 	4 => "%ecx", 	8 => "%rcx" },
 				ASM_DX => {	 	1 => "%dl", 	4 => "%edx", 	8 => "%rdx" },

@@ -44,6 +44,8 @@ AST_Expression =
 	 | AST_Assignment(AST_Expression lhs, AST_Expression rhs, T_Type type)
 	 | AST_Conditional(AST_Expression cond, AST_Expression then, AST_Expression else, T_Type type)
 	 | AST_FunctionCall(string ident, AST_Expression args, T_Type type)
+	 | AST_Dereference(AST_Expression expr, T_Type type)
+	 | AST_AddrOf(AST_Expression expr, T_Type type)
 AST_UnaryOperator =
 	AST_Complement | AST_Negate | AST_Not
 AST_BinaryOperator =
@@ -57,6 +59,7 @@ T_Type =
 	| T_ULong
 	| T_Double
 	| T_FunType(T_Type* params, T_Type ret)
+	| T_Pointer(T_Type to_type)
 	| T_DummyType
 C_Constant =
 	C_ConstInt(int val)

@@ -6,7 +6,7 @@ use feature qw(say);
 use ADT::AlgebraicTypes qw(:LEX);
 
 my $sym_re = qr/^([;}{)(,])/;
-my $op_re = qr/^(!=|==|<=|>=|<|>|=|!|\|\||&&|--|-|\+|\*|\/|%|~|\?|:)/;
+my $op_re = qr/^(!=|==|<=|>=|<|>|=|!|\|\||&&|--|-|\+|\*|\/|%|~|\?|:|&)/;
 my $kw_re = qr/^(int|long|double|signed|unsigned|void|return|if|else|do|while|for|break|continue|static|extern)\b/;
 my $long_const_re = qr/^(([0-9]+)[lL])[^\w.]/;
 my $ulong_const_re = qr/^(([0-9]+)(lu|ul))[^\w.]/i;
