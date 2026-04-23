@@ -8,17 +8,14 @@ use ADT::AlgebraicTypes qw(:LEX :AST :T :C :S);
 use TypeUtils qw(/^MAX_/);
 
 BEGIN { # Local data types
-	my @lines = split /\n/, q{
-		D_Declarator =
-			D_Ident(string identifier)
-			| D_PointerDeclarator(D_Declarator declarator)
-			| D_FunDeclarator(D_ParamInfo* params, D_Declarator declarator)
-		D_ParamInfo = D_Param(T_Type type, D_Declarator declarator)
+	my @asdl_lines = split /\n/, q{
+		Declarator =
+			Identifier(string name)
+			| PointerDeclarator(Declarator declarator)
+			| FunDeclarator(ParamInfo* params, Declarator declarator)
+		ParamInfo = Param(T_Type type, Declarator declarator)
 	};
-	my %constructors = ADT::ParseASDL::parse_types(@lines);
-	while (my ($name, $sub) = each %constructors) {
-		{ no strict 'refs'; *{$name} = $sub }
-	}
+	ADT::AlgebraicTypes::local_types('Parser', @asdl_lines);
 }
 
 my @TOKENS;
@@ -40,19 +37,17 @@ sub parse_declaration {
 	my @specs = parse_specifiers();
 	return undef unless @specs;
 	my ($type, $storage_class) = @specs;
-
-	my $name = parse_identifier();
-	if (try_expect('LEX_Symbol', '(')) {
-		my $params = parse_params_list();
-		if (try_expect('LEX_Symbol', '{')) {
-			return AST_FunDeclaration($name, $params, parse_block(), $type, $storage_class);
-		} 
-		expect('LEX_Symbol', ';');
-		return AST_FunDeclaration($name, $params, undef, $type, $storage_class);
+	my $declarator = parse_declarator();
+	my ($name, $declarator_type, $params) = process_declarator($declarator, $type);
+	if ($declarator_type->is('T_FunType')) {
+		my $body = try_expect('LEX_Symbol', '{')
+			? parse_block()
+			: (expect('LEX_Symbol', ';') ? undef : die "missing body or semicolon");
+		return AST_FunDeclaration($name, $params, $body, $declarator_type, $storage_class);
 	} else {
 		my $init = try_expect('LEX_Operator', '=') ? parse_expr(0) : undef;
 		expect('LEX_Symbol', ';');
-		return AST_VarDeclaration($name, $init, $type, $storage_class);
+		return AST_VarDeclaration($name, $init, $declarator_type, $storage_class);
 	}
 }
 
@@ -78,7 +73,6 @@ sub parse_type {
 	die "duplicate type spec: " . join(",", @_) if (grep { $_ > 1 } (values %freqs));
 	die "type both signed & unsigned" if ($freqs{signed} && $freqs{unsigned});
 	die "double cant be combined with others" if ($freqs{double} && keys(%freqs) > 1);
-
 	return T_Double if ($freqs{double});
 	return T_ULong if ($freqs{long} && $freqs{unsigned});
 	return T_UInt if ($freqs{unsigned});
@@ -94,6 +88,54 @@ sub parse_storage_class {
 	die "unknown storage specifier: $storage_spec";
 }
 
+sub parse_declarator {
+	my $declarator;
+	if (my $id = try_expect('LEX_Identifier')) {
+		$declarator = Identifier($id->get('name'));
+	} elsif (try_expect('LEX_Symbol', '(')) {
+		my $inner_decl = parse_declarator();
+		expect('LEX_Symbol', ')');
+		$declarator = $inner_decl;
+	} elsif (try_expect('LEX_Operator', "*")) {
+		$declarator = PointerDeclarator(parse_declarator());
+	} else {
+		die "cant parse declarator: " . peek();
+	}
+	if (try_expect('LEX_Symbol', '(')) {
+		$declarator = FunDeclarator(parse_params_list(), $declarator);
+	}
+	return $declarator;
+}
+
+sub process_declarator {
+	my ($decl, $base_type) = @_;
+	$decl->match({
+		Identifier => sub($name) {
+			return ($name, $base_type, []);
+		},
+		PointerDeclarator => sub($inner_decl) {
+			return process_declarator($inner_decl, T_Pointer($base_type));
+		},
+		FunDeclarator => sub($params, $inner_decl) {
+			if ($inner_decl->is('Identifier')) {
+				my (@param_names, @param_types);
+				for my $p (@$params) {
+					my ($param_name, $param_type) = process_declarator($p->get('declarator'), $p->get('type'));
+					die "fun pointers not supported" if $param_type->is('T_FunType');
+					push @param_names, $param_name;
+					push @param_types, $param_type;
+				}
+				return ($inner_decl->get('name'), T_FunType(\@param_types, $base_type), \@param_names);
+			} else {
+				die "inner declarator must be simple identifier: $inner_decl";
+			}
+		},
+		default => sub() {
+			die "bad declarator $decl, type $base_type";
+		}
+	});
+}
+
 sub parse_params_list {
 	my @list;
 	if (try_expect('LEX_Keyword', 'void')) {
@@ -102,10 +144,10 @@ sub parse_params_list {
 		while (1) {
 			my ($type, $storage) = parse_specifiers();
 			die "invalid specifiers for fun param: $type $storage" if (!defined $type || defined $storage);
-			push(@list, AST_VarDeclaration(parse_identifier(), undef, $type, undef));	
+			push(@list, Param($type, parse_declarator()));
 			last if try_expect('LEX_Symbol', ')');
 			expect('LEX_Symbol', ',');
-		} 
+		}
 	}
 	return \@list;
 }
@@ -331,8 +373,7 @@ sub precedence {
 	die "no precedence defined for $op";
 }
 
-
-sub peek {	
+sub peek {
 	return $TOKENS[shift() // 0] // die 'peek: no more tokens';
 }
 

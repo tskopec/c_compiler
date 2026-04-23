@@ -15,7 +15,7 @@ AST_Program =
 	AST_Program(AST_Declaration* declarations)
 AST_Declaration =
 	AST_VarDeclaration(string name, AST_Expression? initializer, T_Type type, S_StorageClass? storage)
-	| AST_FunDeclaration(string name, AST_VarDeclaration* params, AST_Block? body, T_Type type, S_StorageClass? storage)
+	| AST_FunDeclaration(string name, string* params, AST_Block? body, T_Type type, S_StorageClass? storage)
 AST_Block =
 	AST_Block(AST_BlockItem* items)
 AST_BlockItem =
