@@ -14,6 +14,9 @@ BEGIN { # Local data types
 			| PointerDeclarator(Declarator declarator)
 			| FunDeclarator(ParamInfo* params, Declarator declarator)
 		ParamInfo = Param(T_Type type, Declarator declarator)
+		AbstractDeclarator =
+			AbstractPointer(AbstractDeclarator declarator)
+			| AbstractBase
 	};
 	ADT::AlgebraicTypes::local_types('Parser', @asdl_lines);
 }
@@ -308,7 +311,8 @@ sub parse_factor {
 				my ($type, $storage) = parse_specifiers();
 				die "storage specifier in cast" if (defined $storage);
 				if (defined $type) {
-					expect("LEX_Symbol", ")");
+					my $declarator = parse_abstract_declarator();
+					$type = process_abstract_declarator($declarator, $type);
 					my $expr = parse_expr(100);
 					return AST_Cast($expr, $type);
 				} else {
@@ -325,6 +329,31 @@ sub parse_factor {
 	return $result;
 }
 
+sub parse_abstract_declarator {
+	if (try_expect('LEX_Operator', '*')) {
+		return AbstractPointer(parse_abstract_declarator());
+	} elsif (try_expect('LEX_Symbol', '(')) {
+		my $inner_decl = parse_abstract_declarator();
+		expect('LEX_Symbol', ')');
+		return $inner_decl;
+	} elsif (try_expect('LEX_Symbol', ')')) {
+		return AbstractBase;
+	}
+	die "cant parse declarator " . peek();
+}
+
+sub process_abstract_declarator {
+	my ($decl, $base_type) = @_;
+	$decl->match({
+		AbstractPointer => sub($inner) {
+			return process_abstract_declarator($inner, T_Pointer($base_type));
+		},
+		AbstractBase => sub {
+			return $base_type;
+		},
+		default => sub { die "TODO" }
+	});
+}
 sub parse_identifier {
 	my $token = shift @TOKENS;
 	return $token->is('LEX_Identifier') ? $token->get('name') : die  "$token not identifier";
