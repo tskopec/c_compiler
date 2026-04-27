@@ -6,8 +6,8 @@ use feature qw(signatures isa);
 use ADT::AlgebraicTypes qw(:AST :I :T);
 
 use base 'Exporter';
-our @EXPORT_OK = qw(MAX_ULONG MAX_LONG MAX_UINT MAX_INT get_type_of_TAC get_common_type get_int_type_rank is_signed convert_type
-	types_equal const_to_initval);
+our @EXPORT_OK = qw(MAX_ULONG MAX_LONG MAX_UINT MAX_INT get_type_of_TAC get_common_type get_common_pointer_type
+	get_int_type_rank is_signed convert_type types_equal const_to_initval);
 
 use constant MAX_ULONG => 2 ** 64;
 use constant MAX_LONG => 2 ** 63 - 1;
@@ -25,6 +25,11 @@ sub get_common_type {
 	} else {
 		return $rank1 > $rank2 ? $t1 : $t2;
 	}
+}
+
+sub get_common_pointer_type {
+
+	die "todo";
 }
 
 sub get_int_type_rank {

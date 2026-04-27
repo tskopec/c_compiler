@@ -9,7 +9,7 @@ use overload
 	'""' => sub {
 		my $self = shift;
 		my $fields_string = join(", ", map { "$_: " . (defined($self->{$_}) ? qq("$self->{$_}") : "undef") } $self->fields_order());
-		return $self->{':tag'} . "(" . $fields_string . ")";
+		return $self->{':tag'} . (length($fields_string) ? "(" . $fields_string . ")" : "");
 	},
 	eq => sub {
 		my ($x, $y) = @_;

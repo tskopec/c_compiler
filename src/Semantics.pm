@@ -4,7 +4,7 @@ use warnings;
 use feature qw(say state isa signatures);
 
 use ADT::AlgebraicTypes qw(:AST :A :I :S :T is_ADT);
-use TypeUtils qw(/^MAX_/ get_common_type convert_type types_equal const_to_initval);
+use TypeUtils qw(/^MAX_/ get_common_type get_common_pointer_type convert_type types_equal const_to_initval);
 
 our %symbol_table;
 
@@ -168,7 +168,6 @@ sub resolve_expr_ids {
 			resolve_expr_ids($_, $ids_map) for ($e1, $e2);
 		},
 		AST_Assignment => sub($le, $re, $type) {
-			die "not a variable $le" if (!$le->is('AST_Var'));
 			resolve_expr_ids($_, $ids_map) for ($le, $re);
 		},
 		AST_Conditional => sub($cond, $then, $else, $type) {
@@ -177,6 +176,12 @@ sub resolve_expr_ids {
 		AST_FunctionCall => sub($name, $args, $type) {
 			$expr->set('ident', ($ids_map->{$name}{uniq_name} // die "calling undeclared function $name"));
 			resolve_expr_ids($_, $ids_map) for @$args;
+		},
+		AST_Dereference => sub($e, $type) {
+			resolve_expr_ids($e);
+		},
+		AST_AddrOf => sub($e, $type) {
+			resolve_expr_ids($e);
 		},
 		default => sub { die "unknown expression $expr" }
 	});
@@ -332,11 +337,10 @@ sub check_types {
 				check_types($expr, $node);
 				my $expr_type = $expr->get('type');
 				if ($op->is('AST_Complement')) {
-					$node->set('type', $expr_type->is('T_Double')
-						? die "cant complement double"
-						: $expr_type);
+					die "cant complement double" if $expr_type->is('T_Double');
+					$node->set('type', $expr_type);
 				} elsif ($op->is('AST_Not')) {
-					$node->set('type', T_Int());
+					$node->set('type', T_Int);
 				} else {
 					$node->set('type', $expr_type);
 				}
@@ -347,7 +351,10 @@ sub check_types {
 				if ($op->is('AST_And', 'AST_Or')) {
 					$node->set('type', T_Int());
 				} else {
-					my $common_type = get_common_type($e1->get('type'), $e2->get('type'));
+					my $is_pointer_comp = $op->is('AST_Equal', 'AST_NotEqual') && T_Pointer()->is($e1->get('type'), $e2->get('type'));
+					my $common_type = $is_pointer_comp
+						? get_common_pointer_type($e1, $e2)
+						: get_common_type($e1->get('type'), $e2->get('type'));
 					$node->set('expr1', convert_type($e1, $common_type));
 					$node->set('expr2', convert_type($e2, $common_type));
 					if ($op->is('AST_Add', 'AST_Subtract', 'AST_Multiply', 'AST_Divide')) {
@@ -357,11 +364,12 @@ sub check_types {
 							? die "cant modulo double"
 							: $common_type);
 					} else {
-						$node->set('type', T_Int());
+						$node->set('type', T_Int);
 					}
 				}
 			},
 			AST_Assignment => sub($lhs, $rhs, $dummy_type) {
+				die "$lhs not lvalue" unless is_lval($lhs);
 				check_types($lhs, $node);
 				check_types($rhs, $node);
 				$node->set('rhs', convert_type($rhs, $lhs->get('type')));
@@ -379,6 +387,20 @@ sub check_types {
 			AST_Return => sub($expr) {
 				check_types($expr, $node);
 				$node->set('expr', convert_type($expr, $current_fun_ret_type));
+			},
+			AST_Dereference => sub($expr, $dummy_type) {
+				check_types($expr, $node);
+				$expr->get('type')->match({
+					T_Pointer => sub($to_type) {
+						$node->set('type', $to_type);
+					},
+					default => sub { die "cant dereference $expr" }
+				});
+			},
+			AST_AddrOf => sub($expr) {
+				die "$expr not lvalue" unless is_lval($expr);
+				check_types($expr, $node);
+				$node->set('type', $expr->get('type'));
 			},
 			default => sub {
 				check_types($_, $node) for $node->values_in_order();
@@ -409,6 +431,10 @@ sub get_symbol_attr {
 		}
 	});
 	return $res;
+}
+
+sub is_lval {
+	return shift()->is('AST_Var');
 }
 
 #3# LOOP LABELING ###
