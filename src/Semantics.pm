@@ -4,7 +4,8 @@ use warnings;
 use feature qw(say state isa signatures);
 
 use ADT::AlgebraicTypes qw(:AST :A :I :S :T is_ADT);
-use TypeUtils qw(/^MAX_/ get_common_type get_common_pointer_type convert_type types_equal const_to_initval);
+use TypeUtils qw(/^MAX_/ get_common_type get_common_pointer_type convert_type convert_as_if_by_assignment types_equal
+	const_to_initval);
 
 our %symbol_table;
 
@@ -311,7 +312,7 @@ sub check_types {
 					}
 				}
 				if (defined $init) {
-					$node->set('initializer', convert_type($init, $type));
+					$node->set('initializer', convert_as_if_by_assignment($init, $type));
 				}
 			},
 			AST_FunctionCall => sub($name, $args, $dummy_type) {
@@ -319,7 +320,7 @@ sub check_types {
 				die "wrong number of args: $name" if (@$param_types != @$args);
 				while (my ($i, $arg) = each @$args) {
 					check_types($arg, $node);
-					$args->[$i] = convert_type($arg, $param_types->[$i]);
+					$args->[$i] = convert_as_if_by_assignment($arg, $param_types->[$i]);
 				}
 				$node->set('type', $ret_type);
 			},
@@ -331,13 +332,20 @@ sub check_types {
 			AST_ConstantExpr => sub($const, $type) { ; },
 			AST_Cast => sub($expr, $type) {
 				check_types($expr, $node);
+				if (($expr->get('type')->is('T_Double') && $type->is('T_Pointer'))
+					|| ($expr->get('type')->is('T_Pointer') && $type->is('T_Double'))) {
+					die "cant convert $expr to $type";
+				}
 				$node->set('type', $type);
 			},
-			AST_Unary => sub($op, $expr, $dummy_type) {
+			AST_Unary => sub($op, $expr, $dummy_type) { # TODO refaktor?
 				check_types($expr, $node);
 				my $expr_type = $expr->get('type');
 				if ($op->is('AST_Complement')) {
-					die "cant complement double" if $expr_type->is('T_Double');
+					die "cant complement $expr_type" if ($expr_type->is('T_Double', 'T_Pointer'));
+					$node->set('type', $expr_type);
+				} elsif ($op->is('AST_Negate')) {
+					die "cant negate $expr_type" if ($expr_type->is('T_Pointer'));
 					$node->set('type', $expr_type);
 				} elsif ($op->is('AST_Not')) {
 					$node->set('type', T_Int);
@@ -345,9 +353,12 @@ sub check_types {
 					$node->set('type', $expr_type);
 				}
 			},
-			AST_Binary => sub($op, $e1, $e2, $dummy_type) {
+			AST_Binary => sub($op, $e1, $e2, $dummy_type) { # TODO refaktor?
 				check_types($e1, $node);
 				check_types($e2, $node);
+				if ($op->is('AST_Multiply', 'AST_Divide', 'AST_Modulo')) {
+					die "cant $op pointer" if (T_Pointer()->is($e1->get('type'), $e2->get('type')));
+				}
 				if ($op->is('AST_And', 'AST_Or')) {
 					$node->set('type', T_Int());
 				} else {
@@ -372,21 +383,23 @@ sub check_types {
 				die "$lhs not lvalue" unless is_lval($lhs);
 				check_types($lhs, $node);
 				check_types($rhs, $node);
-				$node->set('rhs', convert_type($rhs, $lhs->get('type')));
+				$node->set('rhs', convert_as_if_by_assignment($rhs, $lhs->get('type')));
 				$node->set('type', $lhs->get('type'));
 			},
 			AST_Conditional => sub($cond, $then, $else, $dummy_type) {
 				check_types($cond, $node);
 				check_types($then, $node);
 				check_types($else, $node);
-				my $common_type = get_common_type($then->get('type'), $else->get('type'));
+				my $common_type = T_Pointer()->is($then->get('type'), $else->get('type'))
+					? get_common_pointer_type($then, $else)
+					: get_common_type($then->get('type'), $else->get('type'));
 				$node->set('then', convert_type($then, $common_type));
 				$node->set('else', convert_type($else, $common_type));
 				$node->set('type', $common_type);
 			},
 			AST_Return => sub($expr) {
 				check_types($expr, $node);
-				$node->set('expr', convert_type($expr, $current_fun_ret_type));
+				$node->set('expr', convert_as_if_by_assignment($expr, $current_fun_ret_type));
 			},
 			AST_Dereference => sub($expr, $dummy_type) {
 				check_types($expr, $node);

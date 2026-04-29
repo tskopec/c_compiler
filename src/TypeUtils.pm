@@ -7,7 +7,7 @@ use ADT::AlgebraicTypes qw(:AST :I :T);
 
 use base 'Exporter';
 our @EXPORT_OK = qw(MAX_ULONG MAX_LONG MAX_UINT MAX_INT get_type_of_TAC get_common_type get_common_pointer_type
-	get_int_type_rank is_signed convert_type types_equal const_to_initval);
+	get_int_type_rank is_signed convert_type convert_as_if_by_assignment types_equal const_to_initval);
 
 use constant MAX_ULONG => 2 ** 64;
 use constant MAX_LONG => 2 ** 63 - 1;
@@ -28,8 +28,18 @@ sub get_common_type {
 }
 
 sub get_common_pointer_type {
+	my ($t1, $t2) = map { $_->get('type') } @_;
+	return $t1 if ($t1 eq $t2);
+	return $t1 if (is_null_pointer_const($_[0]));
+	return $t2 if (is_null_pointer_const($_[1]));
+	die "incompatible types: " . @_;
+}
 
-	die "todo";
+sub is_null_pointer_const {
+	return shift()->match({
+		"C_ConstInt, C_ConstUInt, C_ConstLong, C_ConstULong" => sub ($val) { $val == 0 },
+		default => 0
+	});
 }
 
 sub get_int_type_rank {
@@ -46,9 +56,24 @@ sub is_signed {
 	return ($type->{':tag'} =~ /^[A-Z]+_U/) ? 0 : 1;
 }
 
+sub is_arithmetic {
+	my $type = shift;
+	return $type->is('T_Int', 'T_UInt', 'T_Long', 'T_ULong', 'T_Double');
+}
+
 sub convert_type {
 	my ($expr, $type) = @_;
 	return $type->same_type_as($expr->get('type')) ? $expr : AST_Cast($expr, $type);
+}
+
+sub convert_as_if_by_assignment {
+	my ($expr, $target_type) = @_;
+	return $expr if $expr->get('type') eq $target_type;
+	if ((is_arithmetic($expr->get('type')) && is_arithmetic($target_type))
+		|| (is_null_pointer_const($expr) && $target_type->is('T_Pointer'))) {
+		return convert_type($expr, $target_type) ;
+	}
+	die "cant conver $expr to $target_type";
 }
 
 sub types_equal {
@@ -86,6 +111,9 @@ sub const_to_initval {
 		},
 		T_Double => sub() {
 			return I_DoubleInit($val);
+		},
+		T_Pointer => sub() {
+			return I_ULongInit($val == 0 ? $val : die "$val not null constant");
 		},
 		default => sub() {
 			die "unknown type: $var_type";
