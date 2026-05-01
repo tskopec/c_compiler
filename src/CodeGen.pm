@@ -335,7 +335,7 @@ sub asm_type_of {
 		"T_Int, T_UInt" => ASM_Longword(),
 		"T_Long, T_ULong" => ASM_Quadword(),
 		"T_Double" => ASM_Double(),
-		default => => sub() { die "unknown type $val" }
+		default => => sub { die "unknown type $val" }
 	});
 }
 
@@ -345,7 +345,7 @@ sub size_in_bytes {
 		ASM_Longword => 4,
 		ASM_Quadword => 8,
 		ASM_Double => 8,
-		default => sub() { die "unknown type $type" }
+		default => sub { die "unknown type $type" }
 	});
 }
 
@@ -362,7 +362,7 @@ sub get_static_constant {
 		C_ConstDouble => sub($val) {
 			return "_double_const_" . $::global_counter++;
 		},
-		default => sub() { die "unknown constant type $constant" }
+		default => sub { die "unknown constant type $constant" }
 	});
 	push(@static_constants, ASM_StaticConstant($label, $alignment, $static_init));
 	return $static_constants[-1];

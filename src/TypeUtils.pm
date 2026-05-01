@@ -30,16 +30,16 @@ sub get_common_type {
 sub get_common_pointer_type {
 	my ($t1, $t2) = map { $_->get('type') } @_;
 	return $t1 if ($t1 eq $t2);
-	return $t1 if (is_null_pointer_const($_[0]));
-	return $t2 if (is_null_pointer_const($_[1]));
-	die "incompatible types: " . @_;
+	return T_Pointer($t1) if (is_null_pointer_const($_[0]));
+	return T_Pointer($t2) if (is_null_pointer_const($_[1]));
+	die "incompatible types: " . join(" - ", @_);
 }
 
 sub is_null_pointer_const {
-	return shift()->match({
-		"C_ConstInt, C_ConstUInt, C_ConstLong, C_ConstULong" => sub ($val) { $val == 0 },
-		default => 0
-	});
+	my $expr = shift;
+	return 0 unless $expr->is('AST_ConstantExpr');
+	return 0 if $expr->get('constant')->is('C_ConstDouble');
+	return $expr->get('constant')->get('val') == 0;
 }
 
 sub get_int_type_rank {
@@ -47,7 +47,9 @@ sub get_int_type_rank {
 	return $type->match({
 		"T_Long, T_ULong" => sub() { return 2 },
 		"T_Int, T_UInt" => sub() { return 1 },
-		default => sub() { die "no rank for type $type" }
+		default => sub {
+			die "no rank for type $type"
+		}
 	});
 }
 
@@ -71,9 +73,9 @@ sub convert_as_if_by_assignment {
 	return $expr if $expr->get('type') eq $target_type;
 	if ((is_arithmetic($expr->get('type')) && is_arithmetic($target_type))
 		|| (is_null_pointer_const($expr) && $target_type->is('T_Pointer'))) {
-		return convert_type($expr, $target_type) ;
+		return convert_type($expr, $target_type);
 	}
-	die "cant conver $expr to $target_type";
+	die "cant convert $expr to $target_type";
 }
 
 sub types_equal {
@@ -112,10 +114,10 @@ sub const_to_initval {
 		T_Double => sub() {
 			return I_DoubleInit($val);
 		},
-		T_Pointer => sub() {
+		T_Pointer => sub($to_type) {
 			return I_ULongInit($val == 0 ? $val : die "$val not null constant");
 		},
-		default => sub() {
+		default => sub {
 			die "unknown type: $var_type";
 		}
 	}));

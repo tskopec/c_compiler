@@ -121,19 +121,19 @@ sub process_declarator {
 		},
 		FunDeclarator => sub($params, $inner_decl) {
 			if ($inner_decl->is('Identifier')) {
-				my (@param_names, @param_types);
+				my (@params, @param_types);
 				for my $p (@$params) {
 					my ($param_name, $param_type) = process_declarator($p->get('declarator'), $p->get('type'));
 					die "fun pointers not supported" if $param_type->is('T_FunType');
-					push @param_names, $param_name;
+					push @params, AST_VarDeclaration($param_name, undef, $param_type, undef);
 					push @param_types, $param_type;
 				}
-				return ($inner_decl->get('name'), T_FunType(\@param_types, $base_type), \@param_names);
+				return ($inner_decl->get('name'), T_FunType(\@param_types, $base_type), \@params);
 			} else {
 				die "inner declarator must be simple identifier: $inner_decl";
 			}
 		},
-		default => sub() {
+		default => sub {
 			die "bad declarator $decl, type $base_type";
 		}
 	});

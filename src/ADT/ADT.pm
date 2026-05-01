@@ -43,7 +43,7 @@ sub new {
 
 sub get {
 	my ($self, $key) = @_;
-	die "bad key $key" unless (exists $self->{$key});
+	die "$self: bad key '$key'" unless (exists $self->{$key});
 	return $self->{$key};
 }
 

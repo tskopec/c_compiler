@@ -179,10 +179,10 @@ sub resolve_expr_ids {
 			resolve_expr_ids($_, $ids_map) for @$args;
 		},
 		AST_Dereference => sub($e, $type) {
-			resolve_expr_ids($e);
+			resolve_expr_ids($e, $ids_map);
 		},
 		AST_AddrOf => sub($e, $type) {
-			resolve_expr_ids($e);
+			resolve_expr_ids($e, $ids_map);
 		},
 		default => sub { die "unknown expression $expr" }
 	});
@@ -211,22 +211,21 @@ sub check_types {
 	my ($node, $parent_node) = @_;
 	if ($node isa 'ADT::ADT') {
 		$node->match({
-			AST_FunDeclaration => sub($name, $params, $body, $ret_type, $storage) {
-				$current_fun_ret_type = $ret_type;
-				my $f_type = T_FunType([ map { $_->get('type') } @$params ], $ret_type);
+			AST_FunDeclaration => sub($name, $params, $body, $fun_type, $storage) {
+				$current_fun_ret_type = $fun_type->get('ret_type');
 				my $has_body = defined($body);
 				my $already_defined = 0;
 				my $global = not is_ADT($storage, 'S_Static');
 
 				if (exists $symbol_table{$name}) {
 					$already_defined = get_symbol_attr($name, 'defined');
-					die "incompatible declarations: $name" if (!types_equal(get_symbol_attr($name, 'type'), $f_type));
+					die "incompatible declarations: $name" if (!types_equal(get_symbol_attr($name, 'type'), $fun_type));
 					die "fun defined multiple times: $name" if ($already_defined && $has_body);
 					die "static fun declaration after non-static" if (get_symbol_attr($name, 'global') && !$global);
 					$global = get_symbol_attr($name, 'global');
 				}
 				$symbol_table{$name} = {
-					type => $f_type,
+					type => $fun_type,
 					attrs => A_FunAttrs(
 						($already_defined || $has_body),
 						0+$global
@@ -357,12 +356,12 @@ sub check_types {
 				check_types($e1, $node);
 				check_types($e2, $node);
 				if ($op->is('AST_Multiply', 'AST_Divide', 'AST_Modulo')) {
-					die "cant $op pointer" if (T_Pointer()->is($e1->get('type'), $e2->get('type')));
+					die "cant $op pointer" if ($e1->get('type')->is('T_Pointer') || $e2->get('type')->is('T_Pointer'));
 				}
 				if ($op->is('AST_And', 'AST_Or')) {
 					$node->set('type', T_Int());
 				} else {
-					my $is_pointer_comp = $op->is('AST_Equal', 'AST_NotEqual') && T_Pointer()->is($e1->get('type'), $e2->get('type'));
+					my $is_pointer_comp = $op->is('AST_Equal', 'AST_NotEqual') && ($e1->get('type')->is('T_Pointer') || $e2->get('type')->is('T_Pointer'));
 					my $common_type = $is_pointer_comp
 						? get_common_pointer_type($e1, $e2)
 						: get_common_type($e1->get('type'), $e2->get('type'));
@@ -390,7 +389,7 @@ sub check_types {
 				check_types($cond, $node);
 				check_types($then, $node);
 				check_types($else, $node);
-				my $common_type = T_Pointer()->is($then->get('type'), $else->get('type'))
+				my $common_type = $then->get('type')->is('T_Pointer') || $else->get('type')->is('T_Pointer')
 					? get_common_pointer_type($then, $else)
 					: get_common_type($then->get('type'), $else->get('type'));
 				$node->set('then', convert_type($then, $common_type));
@@ -410,10 +409,10 @@ sub check_types {
 					default => sub { die "cant dereference $expr" }
 				});
 			},
-			AST_AddrOf => sub($expr) {
+			AST_AddrOf => sub($expr, $dummy_type) {
 				die "$expr not lvalue" unless is_lval($expr);
 				check_types($expr, $node);
-				$node->set('type', $expr->get('type'));
+				$node->set('type', T_Pointer($expr->get('type')));
 			},
 			default => sub {
 				check_types($_, $node) for $node->values_in_order();

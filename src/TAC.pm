@@ -120,13 +120,13 @@ sub emit_TAC {
 				$cast_instr = $expr_type->match({
 					'T_Int, T_Long' => TAC_IntToDouble($res, $dst),
 					'T_UInt, T_ULong' => TAC_UIntToDouble($res, $dst),
-					default => sub() { die "bad type" }
+					default => sub { die "bad type" }
 				});
 			} elsif ($expr_type->is('T_Double')) {
 				$cast_instr = $type->match({
 					'T_Int, T_Long' => TAC_DoubleToInt($res, $dst),
 					'T_UInt, T_ULong' => TAC_DoubleToUInt($res, $dst),
-					default => sub() { die "bad type" }
+					default => sub { die "bad type" }
 				});
 			} else {
 				my $expr_type_rank = get_int_type_rank($expr_type);
@@ -286,7 +286,7 @@ sub get_default_init {
 		T_Long => I_LongInit(0),
 		T_ULong => I_ULongInit(0),
 		T_Double => I_DoubleInit(0.0),
-		default => sub() { die "unknown type $type" }
+		default => sub { die "unknown type $type" }
 	});
 }
 
