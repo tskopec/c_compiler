@@ -9,7 +9,7 @@ use Cwd qw(abs_path);
 
 our $src_dir;
 BEGIN {
-	push(@INC, $src_dir = abs_path(__FILE__) =~ s|[^/]+$||r);
+	push(@INC, $src_dir = abs_path(__FILE__) =~ s{[^/]+$}{}r);
 }
 
 use Utils qw(print_tree);

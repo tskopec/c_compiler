@@ -124,7 +124,7 @@ sub translate_to_ASM {
 						ASM_Mov(asm_type_of($dst), ASM_Imm(0), $asm_dst),
 						ASM_SetCC($codes->[$i], $asm_dst));
 			} elsif (not $src_asm_type->is('ASM_Double')) {
-				if (-1 != ($i = $op->index_of_in(qw(TAC_Divide TAC_Modulo)))) {
+				if (-1 != ($i = $op->index_of_in(qw(TAC_Divide TAC_Remainder)))) {
 					return (
 						ASM_Mov($src_asm_type, translate_to_ASM($src1), ASM_Reg(ASM_AX())),
 						(is_signed(get_type_of_TAC($src1)) ? (

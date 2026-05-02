@@ -376,7 +376,7 @@ sub parse_binop {
 		'-' => AST_Subtract(),
 		'*' => AST_Multiply(),
 		'/' => AST_Divide(),
-		'%' => AST_Modulo(),
+		'%' => AST_Remainder(),
 		'&&' => AST_And(),
 		'||' => AST_Or(),
 		'==' => AST_Equal(),

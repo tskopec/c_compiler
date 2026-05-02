@@ -337,42 +337,39 @@ sub check_types {
 				}
 				$node->set('type', $type);
 			},
-			AST_Unary => sub($op, $expr, $dummy_type) { # TODO refaktor?
+			AST_Unary => sub($op, $expr, $dummy_type) {
 				check_types($expr, $node);
 				my $expr_type = $expr->get('type');
-				if ($op->is('AST_Complement')) {
-					die "cant complement $expr_type" if ($expr_type->is('T_Double', 'T_Pointer'));
-					$node->set('type', $expr_type);
-				} elsif ($op->is('AST_Negate')) {
-					die "cant negate $expr_type" if ($expr_type->is('T_Pointer'));
-					$node->set('type', $expr_type);
-				} elsif ($op->is('AST_Not')) {
-					$node->set('type', T_Int);
-				} else {
-					$node->set('type', $expr_type);
-				}
+				$op->match({
+					AST_Complement => sub {
+						die "cant complement $expr_type" if ($expr_type->is('T_Double', 'T_Pointer'));
+					},
+					AST_Negate => sub {
+						die "cant negate $expr_type" if ($expr_type->is('T_Pointer'));
+					},
+					AST_Not => sub {
+						$expr_type = T_Int;
+					}
+				});
+				$node->set('type', $expr_type);
 			},
-			AST_Binary => sub($op, $e1, $e2, $dummy_type) { # TODO refaktor?
+			AST_Binary => sub($op, $e1, $e2, $dummy_type) {
 				check_types($e1, $node);
 				check_types($e2, $node);
-				if ($op->is('AST_Multiply', 'AST_Divide', 'AST_Modulo')) {
-					die "cant $op pointer" if ($e1->get('type')->is('T_Pointer') || $e2->get('type')->is('T_Pointer'));
-				}
+				my $is_pointer_op = $e1->get('type')->is('T_Pointer') || $e2->get('type')->is('T_Pointer');
+				die "cant $op pointer" if ($is_pointer_op && $op->is('AST_Multiply', 'AST_Divide', 'AST_Remainder'));
+
 				if ($op->is('AST_And', 'AST_Or')) {
 					$node->set('type', T_Int());
 				} else {
-					my $is_pointer_comp = $op->is('AST_Equal', 'AST_NotEqual') && ($e1->get('type')->is('T_Pointer') || $e2->get('type')->is('T_Pointer'));
-					my $common_type = $is_pointer_comp
+					my $common_type = $is_pointer_op && $op->is('AST_Equal', 'AST_NotEqual')
 						? get_common_pointer_type($e1, $e2)
 						: get_common_type($e1->get('type'), $e2->get('type'));
 					$node->set('expr1', convert_type($e1, $common_type));
 					$node->set('expr2', convert_type($e2, $common_type));
-					if ($op->is('AST_Add', 'AST_Subtract', 'AST_Multiply', 'AST_Divide')) {
+					die "cant apply '%' to double" if ($common_type->is('T_Double') && $op->is('AST_Remainder'));
+					if ($op->is('AST_Add', 'AST_Subtract', 'AST_Multiply', 'AST_Divide', 'AST_Remainder')) {
 						$node->set('type', $common_type);
-					} elsif ($op->is('AST_Modulo')) {
-						$node->set('type', $common_type->is('T_Double')
-							? die "cant modulo double"
-							: $common_type);
 					} else {
 						$node->set('type', T_Int);
 					}
@@ -426,27 +423,24 @@ sub check_types {
 sub get_symbol_attr {
 	my ($symbol, $attr_name) = @_;
 	return $symbol_table{$symbol}->{type} if ($attr_name eq 'type');
-	my $res;
 	($symbol_table{$symbol}->{attrs})->match({
 		A_FunAttrs => sub($defined, $global) {
-			# TODO zkusit znova rovnou return
-			$res = $defined if ($attr_name eq 'defined');
-			$res = $global if ($attr_name eq 'global');
+			return $defined if ($attr_name eq 'defined');
+			return $global if ($attr_name eq 'global');
 		},
 		A_StaticAttrs => sub($init_val, $global) {
-			$res = $init_val if ($attr_name eq 'init_value');
-			$res = $global if ($attr_name eq 'global');
+			return $init_val if ($attr_name eq 'init_value');
+			return $global if ($attr_name eq 'global');
 		},
-		A_LocalAttrs => sub() { ; },
+		A_LocalAttrs => sub() { return undef },
 		default => sub {
 			die "cant get attribute '$attr_name' of $symbol in " . $symbol_table{$symbol}->{attrs};
 		}
 	});
-	return $res;
 }
 
 sub is_lval {
-	return shift()->is('AST_Var');
+	return shift()->is('AST_Var', 'AST_Dereference');
 }
 
 #3# LOOP LABELING ###

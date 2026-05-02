@@ -49,7 +49,7 @@ AST_Expression =
 AST_UnaryOperator =
 	AST_Complement | AST_Negate | AST_Not
 AST_BinaryOperator =
-	AST_Add | AST_Subtract | AST_Multiply | AST_Divide | AST_Modulo | AST_And | AST_Or | AST_Equal | AST_NotEqual | AST_LessThan | AST_LessOrEqual | AST_GreaterThan | AST_GreaterOrEqual
+	AST_Add | AST_Subtract | AST_Multiply | AST_Divide | AST_Remainder | AST_And | AST_Or | AST_Equal | AST_NotEqual | AST_LessThan | AST_LessOrEqual | AST_GreaterThan | AST_GreaterOrEqual
 
 # Types & misc
 T_Type =
@@ -113,7 +113,7 @@ TAC_Value =
 TAC_UnaryOperator =
 	TAC_Complement | TAC_Negate | TAC_Not
 TAC_BinaryOperator =
-	TAC_Add | TAC_Subtract | TAC_Multiply | TAC_Divide | TAC_Modulo | TAC_And | TAC_Or | TAC_Equal | TAC_NotEqual | TAC_LessThan | TAC_LessOrEqual | TAC_GreaterThan | TAC_GreaterOrEqual
+	TAC_Add | TAC_Subtract | TAC_Multiply | TAC_Divide | TAC_Remainder | TAC_And | TAC_Or | TAC_Equal | TAC_NotEqual | TAC_LessThan | TAC_LessOrEqual | TAC_GreaterThan | TAC_GreaterOrEqual
 
 # ASM ###
 ASM_Program =

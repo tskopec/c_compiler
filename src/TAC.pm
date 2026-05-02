@@ -232,7 +232,7 @@ sub convert_binop {
 		AST_Subtract => TAC_Subtract(),
 		AST_Multiply => TAC_Multiply(),
 		AST_Divide => TAC_Divide(),
-		AST_Modulo => TAC_Modulo(),
+		AST_Remainder => TAC_Remainder(),
 		AST_And => TAC_And(),
 		AST_Or => TAC_Or(),
 		AST_Equal => TAC_Equal(),
