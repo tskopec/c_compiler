@@ -17,8 +17,7 @@ use constant MAX_INT => 2 ** 31 - 1;
 sub get_common_type {
 	my ($t1, $t2) = @_;
 	return $t1 if ($t1->same_type_as($t2));
-	return $t1 if $t1->is('T_Double');
-	return $t2 if $t2->is('T_Double');
+	return T_Double if $t1->is('T_Double') || $t2->is('T_Double');
 	my ($rank1, $rank2) = (get_int_type_rank($t1), get_int_type_rank($t2));
 	if ($rank1 == $rank2) {
 		return is_signed($t1) ? $t2 : $t1;
@@ -70,7 +69,7 @@ sub convert_type {
 
 sub convert_as_if_by_assignment {
 	my ($expr, $target_type) = @_;
-	return $expr if $expr->get('type') eq $target_type;
+	return $expr if ($expr->get('type') eq $target_type);
 	if ((is_arithmetic($expr->get('type')) && is_arithmetic($target_type))
 		|| (is_null_pointer_const($expr) && $target_type->is('T_Pointer'))) {
 		return convert_type($expr, $target_type);

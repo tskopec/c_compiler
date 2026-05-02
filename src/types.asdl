@@ -107,6 +107,9 @@ TAC_Instruction =
 	| TAC_JumpIfNotZero(TAC_Value cond, string target)
 	| TAC_Label(string ident)
 	| TAC_FunCall(string name, TAC_Value* params, TAC_Value dst)
+	| TAC_GetAddress(TAC_Value src, TAC_Value dst)
+	| TAC_Load(TAC_Value src_ptr, TAC_Value dst)
+	| TAC_Store(TAC_Value src, TAC_Value dst_ptr)
 TAC_Value =
 	TAC_Constant(C_Constant constant)
 	| TAC_Variable(string name)

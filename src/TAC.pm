@@ -3,10 +3,18 @@ use strict;
 use warnings;
 use feature qw(say state signatures);
 
+use ADT::ParseASDL;
 use ADT::AlgebraicTypes qw(:AST :TAC :T :C :A :I is_ADT);
 use Semantics;
 use Utils qw(labels);
 use TypeUtils qw(get_int_type_rank is_signed);
+
+BEGIN { # Local data types
+	my @asdl_lines = split /\n/, q{
+		ExpResult = PlainOperand(TAC_Value val) | DereferencedPointer(TAC_Value val)
+	};
+	ADT::AlgebraicTypes::local_types('TAC', @asdl_lines);
+}
 
 sub emit_TAC {
 	my ($node, $instructions) = @_;
@@ -35,20 +43,20 @@ sub emit_TAC {
 		},
 		AST_VarDeclaration => sub($name, $init, $type, $storage) {
 			if (defined $init && !is_ADT($storage, 'S_Static')) {
-				emit_TAC(AST_Assignment(AST_Var($name, $type), $init, $type), $instructions);
+				emit_TAC_and_convert(AST_Assignment(AST_Var($name, $type), $init, $type), $instructions);
 			}
 		},
 		AST_Block => sub($items) {
 			emit_TAC($_->value_by_index(0), $instructions) for @$items;
 		},
 		AST_Return => sub($exp) {
-			push(@$instructions, TAC_Return(emit_TAC($exp, $instructions)));
+			push(@$instructions, TAC_Return(emit_TAC_and_convert($exp, $instructions)));
 		},
 		AST_Null => sub() { ; },
 		AST_If => sub($cond, $then, $else) {
 			my ($else_label) = labels('else') if defined $else;
 			my ($end_label) = labels('end');
-			my $cond_res = emit_TAC($cond, $instructions);
+			my $cond_res = emit_TAC_and_convert($cond, $instructions);
 			push @$instructions, TAC_JumpIfZero($cond_res, defined $else ? $else_label : $end_label);
 			emit_TAC($then, $instructions);
 			push @$instructions, TAC_Jump($end_label);
@@ -66,13 +74,13 @@ sub emit_TAC {
 			push @$instructions, TAC_Label($start_label);
 			emit_TAC($body, $instructions);
 			push @$instructions, TAC_Label("_continue$label");
-			my $cond_res = emit_TAC($cond, $instructions);
+			my $cond_res = emit_TAC_and_convert($cond, $instructions);
 			push(@$instructions, (TAC_JumpIfNotZero($cond_res, $start_label),
 				TAC_Label("_break$label")));
 		},
 		AST_While => sub($cond, $body, $label) {
 			push @$instructions, TAC_Label("_continue$label");
-			my $cond_res = emit_TAC($cond, $instructions);
+			my $cond_res = emit_TAC_and_convert($cond, $instructions);
 			push @$instructions, TAC_JumpIfZero($cond_res, "_break$label");
 			emit_TAC($body, $instructions);
 			push(@$instructions, (TAC_Jump("_continue$label"),
@@ -80,18 +88,24 @@ sub emit_TAC {
 		},
 		AST_For => sub($init, $cond, $post, $body, $label) {
 			my ($start_label) = labels('start');
-			if ($init->is('AST_ForInitDeclaration') || defined $init->get('expr')) {
-				emit_TAC($init->value_by_index(0), $instructions);
-			}
+			$init->match({
+				AST_ForInitDeclaration => sub($decl) {
+					emit_TAC($decl, $instructions);
+				},
+				AST_ForInitExpression => => sub($expr) {
+					emit_TAC_and_convert($expr, $instructions) if (defined $expr);
+				}
+			});
 			push @$instructions, TAC_Label($start_label);
 			if (defined $cond) {
-				my $cond_res = emit_TAC($cond, $instructions);
+				my $cond_res = emit_TAC_and_convert($cond, $instructions);
 				push @$instructions, TAC_JumpIfZero($cond_res, "_break$label");
 			}
 			emit_TAC($body, $instructions);
 			push @$instructions, TAC_Label("_continue$label");
-			emit_TAC($post, $instructions) if defined $post;
-			push(@$instructions, (TAC_Jump($start_label),
+			emit_TAC_and_convert($post, $instructions) if defined $post;
+			push(@$instructions, (
+				TAC_Jump($start_label),
 				TAC_Label("_break$label")));
 		},
 		AST_Break => sub($label) {
@@ -101,7 +115,7 @@ sub emit_TAC {
 			push @$instructions, TAC_Jump("_continue$label");
 		},
 		AST_ExprStatement => sub($expr) {
-			emit_TAC($expr, $instructions);
+			emit_TAC_and_convert($expr, $instructions);
 		},
 		AST_ConstantExpr => sub($const, $type) {
 			return TAC_Constant($const);
@@ -111,7 +125,7 @@ sub emit_TAC {
 		},
 		AST_Cast => sub($expr, $type) {
 			my $expr_type = $expr->get('type');
-			my $res = emit_TAC($expr, $instructions);
+			my $res = emit_TAC_and_convert($expr, $instructions);
 			return $res if ($type->same_type_as($expr_type));
 
 			my $dst = make_TAC_var($type);
@@ -146,7 +160,7 @@ sub emit_TAC {
 		},
 		AST_Unary => sub($op, $exp, $type) {
 			my $unop = convert_unop($op);
-			my $src = emit_TAC($exp, $instructions);
+			my $src = emit_TAC_and_convert($exp, $instructions);
 			my $dst = make_TAC_var($type);
 			push @$instructions, TAC_Unary($unop, $src, $dst);
 			return $dst;
@@ -155,9 +169,9 @@ sub emit_TAC {
 			my $dst = make_TAC_var($type);
 			if ($op->is('AST_And')) {
 				my ($false_label, $end_label) = labels(qw(false end));
-				my $src1 = emit_TAC($exp1, $instructions);
+				my $src1 = emit_TAC_and_convert($exp1, $instructions);
 				push @$instructions, TAC_JumpIfZero($src1, $false_label);
-				my $src2 = emit_TAC($exp2, $instructions);
+				my $src2 = emit_TAC_and_convert($exp2, $instructions);
 				push(@$instructions, TAC_JumpIfZero($src2, $false_label),
 					TAC_Copy(TAC_Constant(C_ConstInt(1)), $dst),
 					TAC_Jump($end_label),
@@ -166,9 +180,9 @@ sub emit_TAC {
 					TAC_Label($end_label));
 			} elsif ($op->is('AST_Or')) {
 				my ($true_label, $end_label) = labels(qw(true end));
-				my $src1 = emit_TAC($exp1, $instructions);
+				my $src1 = emit_TAC_and_convert($exp1, $instructions);
 				push @$instructions, TAC_JumpIfNotZero($src1, $true_label);
-				my $src2 = emit_TAC($exp2, $instructions);
+				my $src2 = emit_TAC_and_convert($exp2, $instructions);
 				push(@$instructions, TAC_JumpIfNotZero($src2, $true_label),
 					TAC_Copy(TAC_Constant(C_ConstInt(0)), $dst),
 					TAC_Jump($end_label),
@@ -177,35 +191,35 @@ sub emit_TAC {
 					TAC_Label($end_label));
 			} else {
 				my $binop = convert_binop($op);
-				my $src1 = emit_TAC($exp1, $instructions);
-				my $src2 = emit_TAC($exp2, $instructions);
+				my $src1 = emit_TAC_and_convert($exp1, $instructions);
+				my $src2 = emit_TAC_and_convert($exp2, $instructions);
 				push @$instructions, TAC_Binary($binop, $src1, $src2, $dst);
 			}
 			return $dst;
 		},
 		AST_Assignment => sub($var, $expr, $type) {
 			my $tac_var = emit_TAC($var, $instructions);
-			my $value = emit_TAC($expr, $instructions);
+			my $value = emit_TAC_and_convert($expr, $instructions);
 			push @$instructions, TAC_Copy($value, $tac_var);
 			return $tac_var;
 		},
 		AST_Conditional => sub($cond, $then, $else, $type) {
 			my $res = make_TAC_var($type);
 			my ($e2_label, $end_label) = labels(qw(e2 end));
-			my $cond_res = emit_TAC($cond, $instructions);
+			my $cond_res = emit_TAC_and_convert($cond, $instructions);
 			push @$instructions, TAC_JumpIfZero($cond_res, $e2_label);
-			my $e1_res = emit_TAC($then, $instructions);
+			my $e1_res = emit_TAC_and_convert($then, $instructions);
 			push @$instructions, (TAC_Copy($e1_res, $res),
 				TAC_Jump($end_label),
 				TAC_Label($e2_label));
-			my $e2_res = emit_TAC($else, $instructions);
+			my $e2_res = emit_TAC_and_convert($else, $instructions);
 			push @$instructions, (TAC_Copy($e2_res, $res),
 				TAC_Label($end_label));
 			return $res;
 		},
 		AST_FunctionCall => sub($name, $args, $type) {
 			my $dst = make_TAC_var($type);
-			my $arg_vals = [ map { emit_TAC($_, $instructions) } @$args ];
+			my $arg_vals = [ map { emit_TAC_and_convert($_, $instructions) } @$args ];
 			push(@$instructions, (TAC_FunCall($name, $arg_vals, $dst)));
 			return $dst;
 		},
@@ -213,6 +227,10 @@ sub emit_TAC {
 			die "unknown AST node: $node";
 		}
 	});
+}
+
+sub emit_TAC_and_convert {
+	die "todo";
 }
 
 sub convert_unop {

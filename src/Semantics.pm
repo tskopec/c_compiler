@@ -358,7 +358,6 @@ sub check_types {
 				check_types($e2, $node);
 				my $is_pointer_op = $e1->get('type')->is('T_Pointer') || $e2->get('type')->is('T_Pointer');
 				die "cant $op pointer" if ($is_pointer_op && $op->is('AST_Multiply', 'AST_Divide', 'AST_Remainder'));
-
 				if ($op->is('AST_And', 'AST_Or')) {
 					$node->set('type', T_Int());
 				} else {
