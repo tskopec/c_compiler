@@ -12,7 +12,7 @@ my $param_name_re = qr/\w+/;
 sub parse_types {
 	my @declarations;
 	for my $line (@_) {
-		next if $line =~ /^#|^\s*$/;
+		next if $line =~ /^\s*(#|$)/;
 		push(@declarations, "") if ($line =~ /=/);
 		$declarations[-1] .= $line;
 	}

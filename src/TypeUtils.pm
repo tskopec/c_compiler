@@ -44,8 +44,8 @@ sub is_null_pointer_const {
 sub get_int_type_rank {
 	my $type = shift;
 	return $type->match({
-		"T_Long, T_ULong" => sub() { return 2 },
-		"T_Int, T_UInt" => sub() { return 1 },
+		"T_Long, T_ULong, T_Pointer" => 2,
+		"T_Int, T_UInt" => 1,
 		default => sub {
 			die "no rank for type $type"
 		}

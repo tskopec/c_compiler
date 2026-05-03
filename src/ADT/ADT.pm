@@ -126,8 +126,12 @@ sub check_value {
 
 	for my $val (ref($value) eq 'ARRAY' ? $value->@* : ($value)) {
 		if ($type->{name} =~ /^[A-Z]/) {
-			die("$val not ADT")				 unless ($val isa 'ADT::ADT');
-			die"$val not " . $type->{name} unless $val->is($type->{name});
+			unless ($val isa 'ADT::ADT') {
+				die("$val not ADT");
+			}
+			unless ($val->is($type->{name})) {
+				die("$val not " . $type->{name});
+			}
 		} else {
 			die("$val not primitive " . $type->{name}) unless (ref($val) eq "");
 			if ($type->{name} eq 'int') {

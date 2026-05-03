@@ -11,6 +11,7 @@ use TypeUtils qw(get_int_type_rank is_signed);
 
 BEGIN { # Local data types
 	my @asdl_lines = split /\n/, q{
+		# expression result that hasn't been lvalue converted
 		ExpResult = PlainOperand(TAC_Value val) | DereferencedPointer(TAC_Value val)
 	};
 	ADT::AlgebraicTypes::local_types('TAC', @asdl_lines);
@@ -31,12 +32,12 @@ sub emit_TAC {
 		},
 		AST_FunDeclaration => sub($name, $params, $body, $ret_type, $storage) {
 			if (defined $body) {
-				emit_TAC($body, my $instructions = []);
-				push @$instructions, TAC_Return(TAC_Constant(C_ConstInt(0)));
+				emit_TAC($body, my $fun_instructions = []);
+				push @$fun_instructions, TAC_Return(TAC_Constant(C_ConstInt(0)));
 				return TAC_Function($name,
 					Semantics::get_symbol_attr($name, 'global'),
 					[ map { $_->get('name') } @$params ],
-					$instructions);
+					$fun_instructions);
 			} else {
 				return undef;
 			}
@@ -93,7 +94,7 @@ sub emit_TAC {
 					emit_TAC($decl, $instructions);
 				},
 				AST_ForInitExpression => => sub($expr) {
-					emit_TAC_and_convert($expr, $instructions) if (defined $expr);
+					emit_TAC($expr, $instructions) if (defined $expr);
 				}
 			});
 			push @$instructions, TAC_Label($start_label);
@@ -103,7 +104,7 @@ sub emit_TAC {
 			}
 			emit_TAC($body, $instructions);
 			push @$instructions, TAC_Label("_continue$label");
-			emit_TAC_and_convert($post, $instructions) if defined $post;
+			emit_TAC($post, $instructions) if defined $post;
 			push(@$instructions, (
 				TAC_Jump($start_label),
 				TAC_Label("_break$label")));
@@ -115,18 +116,18 @@ sub emit_TAC {
 			push @$instructions, TAC_Jump("_continue$label");
 		},
 		AST_ExprStatement => sub($expr) {
-			emit_TAC_and_convert($expr, $instructions);
+			emit_TAC($expr, $instructions);
 		},
 		AST_ConstantExpr => sub($const, $type) {
-			return TAC_Constant($const);
+			return PlainOperand(TAC_Constant($const));
 		},
 		AST_Var => sub($ident, $type) {
-			return TAC_Variable($ident);
+			return PlainOperand(TAC_Variable($ident));
 		},
 		AST_Cast => sub($expr, $type) {
 			my $expr_type = $expr->get('type');
 			my $res = emit_TAC_and_convert($expr, $instructions);
-			return $res if ($type->same_type_as($expr_type));
+			return PlainOperand($res) if ($type->same_type_as($expr_type));
 
 			my $dst = make_TAC_var($type);
 			my $cast_instr;
@@ -156,14 +157,14 @@ sub emit_TAC {
 				}
 			}
 			push(@$instructions, $cast_instr);
-			return $dst;
+			return PlainOperand($dst);
 		},
 		AST_Unary => sub($op, $exp, $type) {
 			my $unop = convert_unop($op);
 			my $src = emit_TAC_and_convert($exp, $instructions);
 			my $dst = make_TAC_var($type);
 			push @$instructions, TAC_Unary($unop, $src, $dst);
-			return $dst;
+			return PlainOperand($dst);
 		},
 		AST_Binary => sub($op, $exp1, $exp2, $type) {
 			my $dst = make_TAC_var($type);
@@ -195,13 +196,21 @@ sub emit_TAC {
 				my $src2 = emit_TAC_and_convert($exp2, $instructions);
 				push @$instructions, TAC_Binary($binop, $src1, $src2, $dst);
 			}
-			return $dst;
+			return PlainOperand($dst);
 		},
-		AST_Assignment => sub($var, $expr, $type) {
-			my $tac_var = emit_TAC($var, $instructions);
-			my $value = emit_TAC_and_convert($expr, $instructions);
-			push @$instructions, TAC_Copy($value, $tac_var);
-			return $tac_var;
+		AST_Assignment => sub($lhs, $rhs, $type) {
+			my $lval = emit_TAC($lhs, $instructions);
+			my $rval = emit_TAC_and_convert($rhs, $instructions);
+			$lval->match({
+				PlainOperand => sub($obj) {
+					push @$instructions, TAC_Copy($rval, $obj);
+					return $lval;
+				},
+				DereferencedPointer => sub($ptr) {
+					push @$instructions, TAC_Store($rval, $ptr);
+					return PlainOperand($rval);
+				}
+			});
 		},
 		AST_Conditional => sub($cond, $then, $else, $type) {
 			my $res = make_TAC_var($type);
@@ -213,15 +222,34 @@ sub emit_TAC {
 				TAC_Jump($end_label),
 				TAC_Label($e2_label));
 			my $e2_res = emit_TAC_and_convert($else, $instructions);
-			push @$instructions, (TAC_Copy($e2_res, $res),
+			push @$instructions, (
+				TAC_Copy($e2_res, $res),
 				TAC_Label($end_label));
-			return $res;
+			return PlainOperand($res);
 		},
 		AST_FunctionCall => sub($name, $args, $type) {
 			my $dst = make_TAC_var($type);
 			my $arg_vals = [ map { emit_TAC_and_convert($_, $instructions) } @$args ];
 			push(@$instructions, (TAC_FunCall($name, $arg_vals, $dst)));
-			return $dst;
+			return PlainOperand($dst);
+		},
+		AST_Dereference => sub($expr, $type) {
+			my $res = emit_TAC_and_convert($expr, $instructions);
+			return DereferencedPointer($res);
+		},
+		AST_AddrOf => sub($expr, $type) {
+			my $val = emit_TAC($expr, $instructions);
+			$val->match({
+				PlainOperand => sub($obj) {
+					my $dst = make_TAC_var($type);
+					push @$instructions, TAC_GetAddress($obj, $dst);
+					return PlainOperand($dst);
+				},
+				DereferencedPointer => sub($ptr) {
+					return PlainOperand($ptr);
+				},
+				default => sub { die "$val not ExpResult" }
+			});
 		},
 		default => sub {
 			die "unknown AST node: $node";
@@ -230,7 +258,16 @@ sub emit_TAC {
 }
 
 sub emit_TAC_and_convert {
-	die "todo";
+	my ($expr, $instructions) = @_;
+	my $result = emit_TAC($expr, $instructions);
+	$result->match({
+		PlainOperand => sub($val) { return $val },
+		DereferencedPointer => sub($ptr) {
+			my $dst = make_TAC_var($expr->get('type'));
+			push @$instructions, TAC_Load($ptr, $dst);
+			return $dst;
+		}
+	});
 }
 
 sub convert_unop {
@@ -302,7 +339,7 @@ sub get_default_init {
 		T_Int => I_IntInit(0),
 		T_UInt => I_UIntInit(0),
 		T_Long => I_LongInit(0),
-		T_ULong => I_ULongInit(0),
+		"T_ULong, T_Pointer" => I_ULongInit(0),
 		T_Double => I_DoubleInit(0.0),
 		default => sub { die "unknown type $type" }
 	});
