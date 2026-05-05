@@ -140,33 +140,8 @@ sub emit_code {
 		ASM_Add => "\tadd",
 		ASM_Sub => "\tsub",
 		ASM_Mult => "\timul",
-		ASM_Reg => sub($reg) {
-			state $register_names = {
-				ASM_AX => { 	1 => "%al", 	4 => "%eax", 	8 => "%rax" },
-				ASM_CX => { 	1 => "%cl", 	4 => "%ecx", 	8 => "%rcx" },
-				ASM_DX => {	 	1 => "%dl", 	4 => "%edx", 	8 => "%rdx" },
-				ASM_DI => {	 	1 => "%dil", 	4 => "%edi", 	8 => "%rdi" },
-				ASM_SI => {	 	1 => "%sil", 	4 => "%esi", 	8 => "%rsi" },
-				ASM_R8 => {	 	1 => "%r8b", 	4 => "%r8d", 	8 => "%r8" },
-				ASM_R9 => {	 	1 => "%r9b", 	4 => "%r9d", 	8 => "%r9" },
-				ASM_R10 => { 	1 => "%r10b", 	4 => "%r10d", 	8 => "%r10" },
-				ASM_R11 => { 	1 => "%r11b", 	4 => "%r11d", 	8 => "%r11" },
-				ASM_SP => { 	1 => "%rsp", 	4 => "%rsp", 	8 => "%rsp" },
-				ASM_XMM0 => { 	1 => "%xmm0",	4 => "%xmm0",	8 => "%xmm0" },
-				ASM_XMM1 => { 	1 => "%xmm1", 	4 => "%xmm1", 	8 => "%xmm1" },
-				ASM_XMM2 => { 	1 => "%xmm2", 	4 => "%xmm2", 	8 => "%xmm2" },
-				ASM_XMM3 => { 	1 => "%xmm3", 	4 => "%xmm3", 	8 => "%xmm3" },
-				ASM_XMM4 => { 	1 => "%xmm4", 	4 => "%xmm4", 	8 => "%xmm4" },
-				ASM_XMM5 => { 	1 => "%xmm5", 	4 => "%xmm5", 	8 => "%xmm5" },
-				ASM_XMM6 => { 	1 => "%xmm6", 	4 => "%xmm6", 	8 => "%xmm6" },
-				ASM_XMM7 => { 	1 => "%xmm7", 	4 => "%xmm7", 	8 => "%xmm7" },
-				ASM_XMM14 => {	1 => "%xmm14",	4 => "%xmm14",	8 => "%xmm14" },
-				ASM_XMM15 => {	1 => "%xmm15",	4 => "%xmm15",	8 => "%xmm15" },
-			};
-			return $register_names->{$reg->{':tag'}}->{$register_width} // die "unknown register $reg w: $register_width";
-		},
-		ASM_Stack => sub($offset) {
-			return "$offset(%rbp)";
+		ASM_Memory => sub($reg, $offset) {
+			return ($offset || "") . "(" . emit_code($reg) . ")";
 		},
 		ASM_Data => sub($ident) {
 			return "$ident(%rip)";
@@ -179,6 +154,35 @@ sub emit_code {
 		},
 		ASM_Call => sub($label) {
 			return "\tcall $label" . (Semantics::get_symbol_attr($label, 'defined') ? "" : '@PLT') . "\n";
+		},
+		ASM_Lea => sub($src, $dst) {
+			return "\tleaq ". emit_code($src, 8) . ", " . emit_code($dst, 8) . "\n";
+		},
+		ASM_Reg => sub($reg) {
+			state $register_names = {
+				ASM_AX => { 	1 => "%al", 	4 => "%eax", 	8 => "%rax" },
+				ASM_CX => { 	1 => "%cl", 	4 => "%ecx", 	8 => "%rcx" },
+				ASM_DX => {	 	1 => "%dl", 	4 => "%edx", 	8 => "%rdx" },
+				ASM_DI => {	 	1 => "%dil", 	4 => "%edi", 	8 => "%rdi" },
+				ASM_SI => {	 	1 => "%sil", 	4 => "%esi", 	8 => "%rsi" },
+				ASM_R8 => {	 	1 => "%r8b", 	4 => "%r8d", 	8 => "%r8" },
+				ASM_R9 => {	 	1 => "%r9b", 	4 => "%r9d", 	8 => "%r9" },
+				ASM_R10 => { 	1 => "%r10b", 	4 => "%r10d", 	8 => "%r10" },
+				ASM_R11 => { 	1 => "%r11b", 	4 => "%r11d", 	8 => "%r11" },
+				ASM_SP => { 	1 => "%rsp", 	4 => "%rsp", 	8 => "%rsp" },
+				ASM_BP => {		1 => "%rsp",	4 => "%rbp",	8 => "%rbp" },
+				ASM_XMM0 => { 	1 => "%xmm0",	4 => "%xmm0",	8 => "%xmm0" },
+				ASM_XMM1 => { 	1 => "%xmm1", 	4 => "%xmm1", 	8 => "%xmm1" },
+				ASM_XMM2 => { 	1 => "%xmm2", 	4 => "%xmm2", 	8 => "%xmm2" },
+				ASM_XMM3 => { 	1 => "%xmm3", 	4 => "%xmm3", 	8 => "%xmm3" },
+				ASM_XMM4 => { 	1 => "%xmm4", 	4 => "%xmm4", 	8 => "%xmm4" },
+				ASM_XMM5 => { 	1 => "%xmm5", 	4 => "%xmm5", 	8 => "%xmm5" },
+				ASM_XMM6 => { 	1 => "%xmm6", 	4 => "%xmm6", 	8 => "%xmm6" },
+				ASM_XMM7 => { 	1 => "%xmm7", 	4 => "%xmm7", 	8 => "%xmm7" },
+				ASM_XMM14 => {	1 => "%xmm14",	4 => "%xmm14",	8 => "%xmm14" },
+				ASM_XMM15 => {	1 => "%xmm15",	4 => "%xmm15",	8 => "%xmm15" },
+			};
+			return $register_names->{$reg->{':tag'}}->{$register_width} // die "unknown register $reg w: $register_width";
 		},
 		default => sub { die "unknown asm node $node"; }
 	});
