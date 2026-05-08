@@ -7,7 +7,7 @@ use ADT::ParseASDL;
 use ADT::AlgebraicTypes qw(:AST :TAC :T :C :A :SI is_ADT);
 use Semantics;
 use Utils qw(labels);
-use TypeUtils qw(get_int_type_rank is_signed get_default_init);
+use TypeUtils qw(get_int_type_rank is_signed get_static_init);
 
 BEGIN { # Local data types
 	my @asdl_lines = split /\n/, q{
@@ -324,7 +324,7 @@ sub covert_symbols_to_TAC {
 					push(@tac_vars, TAC_StaticVariable($name, $global, $type, $init));
 				},
 				INI_Tentative => sub() {
-					push(@tac_vars, TAC_StaticVariable($name, $global, $type, get_default_init($type)));
+					push(@tac_vars, TAC_StaticVariable($name, $global, $type, get_static_init($type, 0)));
 				},
 				INI_NoInitializer => sub() { ; }
 			});

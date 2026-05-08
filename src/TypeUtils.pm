@@ -7,7 +7,7 @@ use ADT::AlgebraicTypes qw(:AST :INI :SI :T);
 
 use base 'Exporter';
 our @EXPORT_OK = qw(MAX_ULONG MAX_LONG MAX_UINT MAX_INT get_type_of_TAC get_common_type get_common_pointer_type
-	get_int_type_rank is_signed convert_type convert_as_if_by_assignment types_equal const_to_initval get_default_init);
+	get_int_type_rank is_signed convert_type convert_as_if_by_assignment types_equal const_to_initval get_static_init);
 
 use constant MAX_ULONG => 2 ** 64;
 use constant MAX_LONG => 2 ** 63 - 1;
@@ -97,43 +97,35 @@ sub const_to_initval {
 	if ($const->is('C_ConstDouble') && !$var_type->is('T_Double')) {
 		$val = int($val);
 	}
-	return INI_Initial($var_type->match({
+	return INI_Initial(get_static_init($var_type, $val));
+}
+
+sub get_static_init {
+	my ($type, $value) = @_;
+	return $type->match({
 		T_Int => sub() {
-			return SI_IntInit($val & 0xffffffff);
+			return SI_IntInit($value & 0xffffffff);
 		},
 		T_UInt => => sub() {
-			return SI_UIntInit($val & 0xffffffff);
+			return SI_UIntInit($value & 0xffffffff);
 		},
 		T_Long => sub() {
-			return SI_LongInit($val <= MAX_LONG ? $val : die "integer $val too large for long");
+			return SI_LongInit($value <= MAX_LONG ? $value : die "integer $value too large for long");
 		},
 		T_ULong => sub() {
-			return SI_ULongInit($val <= MAX_ULONG ? $val : die "integer $val too large for ulong");
+			return SI_ULongInit($value <= MAX_ULONG ? $value : die "integer $value too large for ulong");
 		},
 		T_Pointer => sub($to_type) {
-			return SI_ULongInit($val == 0 ? $val : die "$val not null constant");
+			return SI_ULongInit($value == 0 ? $value : die "$value not null constant");
 		},
 		T_Double => sub() {
-			return SI_DoubleInit($val);
+			return SI_DoubleInit($value);
 		},
 		default => sub {
-			die "unknown type: $var_type";
+			die "unknown type: $type";
 		}
-	}));
-}
-
-sub get_default_init {
-	my $type = shift;
-	return $type->match({
-		T_Int => SI_IntInit(0),
-		T_UInt => SI_UIntInit(0),
-		T_Long => SI_LongInit(0),
-		"T_ULong, T_Pointer" => SI_ULongInit(0),
-		T_Double => SI_DoubleInit(0.0),
-		default => sub { die "unknown type $type" }
 	});
 }
-
 
 sub get_type_of_TAC {
 	my $val = shift;

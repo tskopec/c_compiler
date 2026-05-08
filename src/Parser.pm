@@ -12,6 +12,7 @@ BEGIN { # Local data types
 		Declarator =
 			Identifier(string name)
 			| PointerDeclarator(Declarator declarator)
+			| ArrayDeclarator(AST_Declarator declarator, int size)
 			| FunDeclarator(ParamInfo* params, Declarator declarator)
 		ParamInfo = Param(T_Type type, Declarator declarator)
 		AbstractDeclarator =
