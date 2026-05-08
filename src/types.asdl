@@ -69,18 +69,18 @@ C_Constant =
 	| C_ConstDouble(float val)
 A_IdentifierAttrs =
 	A_FunAttrs(bool defined, bool global)
-	| A_StaticAttrs(I_InitialValue init_val, bool global)
+	| A_StaticAttrs(INI_InitialValue init_val, bool global)
 	| A_LocalAttrs
-I_InitialValue =
-	I_Tentative
-	| I_Initial(I_StaticInit static_init)
-	| I_NoInitializer
-I_StaticInit =
-	I_IntInit(int val)
-	| I_UIntInit(int val)
-	| I_LongInit(int val)
-	| I_ULongInit(int val)
-	| I_DoubleInit(float val)
+INI_InitialValue =
+	INI_Tentative
+	| INI_Initial(SI_StaticInit static_init)
+	| INI_NoInitializer
+SI_StaticInit =
+	SI_IntInit(int val)
+	| SI_UIntInit(int val)
+	| SI_LongInit(int val)
+	| SI_ULongInit(int val)
+	| SI_DoubleInit(float val)
 S_StorageClass =
 	S_Static | S_Extern
 
@@ -88,7 +88,7 @@ S_StorageClass =
 TAC_Program =
 	TAC_Program(TAC_TopLevelDeclaration* declarations)
 TAC_TopLevelDeclaration =
-	TAC_StaticVariable(string identifier, bool global, T_Type type, I_StaticInit static_init)
+	TAC_StaticVariable(string identifier, bool global, T_Type type, SI_StaticInit static_init)
 	| TAC_Function(string identifier, bool global, string* params, TAC_Instruction* instructions)
 TAC_Instruction =
 	TAC_Return(TAC_Value value)
@@ -124,8 +124,8 @@ ASM_Program =
 ASM_OperandSize =
 	ASM_Longword | ASM_Quadword | ASM_Double
 ASM_TopLevelDeclaration =
-	ASM_StaticVariable(string name, bool global, int alignment, I_StaticInit static_init)
-	| ASM_StaticConstant(string name, int alignment, I_StaticInit static_init)
+	ASM_StaticVariable(string name, bool global, int alignment, SI_StaticInit static_init)
+	| ASM_StaticConstant(string name, int alignment, SI_StaticInit static_init)
 	| ASM_Function(string name, bool global, ASM_Instruction* instructions)
 ASM_Instruction =
 	ASM_Mov(ASM_OperandSize opsize, ASM_Operand src, ASM_Operand dst)

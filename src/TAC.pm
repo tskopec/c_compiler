@@ -4,10 +4,10 @@ use warnings;
 use feature qw(say state signatures);
 
 use ADT::ParseASDL;
-use ADT::AlgebraicTypes qw(:AST :TAC :T :C :A :I is_ADT);
+use ADT::AlgebraicTypes qw(:AST :TAC :T :C :A :SI is_ADT);
 use Semantics;
 use Utils qw(labels);
-use TypeUtils qw(get_int_type_rank is_signed);
+use TypeUtils qw(get_int_type_rank is_signed get_default_init);
 
 BEGIN { # Local data types
 	my @asdl_lines = split /\n/, q{
@@ -320,29 +320,17 @@ sub covert_symbols_to_TAC {
 			my $type = $entry->{type};
 			my ($stat_init, $global) = ($entry->{attrs})->values_in_order('A_StaticAttrs');
 			$stat_init->match({
-				I_Initial => sub($init) {
+				INI_Initial => sub($init) {
 					push(@tac_vars, TAC_StaticVariable($name, $global, $type, $init));
 				},
-				I_Tentative => sub() {
+				INI_Tentative => sub() {
 					push(@tac_vars, TAC_StaticVariable($name, $global, $type, get_default_init($type)));
 				},
-				I_NoInitializer => sub() { ; }
+				INI_NoInitializer => sub() { ; }
 			});
 		}
 	}
 	return @tac_vars;
-}
-
-sub get_default_init {
-	my $type = shift;
-	return $type->match({
-		T_Int => I_IntInit(0),
-		T_UInt => I_UIntInit(0),
-		T_Long => I_LongInit(0),
-		"T_ULong, T_Pointer" => I_ULongInit(0),
-		T_Double => I_DoubleInit(0.0),
-		default => sub { die "unknown type $type" }
-	});
 }
 
 1;

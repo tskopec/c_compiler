@@ -5,7 +5,7 @@ use warnings;
 use feature qw(say isa state current_sub signatures);
 
 use List::Util qw(min);
-use ADT::AlgebraicTypes qw(is_ADT :T :I :C :TAC :ASM);
+use ADT::AlgebraicTypes qw(is_ADT :T :SI :C :TAC :ASM);
 use Semantics;
 use TypeUtils qw(/^MAX_/ get_type_of_TAC is_signed);
 
@@ -366,7 +366,7 @@ sub size_in_bytes {
 
 sub get_static_constant {
 	my ($constant, $alignment) = @_;
-	my $static_init = I_DoubleInit($constant->get('val'));
+	my $static_init = SI_DoubleInit($constant->get('val'));
 	for my $existing_constant (@static_constants) {
 		if ($existing_constant->get('static_init')->get('val') == $constant->get('val')
 			&& $existing_constant->get('alignment') == $alignment) {

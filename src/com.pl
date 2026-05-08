@@ -36,7 +36,7 @@ foreach (@ARGV) {
 	} elsif (/^--(lex|parse|validate|tac|tacky|codegen)$/) {
 		$target_phase = $1;
 	} elsif (/^-d(\w*)$/) {
-		$debug{$_} = 1 for (split('', $1 ? $1 : "lpstceS"));
+		$debug{$_} = 1 for (split('', $1 ? $1 : "lpstceSw")); # l(ex) p(arse) s(emantics) t(ac) c(odegen) e(mit) S(ymtables) w(rite .s files to /tmp)
 	} elsif (/^-c$/) {
 		$dont_link = 1;
 	}
@@ -133,6 +133,14 @@ if ($dont_link != 0) {
 } else {
 	# bez toho -lm nefunguje test: chapter_13/valid/function_calls/standard_library_call.c
 	qx(gcc @asm_files -lm -o @{[ $asm_files[0] =~ s/\.s$//r ]});
+}
+
+if ($debug{w}) {
+	qx{mkdir -p /tmp/asm};
+	for (@asm_files) {
+		my $file_name = $_ =~ s{^.*/}{}r;
+		qx{cp $_ /tmp/asm/$file_name};
+	}
 }
 unlink($_) for (@asm_files);
 $error_code = 0;

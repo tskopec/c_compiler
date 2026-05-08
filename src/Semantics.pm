@@ -3,7 +3,7 @@ use strict;
 use warnings;
 use feature qw(say state isa signatures);
 
-use ADT::AlgebraicTypes qw(:AST :A :I :S :T is_ADT);
+use ADT::AlgebraicTypes qw(:AST :C :A :INI :S :T is_ADT);
 use TypeUtils qw(/^MAX_/ get_common_type get_common_pointer_type convert_type convert_as_if_by_assignment types_equal
 	const_to_initval);
 
@@ -239,14 +239,13 @@ sub check_types {
 				}
 			},
 			AST_VarDeclaration => sub($name, $init, $type, $storage) {
-				my $is_file_scope = $parent_node isa 'ADT::ADT' && $parent_node->is('AST_Program');
 ###### file scope var
-				if ($is_file_scope) {
+				if (is_ADT($parent_node, 'AST_Program')) {
 					my $init_val;
 					if (is_ADT($init, 'AST_ConstantExpr')) {
 						$init_val = const_to_initval($init->get('constant'), $type);
 					} elsif (!defined($init)) {
-						$init_val = is_ADT($storage, 'S_Extern') ? I_NoInitializer() : I_Tentative();
+						$init_val = is_ADT($storage, 'S_Extern') ? INI_NoInitializer() : INI_Tentative();
 					} else {
 						die "initializer is not a constant: $init";
 					}
@@ -261,11 +260,11 @@ sub check_types {
 						}
 
 						my $prev_init = get_symbol_attr($name, 'init_value');
-						if ($prev_init->is('I_Initial')) {
-							die "conflicting file scope var definitions: $name " if ($init_val->is('I_Initial'));
+						if ($prev_init->is('INI_Initial')) {
+							die "conflicting file scope var definitions: $name " if ($init_val->is('INI_Initial'));
 							$init_val = $prev_init;
-						} elsif (!$init_val->is('I_Initial') && $prev_init->is('I_Tentative')) {
-							$init_val = I_Tentative();
+						} elsif (!$init_val->is('INI_Initial') && $prev_init->is('INI_Tentative')) {
+							$init_val = INI_Tentative();
 						}
 					}
 					$symbol_table{$name} = {
@@ -284,7 +283,7 @@ sub check_types {
 						} else {
 							$symbol_table{$name} = {
 								type => $type,
-								attrs => A_StaticAttrs(I_NoInitializer(), 1)
+								attrs => A_StaticAttrs(INI_NoInitializer(), 1)
 							};
 						}
 					} elsif (is_ADT($storage, 'S_Static')) {
@@ -292,7 +291,7 @@ sub check_types {
 						if (is_ADT($init, 'AST_ConstantExpr')) {
 							$init_val = const_to_initval($init->get('constant'), $type);
 						} elsif (!defined $init) {
-							$init_val = I_Initial(I_IntInit(0));
+							$init_val = const_to_initval(C_ConstInt(0), $type);
 						} else {
 							die "initializer not constant: $init";
 						}

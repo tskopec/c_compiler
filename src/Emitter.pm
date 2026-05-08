@@ -3,7 +3,7 @@ use strict;
 use warnings;
 use feature qw(say state signatures);
 
-use ADT::AlgebraicTypes qw(:I :ASM);
+use ADT::AlgebraicTypes qw(:ASM);
 
 my $current_section;
 sub set_section {
@@ -141,7 +141,7 @@ sub emit_code {
 		ASM_Sub => "\tsub",
 		ASM_Mult => "\timul",
 		ASM_Memory => sub($reg, $offset) {
-			return ($offset || "") . "(" . emit_code($reg) . ")";
+			return ($offset || "") . "(" . emit_code($reg, 8) . ")";
 		},
 		ASM_Data => sub($ident) {
 			return "$ident(%rip)";
@@ -193,9 +193,9 @@ sub translate_type {
 	if ($type->is('ASM_Longword')) { return (4, 'l') }
 	if ($type->is('ASM_Quadword')) { return (8, 'q') }
 	if ($type->is('ASM_Double')) { return (8, 'sd') }
-	if ($type->is('T_Int', 'I_IntInit', 'I_UIntInit')) { return (4, 'long') }
-	if ($type->is('T_Long', 'I_LongInit', 'I_ULongInit')) { return (8, 'quad') }
-	if ($type->is('T_Double', 'I_DoubleInit')) { return (8, 'double') }
+	if ($type->is('T_Int', 'SI_IntInit', 'SI_UIntInit')) { return (4, 'long') }
+	if ($type->is('T_Long', 'SI_LongInit', 'SI_ULongInit')) { return (8, 'quad') }
+	if ($type->is('T_Double', 'SI_DoubleInit')) { return (8, 'double') }
 	die "unknown type $type";
 }
 
