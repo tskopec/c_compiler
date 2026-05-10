@@ -23,7 +23,7 @@ sub add_to_symtable {
 
 BEGIN {
 	#$Exporter::Verbose = 1;
-	open(my $fh, "<", $main::src_dir . "/types.asdl") or die $!;
+	open(my $fh, "<", "${main::src_dir}/types.asdl") or die $!;
 	my @asdl_lines = <$fh>;
 	my %constructors = ADT::ParseASDL::parse_types(@asdl_lines);
 	add_to_symtable('ADT::AlgebraicTypes', %constructors);
@@ -37,7 +37,7 @@ BEGIN {
 	}
 }
 
-sub local_types {
+sub introduce_types {
 	my ($pkg_name, @asdl_lines) = @_;
 	my %constructors = ADT::ParseASDL::parse_types(@asdl_lines);
 	add_to_symtable($pkg_name, %constructors);

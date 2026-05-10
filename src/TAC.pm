@@ -14,7 +14,7 @@ BEGIN { # Local data types
 		# expression result that hasn't been lvalue converted
 		ExpResult = PlainOperand(TAC_Value val) | DereferencedPointer(TAC_Value val)
 	};
-	ADT::AlgebraicTypes::local_types('TAC', @asdl_lines);
+	ADT::AlgebraicTypes::introduce_types('TAC', @asdl_lines);
 }
 
 sub emit_TAC {

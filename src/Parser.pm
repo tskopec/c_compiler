@@ -12,14 +12,15 @@ BEGIN { # Local data types
 		Declarator =
 			Identifier(string name)
 			| PointerDeclarator(Declarator declarator)
-			| ArrayDeclarator(AST_Declarator declarator, int size)
+			| ArrayDeclarator(Declarator declarator, int size)
 			| FunDeclarator(ParamInfo* params, Declarator declarator)
 		ParamInfo = Param(T_Type type, Declarator declarator)
 		AbstractDeclarator =
 			AbstractPointer(AbstractDeclarator declarator)
+			| AbstractArray(AbstractDeclarator declarator, int size)
 			| AbstractBase
 	};
-	ADT::AlgebraicTypes::local_types('Parser', @asdl_lines);
+	ADT::AlgebraicTypes::introduce_types('Parser', @asdl_lines);
 }
 
 my @TOKENS;
@@ -87,8 +88,8 @@ sub parse_type {
 sub parse_storage_class {
 	my $storage_spec = shift;
 	if (!defined $storage_spec)		{ return undef }
-	if ($storage_spec eq 'static')	{ return S_Static() }
-	if ($storage_spec eq 'extern')	{ return S_Extern() }
+	if ($storage_spec eq 'static')	{ return S_Static }
+	if ($storage_spec eq 'extern')	{ return S_Extern }
 	die "unknown storage specifier: $storage_spec";
 }
 
@@ -100,15 +101,51 @@ sub parse_declarator {
 		my $inner_decl = parse_declarator();
 		expect('LEX_Symbol', ')');
 		$declarator = $inner_decl;
-	} elsif (try_expect('LEX_Operator', "*")) {
+	} elsif (try_expect('LEX_Operator', '*')) {
 		$declarator = PointerDeclarator(parse_declarator());
 	} else {
 		die "cant parse declarator: " . peek();
 	}
+
 	if (try_expect('LEX_Symbol', '(')) {
 		$declarator = FunDeclarator(parse_params_list(), $declarator);
+	} elsif (try_expect('LEX_Symbol', '[')) {
+		do {
+			my $size = parse_array_size();
+			expect('LEX_Symbol', ']');
+			$declarator = ArrayDeclarator($declarator, $size);
+		} while (try_expect('LEX_Symbol', '['));
 	}
 	return $declarator;
+}
+
+sub parse_params_list {
+	my @list;
+	if (try_expect('LEX_Keyword', 'void')) {
+		expect('LEX_Symbol', ')');
+	} else {
+		while (1) {
+			my ($type, $storage) = parse_specifiers();
+			die "invalid specifiers for fun param: $type $storage" if (!defined $type || defined $storage);
+			push(@list, Param($type, parse_declarator()));
+			last if try_expect('LEX_Symbol', ')');
+			expect('LEX_Symbol', ',');
+		}
+	}
+	return \@list;
+}
+
+sub parse_array_size {
+	my $token = shift @TOKENS;
+	return $token->match({
+		"LEX_IntConstant, LEX_UIntConstant, LEX_LongConstant, LEX_ULongConstant" => sub($val) {
+			die "bad array size: $val" unless ($val > 0);
+			return $val;
+		},
+		default => sub {
+			die "only supports constant array sizes (but got $token)";
+		}
+	});
 }
 
 sub process_declarator {
@@ -134,26 +171,13 @@ sub process_declarator {
 				die "inner declarator must be simple identifier: $inner_decl";
 			}
 		},
+		ArrayDeclarator => sub($inner_decl, $size) {
+			return process_declarator($inner_decl, T_Array($base_type, $size));
+		},
 		default => sub {
 			die "bad declarator $decl, type $base_type";
 		}
 	});
-}
-
-sub parse_params_list {
-	my @list;
-	if (try_expect('LEX_Keyword', 'void')) {
-		expect('LEX_Symbol', ')');
-	} else {
-		while (1) {
-			my ($type, $storage) = parse_specifiers();
-			die "invalid specifiers for fun param: $type $storage" if (!defined $type || defined $storage);
-			push(@list, Param($type, parse_declarator()));
-			last if try_expect('LEX_Symbol', ')');
-			expect('LEX_Symbol', ',');
-		}
-	}
-	return \@list;
 }
 
 sub parse_block {

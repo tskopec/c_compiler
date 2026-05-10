@@ -17,8 +17,8 @@ AST_Declaration =
 	AST_VarDeclaration(string name, AST_Initializer? initializer, T_Type type, S_StorageClass? storage)
 	| AST_FunDeclaration(string name, AST_VarDeclaration* params, AST_Block? body, T_Type type, S_StorageClass? storage)
 AST_Initializer =
-    AST_SingleInit(AST_Expression expr)
-    | AST_CompoundInit(AST_Initializer* inits)
+    AST_SingleInit(AST_Expression expr, T_Type type)
+    | AST_CompoundInit(AST_Initializer* inits, T_Type type)
 AST_Block =
 	AST_Block(AST_BlockItem* items)
 AST_BlockItem =
@@ -49,7 +49,7 @@ AST_Expression =
 	 | AST_FunctionCall(string ident, AST_Expression* args, T_Type type)
 	 | AST_Dereference(AST_Expression expr, T_Type type)
 	 | AST_AddrOf(AST_Expression expr, T_Type type)
-	 | AST_Subscript(AST_Expression ptr, AST_Expression index)
+	 | AST_Subscript(AST_Expression e1, AST_Expression e2)
 AST_UnaryOperator =
 	AST_Complement | AST_Negate | AST_Not
 AST_BinaryOperator =

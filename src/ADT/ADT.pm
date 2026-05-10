@@ -133,7 +133,9 @@ sub check_value {
 				die("$val not " . $type->{name});
 			}
 		} else {
-			die("$val not primitive " . $type->{name}) unless (ref($val) eq "");
+			if (ref($val) ne "") {
+				die("$val not primitive " . $type->{name});
+			}
 			if ($type->{name} eq 'int') {
 				die "$val not int" if ($val !~ /^-?\d+$/);
 			}
