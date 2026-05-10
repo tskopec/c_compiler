@@ -50,9 +50,24 @@ sub parse_declaration {
 			: (expect('LEX_Symbol', ';') ? undef : die "missing body or semicolon");
 		return AST_FunDeclaration($name, $params, $body, $declarator_type, $storage_class);
 	} else {
-		my $init = try_expect('LEX_Operator', '=') ? parse_expr(0) : undef;
+		my $init = try_expect('LEX_Operator', '=') ? parse_initializer() : undef;
 		expect('LEX_Symbol', ';');
 		return AST_VarDeclaration($name, $init, $declarator_type, $storage_class);
+	}
+}
+
+sub parse_initializer {
+	if (try_expect('LEX_Symbol', '{')) {
+		my @inits;
+		do {
+			if (try_expect('LEX_Symbol', '}')) {
+				return AST_CompoundInit(\@inits, T_DummyType);
+			} else {
+				push(@inits, parse_initializer());
+			}
+		} while (try_expect('LEX_Symbol', ','));
+	} else {
+		return AST_SingleInit(parse_expr(0), T_DummyType);
 	}
 }
 
@@ -97,12 +112,12 @@ sub parse_declarator {
 	my $declarator;
 	if (my $id = try_expect('LEX_Identifier')) {
 		$declarator = Identifier($id->get('name'));
+	} elsif (try_expect('LEX_Operator', '*')) {
+		$declarator = PointerDeclarator(parse_declarator());
 	} elsif (try_expect('LEX_Symbol', '(')) {
 		my $inner_decl = parse_declarator();
 		expect('LEX_Symbol', ')');
 		$declarator = $inner_decl;
-	} elsif (try_expect('LEX_Operator', '*')) {
-		$declarator = PointerDeclarator(parse_declarator());
 	} else {
 		die "cant parse declarator: " . peek();
 	}
@@ -174,9 +189,7 @@ sub process_declarator {
 		ArrayDeclarator => sub($inner_decl, $size) {
 			return process_declarator($inner_decl, T_Array($base_type, $size));
 		},
-		default => sub {
-			die "bad declarator $decl, type $base_type";
-		}
+		default => sub { die "bad declarator $decl, type $base_type"; }
 	});
 }
 
@@ -268,25 +281,30 @@ sub parse_opt_expr {
 sub parse_expr {
 	my $min_prec = shift;
 	my $left = parse_factor();
-	while ((peek())->is('LEX_Operator')) {
-		my $op = (peek())->get('op');
-		last if $op eq ':';
-		last if precedence($op) < $min_prec;
-		if ($op eq '=') {
-			shift @TOKENS;
-			my $right = parse_expr(precedence($op));
-			$left = AST_Assignment($left, $right, T_DummyType());
-		} elsif ($op eq '?') {
-			shift @TOKENS;
-			my $then = parse_expr(0);
-			expect('LEX_Operator', ':');
-			my $else = parse_expr(precedence($op));
-			$left = AST_Conditional($left, $then, $else, T_DummyType());
-		} else {
-			my $op_token = shift @TOKENS;
-			my $op_node = parse_binop($op_token->get('op'));
-			my $right = parse_expr(precedence($op) + 1);
-			$left = AST_Binary($op_node, $left, $right, T_DummyType());
+	if (try_expect('LEX_Symbol', '[')) {
+		$left = AST_Subscript($left, parse_expr(0));
+		expect('LEX_Symbol', ']');
+	} else {
+		while (peek()->is('LEX_Operator')) {
+			my $op = peek()->get('op');
+			last if $op eq ':';
+			last if get_precedence($op) < $min_prec;
+			if ($op eq '=') {
+				shift @TOKENS;
+				my $right = parse_expr(get_precedence($op));
+				$left = AST_Assignment($left, $right, T_DummyType());
+			} elsif ($op eq '?') {
+				shift @TOKENS;
+				my $then = parse_expr(0);
+				expect('LEX_Operator', ':');
+				my $else = parse_expr(get_precedence($op));
+				$left = AST_Conditional($left, $then, $else, T_DummyType());
+			} else {
+				my $op_token = shift @TOKENS;
+				my $op_node = parse_binop($op_token->get('op'));
+				my $right = parse_expr(get_precedence($op) + 1);
+				$left = AST_Binary($op_node, $left, $right, T_DummyType());
+			}
 		}
 	}
 	return $left;
@@ -345,6 +363,8 @@ sub parse_factor {
 					expect("LEX_Symbol", ")");
 					return $inner;
 				}
+			} else {
+				die "cant parse factor: symbol '$char'";
 			}
 		},
 		default => sub {
@@ -355,30 +375,43 @@ sub parse_factor {
 }
 
 sub parse_abstract_declarator {
+	my $declarator;
 	if (try_expect('LEX_Operator', '*')) {
-		return AbstractPointer(parse_abstract_declarator());
+		$declarator = AbstractPointer(parse_abstract_declarator());
 	} elsif (try_expect('LEX_Symbol', '(')) {
 		my $inner_decl = parse_abstract_declarator();
 		expect('LEX_Symbol', ')');
-		return $inner_decl;
+		$declarator = $inner_decl;
 	} elsif (try_expect('LEX_Symbol', ')')) {
-		return AbstractBase;
+		$declarator = AbstractBase;
+	} else {
+		die "cant parse declarator " . peek();
 	}
-	die "cant parse declarator " . peek();
+
+	if (try_expect('LEX_Symbol', '[')) {
+		do {
+			my $size = parse_array_size();
+			expect('LEX_Symbol', ']');
+			$declarator = AbstractArray($declarator, $size);
+		} while (try_expect('LEX_Symbol', '['));
+	}
+	return $declarator;
 }
 
 sub process_abstract_declarator {
 	my ($decl, $base_type) = @_;
 	$decl->match({
-		AbstractPointer => sub($inner) {
-			return process_abstract_declarator($inner, T_Pointer($base_type));
+		AbstractBase => $base_type,
+		AbstractPointer => sub($inner_decl) {
+			return process_abstract_declarator($inner_decl, T_Pointer($base_type));
 		},
-		AbstractBase => sub {
-			return $base_type;
+		AbstractArray => sub($inner_decl, $size) {
+			return process_abstract_declarator($inner_decl, T_Array($base_type, $size));
 		},
-		default => sub { die "TODO" }
+		default => sub { die "bad abstract declarator $decl, type $base_type" }
 	});
 }
+
 sub parse_identifier {
 	my $token = shift @TOKENS;
 	return $token->is('LEX_Identifier') ? $token->get('name') : die  "$token not identifier";
@@ -397,27 +430,27 @@ sub parse_unop {
 sub parse_binop {
 	my $op = shift;
 	state $map = {
-		'+' => AST_Add(),
-		'-' => AST_Subtract(),
-		'*' => AST_Multiply(),
-		'/' => AST_Divide(),
-		'%' => AST_Remainder(),
-		'&&' => AST_And(),
-		'||' => AST_Or(),
-		'==' => AST_Equal(),
-		'!=' => AST_NotEqual(),
-		'<'  => AST_LessThan(),
-		'<=' => AST_LessOrEqual(),
-		'>'  => AST_GreaterThan(),
-		'>=' => AST_GreaterOrEqual(),
+		'+' => AST_Add,
+		'-' => AST_Subtract,
+		'*' => AST_Multiply,
+		'/' => AST_Divide,
+		'%' => AST_Remainder,
+		'&&' => AST_And,
+		'||' => AST_Or,
+		'==' => AST_Equal,
+		'!=' => AST_NotEqual,
+		'<'  => AST_LessThan,
+		'<=' => AST_LessOrEqual,
+		'>'  => AST_GreaterThan,
+		'>=' => AST_GreaterOrEqual,
 	};
 	return $map->{$op} // die "unknown binop $op";
 }
 
-sub precedence {
+sub get_precedence {
 	my $op = shift;
-	return 50 if $op =~ /\*|\/|%/;
-	return 45 if $op =~ /\+|-/;
+	return 50 if $op =~ m{[*/%]};
+	return 45 if $op =~ /[+-]/;
 	return 35 if $op =~ /<=|>=|<|>/;
 	return 30 if $op =~ /==|!=/;
 	return 10 if $op eq '&&';
