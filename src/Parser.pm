@@ -59,13 +59,16 @@ sub parse_declaration {
 sub parse_initializer {
 	if (try_expect('LEX_Symbol', '{')) {
 		my @inits;
-		do {
-			if (try_expect('LEX_Symbol', '}')) {
-				return AST_CompoundInit(\@inits, T_DummyType);
-			} else {
-				push(@inits, parse_initializer());
+		while (1) {
+			last if (try_expect('LEX_Symbol', '}'));
+			push(@inits, parse_initializer());
+			unless (try_expect('LEX_Symbol', ',')) {
+				expect('LEX_Symbol', '}');
+				last;
 			}
-		} while (try_expect('LEX_Symbol', ','));
+		}
+		die "empty initializer" unless @inits;
+		return AST_CompoundInit(\@inits, T_DummyType);
 	} else {
 		return AST_SingleInit(parse_expr(0), T_DummyType);
 	}
@@ -284,27 +287,26 @@ sub parse_expr {
 	if (try_expect('LEX_Symbol', '[')) {
 		$left = AST_Subscript($left, parse_expr(0));
 		expect('LEX_Symbol', ']');
-	} else {
-		while (peek()->is('LEX_Operator')) {
-			my $op = peek()->get('op');
-			last if $op eq ':';
-			last if get_precedence($op) < $min_prec;
-			if ($op eq '=') {
-				shift @TOKENS;
-				my $right = parse_expr(get_precedence($op));
-				$left = AST_Assignment($left, $right, T_DummyType());
-			} elsif ($op eq '?') {
-				shift @TOKENS;
-				my $then = parse_expr(0);
-				expect('LEX_Operator', ':');
-				my $else = parse_expr(get_precedence($op));
-				$left = AST_Conditional($left, $then, $else, T_DummyType());
-			} else {
-				my $op_token = shift @TOKENS;
-				my $op_node = parse_binop($op_token->get('op'));
-				my $right = parse_expr(get_precedence($op) + 1);
-				$left = AST_Binary($op_node, $left, $right, T_DummyType());
-			}
+	}
+	while (peek()->is('LEX_Operator')) {
+		my $op = peek()->get('op');
+		last if $op eq ':';
+		last if get_precedence($op) < $min_prec;
+		if ($op eq '=') {
+			shift @TOKENS;
+			my $right = parse_expr(get_precedence($op));
+			$left = AST_Assignment($left, $right, T_DummyType());
+		} elsif ($op eq '?') {
+			shift @TOKENS;
+			my $then = parse_expr(0);
+			expect('LEX_Operator', ':');
+			my $else = parse_expr(get_precedence($op));
+			$left = AST_Conditional($left, $then, $else, T_DummyType());
+		} else {
+			my $op_token = shift @TOKENS;
+			my $op_node = parse_binop($op_token->get('op'));
+			my $right = parse_expr(get_precedence($op) + 1);
+			$left = AST_Binary($op_node, $left, $right, T_DummyType());
 		}
 	}
 	return $left;
@@ -476,7 +478,9 @@ sub try_expect {
 
 sub expect {
 	my ($tag, $val) = @_;
-	return try_expect($tag, $val) || die("syntax err -> expected: $tag '$val', but found: " . peek());
+	return try_expect($tag, $val) || do {
+		die("syntax err -> expected: $tag '$val', but found: " . peek());
+	};
 }
 
 1;
