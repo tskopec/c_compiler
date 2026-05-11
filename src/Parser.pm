@@ -284,7 +284,7 @@ sub parse_opt_expr {
 sub parse_expr {
 	my $min_prec = shift;
 	my $left = parse_factor();
-	if (try_expect('LEX_Symbol', '[')) {
+	while (try_expect('LEX_Symbol', '[')) {
 		$left = AST_Subscript($left, parse_expr(0));
 		expect('LEX_Symbol', ']');
 	}
@@ -386,17 +386,16 @@ sub parse_abstract_declarator {
 		$declarator = $inner_decl;
 	} elsif (try_expect('LEX_Symbol', ')')) {
 		$declarator = AbstractBase;
-	} else {
-		die "cant parse declarator " . peek();
 	}
 
 	if (try_expect('LEX_Symbol', '[')) {
 		do {
 			my $size = parse_array_size();
 			expect('LEX_Symbol', ']');
-			$declarator = AbstractArray($declarator, $size);
+			$declarator = AbstractArray($declarator // parse_abstract_declarator(), $size);
 		} while (try_expect('LEX_Symbol', '['));
 	}
+	die("cant parse declarator " . peek()) unless defined $declarator;
 	return $declarator;
 }
 
