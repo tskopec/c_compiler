@@ -45,24 +45,24 @@ sub parse_declaration {
 	my $declarator = parse_declarator();
 	my ($name, $declarator_type, $params) = process_declarator($declarator, $type);
 	if ($declarator_type->is('T_FunType')) {
-		my $body = try_expect('LEX_Symbol', '{')
+		my $body = expect_maybe('LEX_Symbol', '{')
 			? parse_block()
 			: (expect('LEX_Symbol', ';') ? undef : die "missing body or semicolon");
 		return AST_FunDeclaration($name, $params, $body, $declarator_type, $storage_class);
 	} else {
-		my $init = try_expect('LEX_Operator', '=') ? parse_initializer() : undef;
+		my $init = expect_maybe('LEX_Operator', '=') ? parse_initializer() : undef;
 		expect('LEX_Symbol', ';');
 		return AST_VarDeclaration($name, $init, $declarator_type, $storage_class);
 	}
 }
 
 sub parse_initializer {
-	if (try_expect('LEX_Symbol', '{')) {
+	if (expect_maybe('LEX_Symbol', '{')) {
 		my @inits;
 		while (1) {
-			last if (try_expect('LEX_Symbol', '}'));
+			last if (expect_maybe('LEX_Symbol', '}'));
 			push(@inits, parse_initializer());
-			unless (try_expect('LEX_Symbol', ',')) {
+			unless (expect_maybe('LEX_Symbol', ',')) {
 				expect('LEX_Symbol', '}');
 				last;
 			}
@@ -78,9 +78,9 @@ sub parse_specifiers {
 	my (@storage_specs, @type_specs);
 	my $kw;
 	while (1) {
-		if ($kw = try_expect('LEX_Keyword', 'int', 'long', 'double', 'signed', 'unsigned')) {
+		if ($kw = expect_maybe('LEX_Keyword', 'int', 'long', 'double', 'signed', 'unsigned')) {
 			push @type_specs, $kw->get('word');
-		} elsif ($kw = try_expect('LEX_Keyword', 'static', 'extern')) {
+		} elsif ($kw = expect_maybe('LEX_Keyword', 'static', 'extern')) {
 			push @storage_specs, $kw->get('word');
 		} else { last }
 	}
@@ -113,11 +113,11 @@ sub parse_storage_class {
 
 sub parse_declarator {
 	my $declarator;
-	if (my $id = try_expect('LEX_Identifier')) {
+	if (my $id = expect_maybe('LEX_Identifier')) {
 		$declarator = Identifier($id->get('name'));
-	} elsif (try_expect('LEX_Operator', '*')) {
+	} elsif (expect_maybe('LEX_Operator', '*')) {
 		$declarator = PointerDeclarator(parse_declarator());
-	} elsif (try_expect('LEX_Symbol', '(')) {
+	} elsif (expect_maybe('LEX_Symbol', '(')) {
 		my $inner_decl = parse_declarator();
 		expect('LEX_Symbol', ')');
 		$declarator = $inner_decl;
@@ -125,28 +125,28 @@ sub parse_declarator {
 		die "cant parse declarator: " . peek();
 	}
 
-	if (try_expect('LEX_Symbol', '(')) {
+	if (expect_maybe('LEX_Symbol', '(')) {
 		$declarator = FunDeclarator(parse_params_list(), $declarator);
-	} elsif (try_expect('LEX_Symbol', '[')) {
+	} elsif (expect_maybe('LEX_Symbol', '[')) {
 		do {
 			my $size = parse_array_size();
 			expect('LEX_Symbol', ']');
 			$declarator = ArrayDeclarator($declarator, $size);
-		} while (try_expect('LEX_Symbol', '['));
+		} while (expect_maybe('LEX_Symbol', '['));
 	}
 	return $declarator;
 }
 
 sub parse_params_list {
 	my @list;
-	if (try_expect('LEX_Keyword', 'void')) {
+	if (expect_maybe('LEX_Keyword', 'void')) {
 		expect('LEX_Symbol', ')');
 	} else {
 		while (1) {
 			my ($type, $storage) = parse_specifiers();
 			die "invalid specifiers for fun param: $type $storage" if (!defined $type || defined $storage);
 			push(@list, Param($type, parse_declarator()));
-			last if try_expect('LEX_Symbol', ')');
+			last if expect_maybe('LEX_Symbol', ')');
 			expect('LEX_Symbol', ',');
 		}
 	}
@@ -199,7 +199,7 @@ sub process_declarator {
 sub parse_block {
 	my @items;
 	while (@TOKENS) {
-		return AST_Block(\@items) if (try_expect('LEX_Symbol', '}'));
+		return AST_Block(\@items) if (expect_maybe('LEX_Symbol', '}'));
 		push @items, parse_block_item();
 	}
 	die "missing closing brace";
@@ -214,40 +214,40 @@ sub parse_block_item {
 }
 
 sub parse_statement {
-	if (try_expect('LEX_Keyword', 'return')) {
+	if (expect_maybe('LEX_Keyword', 'return')) {
 		my $ret_val = parse_expr(0);
 		expect('LEX_Symbol', ';');
 		return AST_Return($ret_val);
-	} elsif (try_expect('LEX_Symbol', '{')) {
+	} elsif (expect_maybe('LEX_Symbol', '{')) {
 		return AST_Compound(parse_block());
-	} elsif (try_expect('LEX_Symbol', ';')){
+	} elsif (expect_maybe('LEX_Symbol', ';')){
 		return AST_Null();
-	} elsif (try_expect('LEX_Keyword', 'if')) {
+	} elsif (expect_maybe('LEX_Keyword', 'if')) {
 		expect('LEX_Symbol', '(');
 		my $cond = parse_expr(0);	
 		expect('LEX_Symbol', ')');
 		my $then = parse_statement();
-		my $else = parse_statement() if try_expect('LEX_Keyword', 'else'); 
+		my $else = parse_statement() if expect_maybe('LEX_Keyword', 'else');
 		return AST_If($cond, $then, $else);
-	} elsif (try_expect('LEX_Keyword', 'break')) {
+	} elsif (expect_maybe('LEX_Keyword', 'break')) {
 		expect('LEX_Symbol', ';');
 		return AST_Break('dummy');
-	} elsif (try_expect('LEX_Keyword', 'continue')) {
+	} elsif (expect_maybe('LEX_Keyword', 'continue')) {
 		expect('LEX_Symbol', ';');
 		return AST_Continue('dummy');
-	} elsif (try_expect('LEX_Keyword', 'while')) {
+	} elsif (expect_maybe('LEX_Keyword', 'while')) {
 		expect('LEX_Symbol', '(');
 		my $cond = parse_expr(0);
 		expect('LEX_Symbol', ')');
 		my $body = parse_statement();
 		return AST_While($cond, $body, 'dummy');
-	} elsif (try_expect('LEX_Keyword', 'do')) {
+	} elsif (expect_maybe('LEX_Keyword', 'do')) {
 		my $body = parse_statement();
 		expect('LEX_Keyword', 'while') && expect('LEX_Symbol', '(');
 		my $cond = parse_expr(0);
 		expect('LEX_Symbol', ')') && expect('LEX_Symbol', ';');
 		return AST_DoWhile($body, $cond, 'dummy');
-	} elsif (try_expect('LEX_Keyword', 'for')) {
+	} elsif (expect_maybe('LEX_Keyword', 'for')) {
 		expect('LEX_Symbol', '(');
 		my $init = parse_for_init();
 		my $cond = parse_opt_expr(';');
@@ -273,7 +273,7 @@ sub parse_for_init {
 
 sub parse_opt_expr {
 	my $end_symbol = shift;
-	unless (try_expect('LEX_Symbol', $end_symbol)) {
+	unless (expect_maybe('LEX_Symbol', $end_symbol)) {
 		my $expr = parse_expr(0);
 		expect('LEX_Symbol', $end_symbol);
 		return $expr;
@@ -284,7 +284,7 @@ sub parse_opt_expr {
 sub parse_expr {
 	my $min_prec = shift;
 	my $left = parse_factor();
-	while (try_expect('LEX_Symbol', '[')) {
+	while (expect_maybe('LEX_Symbol', '[')) {
 		$left = AST_Subscript($left, parse_expr(0));
 		expect('LEX_Symbol', ']');
 	}
@@ -329,12 +329,12 @@ sub parse_factor {
 			return AST_ConstantExpr(C_ConstDouble($val), T_Double);
 		},
 		LEX_Identifier => sub($name) {
-			if (try_expect('LEX_Symbol', '(')) {
-				return AST_FunctionCall($name, [], T_DummyType) if (try_expect('LEX_Symbol', ')'));
+			if (expect_maybe('LEX_Symbol', '(')) {
+				return AST_FunctionCall($name, [], T_DummyType) if (expect_maybe('LEX_Symbol', ')'));
 				my @args;
 				while (1) {
 					push(@args, parse_expr(0));
-					last if (try_expect('LEX_Symbol', ')'));
+					last if (expect_maybe('LEX_Symbol', ')'));
 					expect('LEX_Symbol', ',');
 				}
 				return AST_FunctionCall($name, \@args, T_DummyType);
@@ -358,6 +358,7 @@ sub parse_factor {
 				if (defined $type) {
 					my $declarator = parse_abstract_declarator();
 					$type = process_abstract_declarator($declarator, $type);
+					expect("LEX_Symbol", ")");
 					my $expr = parse_expr(100);
 					return AST_Cast($expr, $type);
 				} else {
@@ -378,22 +379,24 @@ sub parse_factor {
 
 sub parse_abstract_declarator {
 	my $declarator;
-	if (try_expect('LEX_Operator', '*')) {
+	if (expect_maybe('LEX_Operator', '*')) {
 		$declarator = AbstractPointer(parse_abstract_declarator());
-	} elsif (try_expect('LEX_Symbol', '(')) {
+	} elsif (expect_maybe('LEX_Symbol', '(')) {
 		my $inner_decl = parse_abstract_declarator();
 		expect('LEX_Symbol', ')');
 		$declarator = $inner_decl;
-	} elsif (try_expect('LEX_Symbol', ')')) {
+	} elsif (expect_maybe('LEX_Symbol', ')')) {
 		$declarator = AbstractBase;
+		unshift(@TOKENS, LEX_Symbol(')')); # TODO nejde to lip? peek?
 	}
 
-	if (try_expect('LEX_Symbol', '[')) {
+	if (expect_maybe('LEX_Symbol', '[')) {
+		$declarator //= AbstractBase;
 		do {
 			my $size = parse_array_size();
 			expect('LEX_Symbol', ']');
-			$declarator = AbstractArray($declarator // parse_abstract_declarator(), $size);
-		} while (try_expect('LEX_Symbol', '['));
+			$declarator = AbstractArray($declarator, $size);
+		} while (expect_maybe('LEX_Symbol', '['));
 	}
 	die("cant parse declarator " . peek()) unless defined $declarator;
 	return $declarator;
@@ -465,21 +468,35 @@ sub peek {
 	return $TOKENS[shift() // 0] // die 'peek: no more tokens';
 }
 
-sub try_expect {
-	my ($tag, @possible_vals) = @_;
-	my $next = peek();
-	if ($next->is($tag)) {
-		my $val = $next->value_by_index(0); 
-		return shift @TOKENS if (!@possible_vals || grep { $val eq $_ } @possible_vals);
-	}
-	return 0;
+sub next_is {
+	my ($tag, $val) = @_;
+	return _expect(tag => $tag, possible_vals => [$val], fatal => 0, consume => 0);
 }
 
 sub expect {
 	my ($tag, $val) = @_;
-	return try_expect($tag, $val) || do {
-		die("syntax err -> expected: $tag '$val', but found: " . peek());
-	};
+	return _expect(tag => $tag, possible_vals => [$val], fatal => 1, consume => 1);
+}
+
+sub expect_maybe {
+	my ($tag, @possible_vals) = @_;
+	return _expect(tag => $tag, possible_vals => \@possible_vals, fatal => 0, consume => 1);
+}
+
+sub _expect {
+	my %args = @_;
+	my $next = peek();
+	if ($next->is($args{tag})) {
+		my $val = $next->value_by_index(0);
+		if (!$args{possible_vals}->@* || grep { $val eq $_ } $args{possible_vals}->@*) {
+			return $args{consume} ? shift @TOKENS : 1;
+		}
+	}
+	if ($args{fatal}) {
+		die(sprintf("syntax err -> expected: %s (%s), but found: %s",
+			$args{tag}, join(',', $args{possible_vals}->@*), $next));
+	}
+	return 0;
 }
 
 1;
