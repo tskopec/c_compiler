@@ -317,7 +317,7 @@ sub check_types {
 				my ($param_types, $ret_type) = (get_symbol_attr($name, 'type'))->values_in_order('T_FunType');
 				die "wrong number of args: $name" if (@$param_types != @$args);
 				while (my ($i, $arg) = each @$args) {
-					check_types($arg, $node);
+					$arg = check_type_and_decay($arg);
 					$args->[$i] = convert_as_if_by_assignment($arg, $param_types->[$i]);
 				}
 				$node->set('type', $ret_type);
@@ -329,15 +329,16 @@ sub check_types {
 			},
 			AST_ConstantExpr => sub($const, $type) { ; },
 			AST_Cast => sub($expr, $type) {
-				check_types($expr, $node);
+				$expr = check_type_and_decay($expr);
 				if (($expr->get('type')->is('T_Double') && $type->is('T_Pointer'))
 					|| ($expr->get('type')->is('T_Pointer') && $type->is('T_Double'))) {
 					die "cant convert $expr to $type";
 				}
+				$node->set('expr', $expr);
 				$node->set('type', $type);
 			},
 			AST_Unary => sub($op, $expr, $dummy_type) {
-				check_types($expr, $node);
+				$expr = check_type_and_decay($expr);
 				my $expr_type = $expr->get('type');
 				$op->match({
 					AST_Complement => sub {
@@ -350,14 +351,17 @@ sub check_types {
 						$expr_type = T_Int;
 					}
 				});
+				$node->set('expr', $expr);
 				$node->set('type', $expr_type);
 			},
 			AST_Binary => sub($op, $e1, $e2, $dummy_type) {
-				check_types($e1, $node);
-				check_types($e2, $node);
+				$e1 = check_type_and_decay($e1);
+				$e2 = check_type_and_decay($e2);
 				my $is_pointer_op = $e1->get('type')->is('T_Pointer') || $e2->get('type')->is('T_Pointer');
 				die "cant $op pointer" if ($is_pointer_op && $op->is('AST_Multiply', 'AST_Divide', 'AST_Remainder'));
 				if ($op->is('AST_And', 'AST_Or')) {
+					$node->set('expr1', $e1);
+					$node->set('expr2', $e2);
 					$node->set('type', T_Int());
 				} else {
 					my $common_type = $is_pointer_op && $op->is('AST_Equal', 'AST_NotEqual')
@@ -375,28 +379,31 @@ sub check_types {
 			},
 			AST_Assignment => sub($lhs, $rhs, $dummy_type) {
 				die "$lhs not lvalue" unless is_lval($lhs);
-				check_types($lhs, $node);
-				check_types($rhs, $node);
+				$lhs = check_type_and_decay($lhs);
+				$rhs = check_type_and_decay($rhs);
+				$node->set('lhs', $lhs);
 				$node->set('rhs', convert_as_if_by_assignment($rhs, $lhs->get('type')));
 				$node->set('type', $lhs->get('type'));
 			},
 			AST_Conditional => sub($cond, $then, $else, $dummy_type) {
-				check_types($cond, $node);
-				check_types($then, $node);
-				check_types($else, $node);
+				$cond = check_type_and_decay($cond);
+				$then = check_type_and_decay($then);
+				$else = check_type_and_decay($else);
 				my $common_type = $then->get('type')->is('T_Pointer') || $else->get('type')->is('T_Pointer')
 					? get_common_pointer_type($then, $else)
 					: get_common_type($then->get('type'), $else->get('type'));
+				$node->set('cond', $cond);
 				$node->set('then', convert_type($then, $common_type));
 				$node->set('else', convert_type($else, $common_type));
 				$node->set('type', $common_type);
 			},
 			AST_Return => sub($expr) {
-				check_types($expr, $node);
+				$expr = check_type_and_decay($expr);
 				$node->set('expr', convert_as_if_by_assignment($expr, $current_fun_ret_type));
 			},
 			AST_Dereference => sub($expr, $dummy_type) {
-				check_types($expr, $node);
+				$expr = check_type_and_decay($expr);
+				$node->set('expr', $expr);
 				$expr->get('type')->match({
 					T_Pointer => sub($to_type) {
 						$node->set('type', $to_type);
@@ -409,6 +416,9 @@ sub check_types {
 				check_types($expr, $node);
 				$node->set('type', T_Pointer($expr->get('type')));
 			},
+			AST_Subscript => sub($e1, $e2) {
+				# TODO
+			},
 			default => sub {
 				check_types($_, $node) for $node->values_in_order();
 			}
@@ -416,6 +426,19 @@ sub check_types {
 	} elsif (ref($node) eq 'ARRAY') {
 		check_types($_, $parent_node) for $node->@*;
 	}
+}
+
+sub check_type_and_decay {
+	my $expr = shift;
+	check_types($expr, undef);
+	return $expr->get('type')->match({
+		T_Array => sub($elem_type, $size) {
+			my $addr_expr = AST_AddrOf($expr);
+			$addr_expr->set('type', $elem_type);
+			return $addr_expr;
+		},
+		default => sub { return $expr }
+	});
 }
 
 sub get_symbol_attr {
