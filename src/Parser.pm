@@ -181,7 +181,7 @@ sub process_declarator {
 				for my $p (@$params) {
 					my ($param_name, $param_type) = process_declarator($p->get('declarator'), $p->get('type'));
 					die "fun pointers not supported" if $param_type->is('T_FunType');
-					push @params, AST_VarDeclaration($param_name, undef, $param_type, undef);
+					push @params, $param_name;
 					push @param_types, $param_type;
 				}
 				return ($inner_decl->get('name'), T_FunType(\@param_types, $base_type), \@params);

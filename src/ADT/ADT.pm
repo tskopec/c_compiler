@@ -8,7 +8,7 @@ use Scalar::Util 'looks_like_number';
 use overload
 	'""' => sub {
 		my $self = shift;
-		my $fields_string = join(", ", map { "$_: " . (defined($self->{$_}) ? qq("$self->{$_}") : "undef") } $self->fields_order());
+		my $fields_string = join(", ", map { "$_: " . (defined($self->{$_}) ? qq("$self->{$_}") : "undef") } $self->keys_in_order());
 		return $self->{':tag'} . (length($fields_string) ? "(" . $fields_string . ")" : "");
 	},
 	eq => sub {
@@ -48,6 +48,14 @@ sub get {
 }
 
 sub set {
+	my ($self, @key_vals) = @_;
+	for my ($key, $val) (@key_vals) {
+		check_value($val, $constr_info{$self->{':tag'}}->{param_types}{$key});
+		$self->{$key} = $val;
+	}
+}
+
+sub swap {
 	my ($self, $key, $val) = @_;
 	check_value($val, $constr_info{$self->{':tag'}}->{param_types}{$key});
 	my $old_val = $self->{$key};
@@ -99,21 +107,13 @@ sub values_in_order {
 	if (defined $expected_type && !$self->is($expected_type)) {
 		die "$self not $expected_type";
 	}
-	return map { $self->get($_) } $self->fields_order();
+	return map { $self->get($_) } $self->keys_in_order();
 }
 
-sub fields_order {
+sub keys_in_order {
 	my $self = shift;
 	return $constr_info{$self->{':tag'}}->{params_order}->@*;
 }
-
-sub remap_values {
-	my ($self, $fun) = @_;
-	for my $key ($self->fields_order()) {
-		$self->set($key, $fun->($self->get($key)));
-	}
-}
-
 
 sub check_value {
 	my ($value, $type) = @_;

@@ -15,7 +15,7 @@ sub print_tree {
 		my ($key, $node, $indent) = @_;
 		if ($node isa ADT::ADT) {
 			say(($tab x $indent) . "$key: " . $node->{':tag'});
-			__SUB__->($_, $node->{$_}, $indent + 1) for $node->fields_order();
+			__SUB__->($_, $node->{$_}, $indent + 1) for $node->keys_in_order();
 		} elsif (ref($node) eq 'ARRAY') {
 			if (@$node) {
 				say(($tab x $indent) . "$key: [");

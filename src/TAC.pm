@@ -30,13 +30,13 @@ sub emit_TAC {
 			@tac_vars = covert_symbols_to_TAC();
 			return TAC_Program([ @tac_vars, @tac_funs ]);
 		},
-		AST_FunDeclaration => sub($name, $params, $body, $ret_type, $storage) {
+		AST_FunDeclaration => sub($name, $params, $body, $fun_type, $storage) {
 			if (defined $body) {
 				emit_TAC($body, my $fun_instructions = []);
 				push @$fun_instructions, TAC_Return(TAC_Constant(C_ConstInt(0)));
 				return TAC_Function($name,
 					Semantics::get_symbol_attr($name, 'global'),
-					[ map { $_->get('name') } @$params ],
+					$params,
 					$fun_instructions);
 			} else {
 				return undef;

@@ -5,7 +5,7 @@ use feature qw(say state isa signatures);
 
 use ADT::AlgebraicTypes qw(:AST :C :A :INI :S :T is_ADT);
 use TypeUtils qw(/^MAX_/ get_common_type get_common_pointer_type convert_type convert_as_if_by_assignment types_equal
-	const_to_initval);
+	create_const const_to_initval is_arithmetic is_integer);
 
 our %symbol_table;
 
@@ -13,7 +13,7 @@ sub run {
 	%symbol_table = ();
 	my $ast = shift;
 	resolve_ids($ast);
-	check_types($ast);
+	check_type($ast);
 	label_loops($ast);
 }
 
@@ -37,7 +37,7 @@ sub resolve_ids {
 }
 
 sub resolve_fun_declaration_ids {
-	my ($name, $params, $body, $type, $storage,
+	my ($name, $params, $body, $fun_type, $storage,
 		$ids_map, $in_block_scope) = @_;
 	if ($in_block_scope) {
 		die "nested fun definition" if (defined $body);
@@ -51,7 +51,10 @@ sub resolve_fun_declaration_ids {
 	}
 	$ids_map->{$name} = { uniq_name => $name, from_this_scope => 1, has_linkage => 1 };
 	my $inner_ids_map = make_inner_scope_map($ids_map);
-	resolve_local_var_declaration_ids($_, $inner_ids_map) for @$params;
+	for (my $i = 0; $i < @$params; $i++) {
+		my $temp_var_dec = AST_VarDeclaration($params->[$i], undef, $fun_type->get('param_types')->[$i], undef);
+		resolve_local_var_declaration_ids($temp_var_dec, $inner_ids_map);
+	}
 	if (defined $body) {
 		my $items = $body->get('items');
 		resolve_block_item_ids($_, $inner_ids_map) for @$items;
@@ -206,16 +209,19 @@ sub make_inner_scope_map {
 
 
 #2# TYPE CHECKING ##########################################
-sub check_types {
+sub check_type {
 	state $current_fun_ret_type;
 	my ($node, $parent_node) = @_;
 	if ($node isa 'ADT::ADT') {
 		$node->match({
 			AST_FunDeclaration => sub($name, $params, $body, $fun_type, $storage) {
 				$current_fun_ret_type = $fun_type->get('ret_type');
+				die "cant return array: $name" if ($current_fun_ret_type->is('T_Array'));
 				my $has_body = defined($body);
 				my $already_defined = 0;
 				my $global = not is_ADT($storage, 'S_Static');
+				my @decayed_param_types = map { $_->is('T_Array') ? T_Pointer($_->get('elem_type')) : $_ } $fun_type->get('param_types')->@*;
+				$fun_type->set('param_types', \@decayed_param_types);
 
 				if (exists $symbol_table{$name}) {
 					$already_defined = get_symbol_attr($name, 'defined');
@@ -232,14 +238,18 @@ sub check_types {
 					)
 				};
 				if ($has_body) {
-					for my $p (@$params) {
-						$symbol_table{$p->get('name')} = { type => $p->get('type'), attrs => A_LocalAttrs() };
+					for (my $i = 0; $i < @$params; $i++) {
+						$symbol_table{$params->[$i]} = { type => $fun_type->get('param_types')->[$i], attrs => A_LocalAttrs() };
 					}
-					check_types($body, $node);
+					check_type($body, $node);
 				}
 			},
 			AST_VarDeclaration => sub($name, $init, $type, $storage) {
-###### file scope var
+				# !!!!
+				# TODO prepracovat inity
+				# !!!!
+				check_init_type($init, $type);
+	###### file scope var
 				if (is_ADT($parent_node, 'AST_Program')) {
 					my $init_val;
 					if (is_ADT($init, 'AST_ConstantExpr')) {
@@ -271,7 +281,7 @@ sub check_types {
 						type => $type,
 						attrs => A_StaticAttrs($init_val, 0+$global)
 					};
-###### local var
+	###### local var
 				} else {
 					if ($parent_node isa 'ADT::ADT' && $parent_node->is('AST_ForInitDeclaration') && defined($storage)) {
 						die "for loop header var $name declaration with storage class";
@@ -305,7 +315,7 @@ sub check_types {
 							attrs => A_LocalAttrs()
 						};
 						if (defined $init) {
-							check_types($init, $node);
+							check_type($init, $node);
 						}
 					}
 				}
@@ -329,13 +339,13 @@ sub check_types {
 			},
 			AST_ConstantExpr => sub($const, $type) { ; },
 			AST_Cast => sub($expr, $type) {
+				die "cant cast $expr to array: $type" if ($type->is('T_Array'));
 				$expr = check_type_and_decay($expr);
 				if (($expr->get('type')->is('T_Double') && $type->is('T_Pointer'))
 					|| ($expr->get('type')->is('T_Pointer') && $type->is('T_Double'))) {
 					die "cant convert $expr to $type";
 				}
-				$node->set('expr', $expr);
-				$node->set('type', $type);
+				$node->set('expr', $expr, 'type', $type);
 			},
 			AST_Unary => sub($op, $expr, $dummy_type) {
 				$expr = check_type_and_decay($expr);
@@ -351,51 +361,79 @@ sub check_types {
 						$expr_type = T_Int;
 					}
 				});
-				$node->set('expr', $expr);
-				$node->set('type', $expr_type);
+				$node->set('expr', $expr, 'type', $expr_type);
 			},
 			AST_Binary => sub($op, $e1, $e2, $dummy_type) {
-				$e1 = check_type_and_decay($e1);
-				$e2 = check_type_and_decay($e2);
-				my $is_pointer_op = $e1->get('type')->is('T_Pointer') || $e2->get('type')->is('T_Pointer');
+				($e1, $e2) = map { check_type_and_decay($_) } ($e1, $e2);
+				my ($t1, $t2) = map { $_->get('type') } ($e1, $e2);
+				my $is_pointer_op = $t1->is('T_Pointer') || $t2->is('T_Pointer');
 				die "cant $op pointer" if ($is_pointer_op && $op->is('AST_Multiply', 'AST_Divide', 'AST_Remainder'));
-				if ($op->is('AST_And', 'AST_Or')) {
-					$node->set('expr1', $e1);
-					$node->set('expr2', $e2);
-					$node->set('type', T_Int());
-				} else {
-					my $common_type = $is_pointer_op && $op->is('AST_Equal', 'AST_NotEqual')
-						? get_common_pointer_type($e1, $e2)
-						: get_common_type($e1->get('type'), $e2->get('type'));
-					$node->set('expr1', convert_type($e1, $common_type));
-					$node->set('expr2', convert_type($e2, $common_type));
-					die "cant apply '%' to double" if ($common_type->is('T_Double') && $op->is('AST_Remainder'));
-					if ($op->is('AST_Add', 'AST_Subtract', 'AST_Multiply', 'AST_Divide', 'AST_Remainder')) {
+				$op->match({
+					AST_Add => sub {
+						if (not $is_pointer_op) {
+							my $common_type = get_common_type($t1, $t2);
+							$node->set('expr1', convert_type($e1, $common_type), 'expr2', convert_type($e2, $common_type), 'type', $common_type);
+						} elsif ($t1->is('T_Pointer') && is_integer($t2)) {
+							$node->set('expr1', $e1, 'expr2', convert_type($e2, T_Long), 'type', $t1);
+						} elsif (is_integer($t1) && $t2->is('T_Pointer')) {
+							$node->set('expr1', convert_type($e1, T_Long), 'expr2', $e2, 'type', $t2);
+						} else {
+							die "cant add $e1 and $e2";
+						}
+					},
+					AST_Subtract => sub {
+						if (not $is_pointer_op) {
+							my $common_type = get_common_type($t1, $t2);
+							$node->set('expr1', convert_type($e1, $common_type), 'expr2', convert_type($e2, $common_type), 'type', $common_type);
+						} elsif ($t1->is('T_Pointer') && is_integer($t2)) {
+							$node->set('expr1', $e1, 'expr2', convert_type($e2, T_Long), 'type', $t1);
+						} elsif ($t1->is('T_Pointer') && $t1 eq $t2) {
+							$node->set('expr1', $e1, 'expr2', $e2, 'type', T_Long);
+						} else {
+							die "cant subtract $e1 and $e2";
+						}
+					},
+					'AST_Multiply', 'AST_Divide', 'AST_Remainder' => sub {
+						my $common_type = get_common_type($t1, $t2);
+						die "cant apply '%' to double" if ($common_type->is('T_Double') && $op->is('AST_Remainder'));
 						$node->set('type', $common_type);
-					} else {
-						$node->set('type', T_Int);
+					},
+					'AST_And, AST_Or' => sub {
+						$node->set('expr1', $e1, 'expr2', $e2, 'type', T_Int);
+					},
+					'AST_Equal, AST_NotEqual' => sub {
+						my $common_type = $is_pointer_op ? get_common_pointer_type($e1, $e2) : get_common_type($t1, $t2);
+						$node->set('expr1', convert_type($e1, $common_type), 'expr2', convert_type($e2, $common_type), 'type', T_Int);
+					},
+					'AST_LessThan, AST_LessOrEqual, AST_GreaterThan, AST_GreaterOrEqual' => sub {
+						if ($is_pointer_op && $t1 eq $2) {
+							$node->set('expr1', $e1, 'expr2', $e2, 'type', T_Int);
+						} else {
+							die "cant $op $e1 $e2";
+						}
+					},
+					default => sub {
+						die "missing case for $op";
 					}
-				}
+				});
 			},
 			AST_Assignment => sub($lhs, $rhs, $dummy_type) {
-				die "$lhs not lvalue" unless is_lval($lhs);
 				$lhs = check_type_and_decay($lhs);
+				die "$lhs not lvalue" unless is_lval($lhs);
 				$rhs = check_type_and_decay($rhs);
-				$node->set('lhs', $lhs);
-				$node->set('rhs', convert_as_if_by_assignment($rhs, $lhs->get('type')));
-				$node->set('type', $lhs->get('type'));
+				$node->set('lhs', $lhs,
+						   'rhs', convert_as_if_by_assignment($rhs, $lhs->get('type')),
+						   'type', $lhs->get('type'));
 			},
 			AST_Conditional => sub($cond, $then, $else, $dummy_type) {
-				$cond = check_type_and_decay($cond);
-				$then = check_type_and_decay($then);
-				$else = check_type_and_decay($else);
+				($cond, $then, $else) = map { check_type_and_decay($_) } ($cond, $then, $else);
 				my $common_type = $then->get('type')->is('T_Pointer') || $else->get('type')->is('T_Pointer')
 					? get_common_pointer_type($then, $else)
 					: get_common_type($then->get('type'), $else->get('type'));
-				$node->set('cond', $cond);
-				$node->set('then', convert_type($then, $common_type));
-				$node->set('else', convert_type($else, $common_type));
-				$node->set('type', $common_type);
+				$node->set('cond', $cond,
+						   'then', convert_type($then, $common_type),
+						   'else', convert_type($else, $common_type),
+						   'type', $common_type);
 			},
 			AST_Return => sub($expr) {
 				$expr = check_type_and_decay($expr);
@@ -403,34 +441,74 @@ sub check_types {
 			},
 			AST_Dereference => sub($expr, $dummy_type) {
 				$expr = check_type_and_decay($expr);
-				$node->set('expr', $expr);
 				$expr->get('type')->match({
 					T_Pointer => sub($to_type) {
-						$node->set('type', $to_type);
+						$node->set('expr', $expr, 'type', $to_type);
 					},
 					default => sub { die "cant dereference $expr" }
 				});
 			},
 			AST_AddrOf => sub($expr, $dummy_type) {
 				die "$expr not lvalue" unless is_lval($expr);
-				check_types($expr, $node);
+				check_type($expr, $node);
 				$node->set('type', T_Pointer($expr->get('type')));
 			},
-			AST_Subscript => sub($e1, $e2) {
-				# TODO
+			AST_Subscript => sub($expr1, $expr2) {
+				($expr1, $expr2) = map { check_type_and_decay($_) } ($expr1, $expr2);
+				my ($t1, $t2) = map { $_->get('type') } ($expr1, $expr2);
+				if ($t1->is('T_Pointer') && is_integer($t2)) {
+					$expr2 = convert_type($expr2, T_Long);
+					$node->set('expr1', $expr1, 'expr2', $expr2, 'type', $t1->get('to_type'));
+				} elsif (is_integer($t1) && $t2->is('T_Pointer')) {
+					$expr1 = convert_type($expr1, T_Long);
+					$node->set('expr1', $expr1, 'expr2', $expr2, 'type', $t2->get('to_type'));
+				} else {
+					die "bad operands for subscript: $expr1, $expr2";
+				}
 			},
 			default => sub {
-				check_types($_, $node) for $node->values_in_order();
+				check_type($_, $node) for $node->values_in_order();
 			}
 		});
 	} elsif (ref($node) eq 'ARRAY') {
-		check_types($_, $parent_node) for $node->@*;
+		check_type($_, $parent_node) for $node->@*;
 	}
+}
+
+sub check_init_type {
+	my ($target_type, $init) = @_;
+	$init->match({
+		AST_SingleInit => sub($expr, $dummy_type) {
+			$expr = check_type_and_decay($expr);
+			$init->set('expr', convert_as_if_by_assignment($expr, $target_type), 'type', $target_type);
+		},
+		AST_CompoundInit => sub($inits, $dummy_type) {
+			die "cant initialize scalar $target_type with compound init $init" unless $target_type->is('T_Array');
+			die "too many vals in compound init: @{[ @$inits ]}" if (@$inits > $target_type->get('size'));
+			my ($elem_type, $arr_size) = $target_type->values_in_order('T_Array');
+			for my $i (@$inits) {
+				check_init_type($elem_type, $i);
+			}
+			while (@$inits < $arr_size) {
+				push(@$inits, zero_initializer($elem_type));
+			}
+		}
+	});
+}
+
+sub zero_initializer {
+	my $type = shift;
+	return $type->match({
+		T_Array => sub($elem_type, $size) {
+			return AST_CompoundInit([ map { zero_initializer($elem_type) } (1..$size) ], $type);
+		},
+		default => AST_SingleInit(AST_ConstantExpr(create_const($type, 0), $type), $type)
+	});
 }
 
 sub check_type_and_decay {
 	my $expr = shift;
-	check_types($expr, undef);
+	check_type($expr, undef);
 	return $expr->get('type')->match({
 		T_Array => sub($elem_type, $size) {
 			my $addr_expr = AST_AddrOf($expr);
@@ -461,7 +539,7 @@ sub get_symbol_attr {
 }
 
 sub is_lval {
-	return shift()->is('AST_Var', 'AST_Dereference');
+	return shift()->is('AST_Var', 'AST_Dereference', 'AST_Subscript');
 }
 
 #3# LOOP LABELING ###

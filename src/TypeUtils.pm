@@ -7,7 +7,8 @@ use ADT::AlgebraicTypes qw(:AST :INI :SI :T);
 
 use base 'Exporter';
 our @EXPORT_OK = qw(MAX_ULONG MAX_LONG MAX_UINT MAX_INT get_type_of_TAC get_common_type get_common_pointer_type
-	get_int_type_rank is_signed convert_type convert_as_if_by_assignment types_equal const_to_initval get_static_init);
+	get_int_type_rank is_signed is_arithmetic is_integer convert_type convert_as_if_by_assignment types_equal create_const
+	const_to_initval get_static_init);
 
 use constant MAX_ULONG => 2 ** 64;
 use constant MAX_LONG => 2 ** 63 - 1;
@@ -62,6 +63,11 @@ sub is_arithmetic {
 	return $type->is('T_Int', 'T_UInt', 'T_Long', 'T_ULong', 'T_Double');
 }
 
+sub is_integer {
+	my $type = shift;
+	return $type->is('T_Int', 'T_UInt', 'T_Long', 'T_ULong');
+}
+
 sub convert_type {
 	my ($expr, $type) = @_;
 	return $type->same_type_as($expr->get('type')) ? $expr : AST_Cast($expr, $type);
@@ -89,6 +95,18 @@ sub types_equal {
 		return 1;
 	}
 	return 0;
+}
+
+sub create_const {
+	my ($type, $val) = @_;
+	return $type->match({
+		T_Int => C_ConstInt($val),
+		T_UInt => C_ConstUInt($val),
+		T_Long => C_ConstLong($val),
+		T_ULong => C_ConstULong($val),
+		T_Double => C_ConstDouble($val),
+		default => sub { die "bad type $type" }
+	});
 }
 
 sub const_to_initval {

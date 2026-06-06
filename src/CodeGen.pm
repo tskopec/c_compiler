@@ -569,7 +569,7 @@ sub prependMovToScratch {
 	my $scratch = $key =~ /src|operand1/
 		? $op_size->is('ASM_Double') ? ASM_Reg(ASM_XMM14) : ASM_Reg(ASM_R10)  # registry pro src
 		: $op_size->is('ASM_Double') ? ASM_Reg(ASM_XMM15) : ASM_Reg(ASM_R11); # registry pro dst
-	my $old_op = $instructions->[-1]->set($key, $scratch);
+	my $old_op = $instructions->[-1]->swap($key, $scratch);
 	return [ ASM_Mov($op_size, $old_op, $scratch),
 			 @$instructions ];
 }
@@ -577,7 +577,7 @@ sub prependMovToScratch {
 sub appendMovFromScratch {
 	my ($instructions, $key, $op_size) = @_;
 	my $scratch = $op_size->is('ASM_Double') ? ASM_Reg(ASM_XMM15) : ASM_Reg(ASM_R11); # asi ma smysl jenom pro dst
-	my $old_op = $instructions->[-1]->set($key, $scratch);
+	my $old_op = $instructions->[-1]->swap($key, $scratch);
 	return [ @$instructions,
 			 ASM_Mov($op_size, $scratch, $old_op) ];
 }
@@ -585,7 +585,7 @@ sub appendMovFromScratch {
 sub toScratchAndBack {
 	my ($instructions, $key, $op_size) = @_;
 	my $scratch = $op_size->is('ASM_Double') ? ASM_Reg(ASM_XMM15) : ASM_Reg(ASM_R11); # asi ma smysl jenom pro dst
-	my $old_op = $instructions->[-1]->set($key, $scratch);
+	my $old_op = $instructions->[-1]->swap($key, $scratch);
 	return [ ASM_Mov($op_size, $old_op, $scratch),
 			 @$instructions,
 			 ASM_Mov($op_size, $scratch, $old_op) ];
