@@ -8,7 +8,7 @@ use ADT::AlgebraicTypes qw(:AST :INI :SI :T);
 use base 'Exporter';
 our @EXPORT_OK = qw(MAX_ULONG MAX_LONG MAX_UINT MAX_INT get_type_of_TAC get_common_type get_common_pointer_type
 	get_int_type_rank is_signed is_arithmetic is_integer convert_type convert_as_if_by_assignment types_equal create_const
-	const_to_initval get_static_init);
+	get_static_init);
 
 use constant MAX_ULONG => 2 ** 64;
 use constant MAX_LONG => 2 ** 63 - 1;
@@ -109,17 +109,14 @@ sub create_const {
 	});
 }
 
-sub const_to_initval {
-	my ($const, $var_type) = @_;
-	my $val = $const->get('val');
-	if ($const->is('C_ConstDouble') && !$var_type->is('T_Double')) {
-		$val = int($val);
-	}
-	return INI_Initial(get_static_init($var_type, $val));
-}
-
 sub get_static_init {
-	my ($type, $value) = @_;
+	my ($arg, $type) = @_;
+	my $value = (is_ADT($arg, 'C_Constant'))
+		? do {
+			my $val = $arg->get('val');
+			($arg->is('C_ConstDouble') && !$type->is('T_Double')) ? int($val) : $val;
+		}
+		: $arg;
 	return $type->match({
 		T_Int => sub() {
 			return SI_IntInit($value & 0xffffffff);

@@ -5,7 +5,7 @@ use feature qw(say state isa signatures);
 
 use ADT::AlgebraicTypes qw(:AST :C :A :INI :S :T is_ADT);
 use TypeUtils qw(/^MAX_/ get_common_type get_common_pointer_type convert_type convert_as_if_by_assignment types_equal
-	create_const const_to_initval is_arithmetic is_integer);
+	create_const get_static_init is_arithmetic is_integer);
 
 our %symbol_table;
 
@@ -239,26 +239,18 @@ sub check_type {
 				};
 				if ($has_body) {
 					for (my $i = 0; $i < @$params; $i++) {
-						$symbol_table{$params->[$i]} = { type => $fun_type->get('param_types')->[$i], attrs => A_LocalAttrs() };
+						$symbol_table{$params->[$i]} = { type => $fun_type->get('param_types')->[$i], attrs => A_LocalAttrs };
 					}
 					check_type($body, $node);
 				}
 			},
 			AST_VarDeclaration => sub($name, $init, $type, $storage) {
-				# !!!!
-				# TODO prepracovat inity
-				# !!!!
 				check_init_type($init, $type);
 	###### file scope var
 				if (is_ADT($parent_node, 'AST_Program')) {
-					my $init_val;
-					if (is_ADT($init, 'AST_ConstantExpr')) {
-						$init_val = const_to_initval($init->get('constant'), $type);
-					} elsif (!defined($init)) {
-						$init_val = is_ADT($storage, 'S_Extern') ? INI_NoInitializer() : INI_Tentative();
-					} else {
-						die "initializer is not a constant: $init";
-					}
+					my $init_val = (defined $init)
+						? INI_Initial([ flatten_init($init, $type) ])
+						: is_ADT($storage, 'S_Extern') ? INI_NoInitializer : INI_Tentative;
 					my $global = not (is_ADT($storage, 'S_Static'));
 
 					if (exists $symbol_table{$name}) {
@@ -274,7 +266,7 @@ sub check_type {
 							die "conflicting file scope var definitions: $name " if ($init_val->is('INI_Initial'));
 							$init_val = $prev_init;
 						} elsif (!$init_val->is('INI_Initial') && $prev_init->is('INI_Tentative')) {
-							$init_val = INI_Tentative();
+							$init_val = INI_Tentative;
 						}
 					}
 					$symbol_table{$name} = {
@@ -293,18 +285,13 @@ sub check_type {
 						} else {
 							$symbol_table{$name} = {
 								type => $type,
-								attrs => A_StaticAttrs(INI_NoInitializer(), 1)
+								attrs => A_StaticAttrs(INI_NoInitializer, 1)
 							};
 						}
 					} elsif (is_ADT($storage, 'S_Static')) {
-						my $init_val;
-						if (is_ADT($init, 'AST_ConstantExpr')) {
-							$init_val = const_to_initval($init->get('constant'), $type);
-						} elsif (!defined $init) {
-							$init_val = const_to_initval(C_ConstInt(0), $type);
-						} else {
-							die "initializer not constant: $init";
-						}
+						my $init_val = INI_Initial([
+							defined $init ? flatten_init($init, $type) : get_static_init(C_ConstInt(0), $type)
+						]);
 						$symbol_table{$name} = {
 							type => $type,
 							attrs => A_StaticAttrs($init_val, 0)
@@ -312,15 +299,9 @@ sub check_type {
 					} else {
 						$symbol_table{$name} = {
 							type => $type,
-							attrs => A_LocalAttrs()
+							attrs => A_LocalAttrs
 						};
-						if (defined $init) {
-							check_type($init, $node);
-						}
 					}
-				}
-				if (defined $init) {
-					$node->set('initializer', convert_as_if_by_assignment($init, $type));
 				}
 			},
 			AST_FunctionCall => sub($name, $args, $dummy_type) {
@@ -480,10 +461,10 @@ sub check_init_type {
 	$init->match({
 		AST_SingleInit => sub($expr, $dummy_type) {
 			$expr = check_type_and_decay($expr);
-			$init->set('expr', convert_as_if_by_assignment($expr, $target_type), 'type', $target_type);
+			$init->set('expr', convert_as_if_by_assignment($expr, $target_type));
 		},
 		AST_CompoundInit => sub($inits, $dummy_type) {
-			die "cant initialize scalar $target_type with compound init $init" unless $target_type->is('T_Array');
+			die "cant initialize scalar $target_type with compound init $init" unless ($target_type->is('T_Array'));
 			die "too many vals in compound init: @{[ @$inits ]}" if (@$inits > $target_type->get('size'));
 			my ($elem_type, $arr_size) = $target_type->values_in_order('T_Array');
 			for my $i (@$inits) {
@@ -494,6 +475,7 @@ sub check_init_type {
 			}
 		}
 	});
+	$init->set('type', $target_type);
 }
 
 sub zero_initializer {
@@ -503,6 +485,20 @@ sub zero_initializer {
 			return AST_CompoundInit([ map { zero_initializer($elem_type) } (1..$size) ], $type);
 		},
 		default => AST_SingleInit(AST_ConstantExpr(create_const($type, 0), $type), $type)
+	});
+}
+
+sub flatten_init {
+	my ($init, $type) = @_;
+	return $init->match({
+		AST_SingleInit => sub($expr, $init_type) {
+			die "initializer is not a constant: $init" unless (is_ADT($expr, 'AST_ConstantExpr'));
+			return get_static_init($expr, $type);
+		},
+		AST_CompoundInit => sub($inits, $init_type) {
+			return map { flatten_init($_) } @$inits;
+		},
+		default => sub { die "wtf" }
 	});
 }
 

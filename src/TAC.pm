@@ -324,7 +324,7 @@ sub covert_symbols_to_TAC {
 					push(@tac_vars, TAC_StaticVariable($name, $global, $type, $init));
 				},
 				INI_Tentative => sub() {
-					push(@tac_vars, TAC_StaticVariable($name, $global, $type, get_static_init($type, 0)));
+					push(@tac_vars, TAC_StaticVariable($name, $global, $type, get_static_init(0, $type)));
 				},
 				INI_NoInitializer => sub() { ; }
 			});
