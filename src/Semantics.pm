@@ -54,6 +54,7 @@ sub resolve_fun_declaration_ids {
 	for (my $i = 0; $i < @$params; $i++) {
 		my $temp_var_dec = AST_VarDeclaration($params->[$i], undef, $fun_type->get('param_types')->[$i], undef);
 		resolve_local_var_declaration_ids($temp_var_dec, $inner_ids_map);
+		$params->[$i] = $temp_var_dec->get('name');
 	}
 	if (defined $body) {
 		my $items = $body->get('items');
@@ -80,8 +81,21 @@ sub resolve_local_var_declaration_ids {
 	} else {
 		$declaration->set('name', unique_var_name($name));
 		$ids_map->{$name} = { uniq_name => $declaration->get('name'), from_this_scope => 1, has_linkage => 0 };
-		resolve_expr_ids($init, $ids_map) if (defined $init);
+		resolve_initializer_ids($init, $ids_map) if (defined $init);
 	}
+}
+
+sub resolve_initializer_ids {
+	my ($init, $ids_map) = @_;
+	$init->match({
+		AST_SingleInit => sub($expr, $type) {
+			resolve_expr_ids($expr, $ids_map);
+		},
+		AST_CompoundInit => sub($inits, $type) {
+			resolve_initializer_ids($_, $ids_map) for @$inits;
+		},
+		default => sub { die "bad initializer type: $init" }
+	});
 }
 
 sub resolve_block_item_ids {
@@ -187,7 +201,12 @@ sub resolve_expr_ids {
 		AST_AddrOf => sub($e, $type) {
 			resolve_expr_ids($e, $ids_map);
 		},
-		default => sub { die "unknown expression $expr" }
+		AST_Subscript => sub($e1, $e2, $type) {
+			resolve_expr_ids($_, $ids_map) for ($e1, $e2);
+		},
+		default => sub {
+			die "unknown expression $expr"
+		}
 	});
 }
 
@@ -225,7 +244,7 @@ sub check_type {
 
 				if (exists $symbol_table{$name}) {
 					$already_defined = get_symbol_attr($name, 'defined');
-					die "incompatible declarations: $name" if (!types_equal(get_symbol_attr($name, 'type'), $fun_type));
+					die "incompatible declarations: $name" if (types_equal(get_symbol_attr($name, 'type'), $fun_type));
 					die "fun defined multiple times: $name" if ($already_defined && $has_body);
 					die "static fun declaration after non-static" if (get_symbol_attr($name, 'global') && !$global);
 					$global = get_symbol_attr($name, 'global');
@@ -434,17 +453,17 @@ sub check_type {
 				check_type($expr, $node);
 				$node->set('type', T_Pointer($expr->get('type')));
 			},
-			AST_Subscript => sub($expr1, $expr2) {
-				($expr1, $expr2) = map { check_type_and_decay($_) } ($expr1, $expr2);
-				my ($t1, $t2) = map { $_->get('type') } ($expr1, $expr2);
+			AST_Subscript => sub($expr1, $expr2, $dummy_type) {
+				my ($e1, $e2) = map { check_type_and_decay($_) } ($expr1, $expr2);
+				my ($t1, $t2) = map { $_->get('type') } ($e1, $e2);
 				if ($t1->is('T_Pointer') && is_integer($t2)) {
-					$expr2 = convert_type($expr2, T_Long);
-					$node->set('expr1', $expr1, 'expr2', $expr2, 'type', $t1->get('to_type'));
+					$e2 = convert_type($e2, T_Long);
+					$node->set('expr1', $e1, 'expr2', $e2, 'type', $t1->get('to_type'));
 				} elsif (is_integer($t1) && $t2->is('T_Pointer')) {
-					$expr1 = convert_type($expr1, T_Long);
-					$node->set('expr1', $expr1, 'expr2', $expr2, 'type', $t2->get('to_type'));
+					$e1 = convert_type($e1, T_Long);
+					$node->set('expr1', $1, 'expr2', $e2, 'type', $t2->get('to_type'));
 				} else {
-					die "bad operands for subscript: $expr1, $expr2";
+					die "bad operands for subscript: \n\t$e1\n\t$e2";
 				}
 			},
 			default => sub {
@@ -457,7 +476,7 @@ sub check_type {
 }
 
 sub check_init_type {
-	my ($target_type, $init) = @_;
+	my ($init, $target_type) = @_;
 	$init->match({
 		AST_SingleInit => sub($expr, $dummy_type) {
 			$expr = check_type_and_decay($expr);
@@ -468,7 +487,7 @@ sub check_init_type {
 			die "too many vals in compound init: @{[ @$inits ]}" if (@$inits > $target_type->get('size'));
 			my ($elem_type, $arr_size) = $target_type->values_in_order('T_Array');
 			for my $i (@$inits) {
-				check_init_type($elem_type, $i);
+				check_init_type($i, $elem_type);
 			}
 			while (@$inits < $arr_size) {
 				push(@$inits, zero_initializer($elem_type));
@@ -507,9 +526,7 @@ sub check_type_and_decay {
 	check_type($expr, undef);
 	return $expr->get('type')->match({
 		T_Array => sub($elem_type, $size) {
-			my $addr_expr = AST_AddrOf($expr);
-			$addr_expr->set('type', $elem_type);
-			return $addr_expr;
+			return AST_AddrOf($expr, T_Pointer($elem_type));
 		},
 		default => sub { return $expr }
 	});

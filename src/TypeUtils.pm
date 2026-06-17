@@ -90,7 +90,12 @@ sub types_equal {
 			my ($param_types1, $ret_type1) = $t1->values_in_order('T_FunType');
 			my ($param_types2, $ret_type2) = $t2->values_in_order('T_FunType');
 			return 0 if (@$param_types1 != @$param_types2 || $ret_type1 ne $ret_type2);
-			return not grep { not $param_types1->[$_]->same_type_as($param_types2->[$_]) } (0 .. $#$param_types1);
+			for my $i (0 .. $#$param_types1) {
+				return 0 unless types_equal($param_types1->[$i], $param_types2->[$i]);
+			}
+		}
+		if ($t1->is('T_Array')) {
+			return types_equal($t1->get('elem_type'), $t2->get('elem_type'));
 		}
 		return 1;
 	}

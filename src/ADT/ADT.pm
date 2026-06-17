@@ -95,7 +95,7 @@ sub match {
 	}
 	if (!exists $split_cond_cases{default}) {
 		my @missing = grep { !exists $split_cond_cases{$_} } $variants_info{$self->{':base_type'}}->@*;
-		die "missing cases for type " . $self->{':base_type'} . ": @missing" if (@missing);
+		die("missing cases for type " . $self->{':base_type'} . ": @missing") if (@missing);
 	}
 	my $case = $split_cond_cases{$self->{':tag'}} // $split_cond_cases{default};
 	return ref($case) eq 'CODE' ? $case->($self->values_in_order()) : $case;

@@ -284,10 +284,6 @@ sub parse_opt_expr {
 sub parse_expr {
 	my $min_prec = shift;
 	my $left = parse_factor();
-	while (expect_maybe('LEX_Symbol', '[')) {
-		$left = AST_Subscript($left, parse_expr(0));
-		expect('LEX_Symbol', ']');
-	}
 	while (peek()->is('LEX_Operator')) {
 		my $op = peek()->get('op');
 		last if $op eq ':';
@@ -339,7 +335,12 @@ sub parse_factor {
 				}
 				return AST_FunctionCall($name, \@args, T_DummyType);
 			} else {
-				return AST_Var($name, T_DummyType);
+				my $result = AST_Var($name, T_DummyType);
+				while (expect_maybe('LEX_Symbol', '[')) {
+					$result = AST_Subscript($result, parse_expr(0), T_DummyType);
+					expect('LEX_Symbol', ']');
+				}
+				return $result;
 			}
 		},
 		LEX_Operator => sub($op) {
