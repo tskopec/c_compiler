@@ -3,7 +3,7 @@ use strict;
 use warnings;
 use feature qw(signatures isa);
 
-use ADT::AlgebraicTypes qw(:AST :INI :SI :T);
+use ADT::AlgebraicTypes qw(:AST :INI :SI :T :C is_ADT);
 
 use base 'Exporter';
 our @EXPORT_OK = qw(MAX_ULONG MAX_LONG MAX_UINT MAX_INT get_type_of_TAC get_common_type get_common_pointer_type
@@ -59,13 +59,17 @@ sub is_signed {
 }
 
 sub is_arithmetic {
-	my $type = shift;
-	return $type->is('T_Int', 'T_UInt', 'T_Long', 'T_ULong', 'T_Double');
+	for my $type (@_) {
+		return 0 unless $type->is('T_Int', 'T_UInt', 'T_Long', 'T_ULong', 'T_Double');
+	}
+	return 1;
 }
 
 sub is_integer {
-	my $type = shift;
-	return $type->is('T_Int', 'T_UInt', 'T_Long', 'T_ULong');
+	for my $type (@_) {
+		return 0 unless $type->is('T_Int', 'T_UInt', 'T_Long', 'T_ULong');
+	}
+	return 1;
 }
 
 sub convert_type {
@@ -85,32 +89,37 @@ sub convert_as_if_by_assignment {
 
 sub types_equal {
 	my ($t1, $t2) = @_;
-	if ($t1->same_type_as($t2)) {
-		if ($t1->is('T_FunType')) {
-			my ($param_types1, $ret_type1) = $t1->values_in_order('T_FunType');
+	return 0 unless $t1->same_type_as($t2);
+	$t1->match({
+		T_FunType => sub($param_types1, $ret_type1) {
 			my ($param_types2, $ret_type2) = $t2->values_in_order('T_FunType');
 			return 0 if (@$param_types1 != @$param_types2 || $ret_type1 ne $ret_type2);
 			for my $i (0 .. $#$param_types1) {
 				return 0 unless types_equal($param_types1->[$i], $param_types2->[$i]);
 			}
-		}
-		if ($t1->is('T_Array')) {
-			return types_equal($t1->get('elem_type'), $t2->get('elem_type'));
-		}
-		return 1;
-	}
-	return 0;
+			return 1;
+		},
+		T_Array => sub($to_type1, $size1) {
+			return $size1 == $t2->get('size') && types_equal($to_type1, $t2->get('elem_type'));
+		},
+		T_Pointer => sub($to_type1) {
+			return types_equal($to_type1, $t2->get('to_type'));
+		},
+		default => 1
+	});
 }
 
 sub create_const {
 	my ($type, $val) = @_;
 	return $type->match({
-		T_Int => C_ConstInt($val),
-		T_UInt => C_ConstUInt($val),
-		T_Long => C_ConstLong($val),
-		T_ULong => C_ConstULong($val),
-		T_Double => C_ConstDouble($val),
-		default => sub { die "bad type $type" }
+		T_Int => sub { C_ConstInt($val) },
+		T_UInt => sub { C_ConstUInt($val) },
+		T_Long => sub { C_ConstLong($val) },
+		T_ULong => sub { C_ConstULong($val) },
+		T_Double => sub { C_ConstDouble($val) },
+		default => sub {
+			die "bad type $type";
+		}
 	});
 }
 

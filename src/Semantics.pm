@@ -244,7 +244,7 @@ sub check_type {
 
 				if (exists $symbol_table{$name}) {
 					$already_defined = get_symbol_attr($name, 'defined');
-					die "incompatible declarations: $name" if (types_equal(get_symbol_attr($name, 'type'), $fun_type));
+					die "incompatible declarations: $name" if (!types_equal(get_symbol_attr($name, 'type'), $fun_type));
 					die "fun defined multiple times: $name" if ($already_defined && $has_body);
 					die "static fun declaration after non-static" if (get_symbol_attr($name, 'global') && !$global);
 					$global = get_symbol_attr($name, 'global');
@@ -264,7 +264,10 @@ sub check_type {
 				}
 			},
 			AST_VarDeclaration => sub($name, $init, $type, $storage) {
-				check_init_type($init, $type);
+				if (defined $init) {
+					# TODO necheckovat to tadyhle? az pozdejc?
+					check_init_type($init, $type);
+				}
 	###### file scope var
 				if (is_ADT($parent_node, 'AST_Program')) {
 					my $init_val = (defined $init)
@@ -406,10 +409,13 @@ sub check_type {
 						$node->set('expr1', convert_type($e1, $common_type), 'expr2', convert_type($e2, $common_type), 'type', T_Int);
 					},
 					'AST_LessThan, AST_LessOrEqual, AST_GreaterThan, AST_GreaterOrEqual' => sub {
-						if ($is_pointer_op && $t1 eq $2) {
+						if ($is_pointer_op && ($t1 eq $t2)) {
 							$node->set('expr1', $e1, 'expr2', $e2, 'type', T_Int);
+						} elsif (is_integer($t1, $t2)) {
+							my $common_type = get_common_type($t1, $t2);
+							$node->set('expr1', convert_type($e1, $common_type), 'expr2', convert_type($e2, $common_type), 'type', T_Int);
 						} else {
-							die "cant $op $e1 $e2";
+							die "cant $op \n\t$e1\n\t$e2";
 						}
 					},
 					default => sub {
@@ -501,9 +507,9 @@ sub zero_initializer {
 	my $type = shift;
 	return $type->match({
 		T_Array => sub($elem_type, $size) {
-			return AST_CompoundInit([ map { zero_initializer($elem_type) } (1..$size) ], $type);
+			AST_CompoundInit([ map { zero_initializer($elem_type) } (1..$size) ], $type);
 		},
-		default => AST_SingleInit(AST_ConstantExpr(create_const($type, 0), $type), $type)
+		default => sub { AST_SingleInit(AST_ConstantExpr(create_const($type, 0), $type), $type) }
 	});
 }
 
@@ -511,7 +517,9 @@ sub flatten_init {
 	my ($init, $type) = @_;
 	return $init->match({
 		AST_SingleInit => sub($expr, $init_type) {
-			die "initializer is not a constant: $init" unless (is_ADT($expr, 'AST_ConstantExpr'));
+			unless (is_ADT($expr, 'AST_ConstantExpr')) {
+				die "initializer is not a constant: $init" ;
+			}
 			return get_static_init($expr, $type);
 		},
 		AST_CompoundInit => sub($inits, $init_type) {
