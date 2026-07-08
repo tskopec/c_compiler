@@ -326,21 +326,19 @@ sub parse_factor {
 		},
 		LEX_Identifier => sub($name) {
 			if (expect_maybe('LEX_Symbol', '(')) {
-				return AST_FunctionCall($name, [], T_DummyType) if (expect_maybe('LEX_Symbol', ')'));
-				my @args;
-				while (1) {
-					push(@args, parse_expr(0));
-					last if (expect_maybe('LEX_Symbol', ')'));
-					expect('LEX_Symbol', ',');
+				if (expect_maybe('LEX_Symbol', ')')) {
+					return AST_FunctionCall($name, [], T_DummyType);
+				} else {
+					my @args;
+					while (1) {
+						push(@args, parse_expr(0));
+						last if (expect_maybe('LEX_Symbol', ')'));
+						expect('LEX_Symbol', ',');
+					}
+					return AST_FunctionCall($name, \@args, T_DummyType);
 				}
-				return AST_FunctionCall($name, \@args, T_DummyType);
 			} else {
-				my $result = AST_Var($name, T_DummyType);
-				while (expect_maybe('LEX_Symbol', '[')) {
-					$result = AST_Subscript($result, parse_expr(0), T_DummyType);
-					expect('LEX_Symbol', ']');
-				}
-				return $result;
+				return AST_Var($name, T_DummyType);
 			}
 		},
 		LEX_Operator => sub($op) {
@@ -375,6 +373,10 @@ sub parse_factor {
 			die "cant parse $token as factor";
 		}
 	});
+	while (expect_maybe('LEX_Symbol', '[')) {
+		$result = AST_Subscript($result, parse_expr(0), T_DummyType);
+		expect('LEX_Symbol', ']');
+	}
 	return $result;
 }
 

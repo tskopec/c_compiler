@@ -10,7 +10,7 @@ our @EXPORT = qw(print_tree labels);
 use ADT::ADT;
 
 sub print_tree {
-	state $tab = "  ";
+	state $tab = "    ";
 	my $print_node = sub {
 		my ($key, $node, $indent) = @_;
 		if ($node isa ADT::ADT) {
