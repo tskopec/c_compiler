@@ -4,7 +4,7 @@ use warnings;
 use feature qw(say state signatures);
 
 use ADT::ParseASDL;
-use ADT::AlgebraicTypes qw(:LEX :AST :T :C :S);
+use ADT::AlgebraicTypes qw(:LEX :AST :T :C :STOR);
 use TypeUtils qw(/^MAX_/);
 
 BEGIN { # Local data types
@@ -106,8 +106,8 @@ sub parse_type {
 sub parse_storage_class {
 	my $storage_spec = shift;
 	if (!defined $storage_spec)		{ return undef }
-	if ($storage_spec eq 'static')	{ return S_Static }
-	if ($storage_spec eq 'extern')	{ return S_Extern }
+	if ($storage_spec eq 'static')	{ return STOR_Static }
+	if ($storage_spec eq 'extern')	{ return STOR_Extern }
 	die "unknown storage specifier: $storage_spec";
 }
 

@@ -20,6 +20,8 @@ use overload
 		return "$x" ne "$y";
 	};
 
+our $DBG = 0;
+our @match_history;
 
 our %variants_info;
 our %constr_info;
@@ -97,6 +99,7 @@ sub match {
 		my @missing = grep { !exists $split_cond_cases{$_} } $variants_info{$self->{':base_type'}}->@*;
 		die("missing cases for type " . $self->{':base_type'} . ": @missing") if (@missing);
 	}
+	unshift @match_history, "in " . (caller(1))[3] . " match on $self" if $DBG;
 	my $case = $split_cond_cases{$self->{':tag'}} // $split_cond_cases{default};
 	return ref($case) eq 'CODE' ? $case->($self->values_in_order()) : $case;
 }

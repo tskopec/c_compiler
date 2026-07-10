@@ -4,7 +4,7 @@ use warnings;
 use feature qw(say state signatures);
 
 use ADT::ParseASDL;
-use ADT::AlgebraicTypes qw(:AST :TAC :T :C :A :SI is_ADT);
+use ADT::AlgebraicTypes qw(:AST :TAC :T :C :ATT :SI is_ADT);
 use Semantics;
 use Utils qw(labels);
 use TypeUtils qw(get_int_type_rank is_signed get_static_init);
@@ -43,7 +43,7 @@ sub emit_TAC {
 			}
 		},
 		AST_VarDeclaration => sub($name, $init, $type, $storage) {
-			if (defined $init && !is_ADT($storage, 'S_Static')) {
+			if (defined $init && !is_ADT($storage, 'STOR_Static')) {
 				emit_TAC_and_convert(AST_Assignment(AST_Var($name, $type), $init, $type), $instructions);
 			}
 		},
@@ -304,7 +304,7 @@ sub make_TAC_var {
 	my $type = shift;
 	my $name = temp_name();
 	$Semantics::symbol_table{$name} = {
-		type => $type, attrs => A_LocalAttrs()
+		type => $type, attrs => ATT_LocalAttrs()
 	};
 	return TAC_Variable($name);
 }
@@ -316,9 +316,9 @@ sub temp_name {
 sub covert_symbols_to_TAC {
 	my @tac_vars;
 	while (my ($name, $entry) = each %Semantics::symbol_table) {
-		if ($entry->{attrs}->is('A_StaticAttrs')) {
+		if ($entry->{attrs}->is('ATT_StaticAttrs')) {
 			my $type = $entry->{type};
-			my ($stat_init, $global) = ($entry->{attrs})->values_in_order('A_StaticAttrs');
+			my ($stat_init, $global) = ($entry->{attrs})->values_in_order('ATT_StaticAttrs');
 			$stat_init->match({
 				INI_Initial => sub($init) {
 					push(@tac_vars, TAC_StaticVariable($name, $global, $type, $init));

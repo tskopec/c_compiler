@@ -14,8 +14,8 @@ LEX_Token =
 AST_Program =
 	AST_Program(AST_Declaration* declarations)
 AST_Declaration =
-	AST_VarDeclaration(string name, AST_Initializer? initializer, T_Type type, S_StorageClass? storage)
-	| AST_FunDeclaration(string name, string* params, AST_Block? body, T_Type type, S_StorageClass? storage)
+	AST_VarDeclaration(string name, AST_Initializer? initializer, T_Type type, STOR_StorageClass? storage)
+	| AST_FunDeclaration(string name, string* params, AST_Block? body, T_Type type, STOR_StorageClass? storage)
 AST_Initializer =
     AST_SingleInit(AST_Expression expr, T_Type type)
     | AST_CompoundInit(AST_Initializer* inits, T_Type type)
@@ -72,10 +72,10 @@ C_Constant =
 	| C_ConstLong(int val)
 	| C_ConstULong(int val)
 	| C_ConstDouble(float val)
-A_IdentifierAttrs =
-	A_FunAttrs(bool defined, bool global)
-	| A_StaticAttrs(INI_InitialValue init_val, bool global)
-	| A_LocalAttrs
+ATT_IdentifierAttrs =
+	ATT_FunAttrs(bool defined, bool global)
+	| ATT_StaticAttrs(INI_InitialValue init_val, bool global)
+	| ATT_LocalAttrs
 INI_InitialValue =
 	INI_Tentative
 	| INI_Initial(SI_StaticInit* static_inits)
@@ -87,8 +87,8 @@ SI_StaticInit =
 	| SI_ULongInit(int val)
 	| SI_DoubleInit(float val)
 	| SI_ZeroInit(int bytes)
-S_StorageClass =
-	S_Static | S_Extern
+STOR_StorageClass =
+	STOR_Static | STOR_Extern
 
 # TAC ###
 TAC_Program =

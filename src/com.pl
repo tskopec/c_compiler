@@ -12,6 +12,7 @@ BEGIN {
 	push(@INC, $src_dir = abs_path(__FILE__) =~ s{[^/]+$}{}r);
 }
 
+use ADT::ADT;
 use Utils qw(print_tree);
 use Lexer;
 use Parser;
@@ -36,6 +37,7 @@ foreach (@ARGV) {
 	} elsif (/^--(lex|parse|validate|tac|tacky|codegen)$/) {
 		$target_phase = $1;
 	} elsif (/^-d(\w*)$/) {
+		$ADT::ADT::DBG = 1;
 		$debug{$_} = 1 for (split('', $1 ? $1 : "lpstceSw")); # l(ex) p(arse) s(emantics) t(ac) c(odegen) e(mit) S(ymtables) w(rite .s files to /tmp)
 	} elsif (/^-c$/) {
 		$dont_link = 1;

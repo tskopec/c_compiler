@@ -3,7 +3,7 @@ use strict;
 use warnings;
 use feature qw(say state isa signatures);
 
-use ADT::AlgebraicTypes qw(:AST :C :A :INI :S :T is_ADT);
+use ADT::AlgebraicTypes qw(:AST :C :ATT :INI :STOR :T is_ADT);
 use TypeUtils qw(/^MAX_/ get_common_type get_common_pointer_type convert_type convert_as_if_by_assignment types_equal
 	create_const get_static_init is_arithmetic is_integer);
 
@@ -41,7 +41,7 @@ sub resolve_fun_declaration_ids {
 		$ids_map, $in_block_scope) = @_;
 	if ($in_block_scope) {
 		die "nested fun definition" if (defined $body);
-		die "static nested fun" if (is_ADT($storage, 'S_Static'));
+		die "static nested fun" if (is_ADT($storage, 'STOR_Static'));
 	}
 	if (exists $ids_map->{$name}) {
 		my $previous_entry = $ids_map->{$name};
@@ -73,10 +73,10 @@ sub resolve_local_var_declaration_ids {
 	my ($name, $init, $type, $storage) = $declaration->values_in_order('AST_VarDeclaration');
 	if (exists $ids_map->{$name}
 		&& $ids_map->{$name}{from_this_scope}
-		&& !($ids_map->{$name}{has_linkage} && is_ADT($storage, 'S_Extern'))) {
+		&& !($ids_map->{$name}{has_linkage} && is_ADT($storage, 'STOR_Extern'))) {
 		die "multiple declarations of $name in this scope, some without linkage";
 	}
-	if (is_ADT($storage, 'S_Extern')) {
+	if (is_ADT($storage, 'STOR_Extern')) {
 		$ids_map->{$name} = { uniq_name => $name, from_this_scope => 1, has_linkage => 1 };
 	} else {
 		$declaration->set('name', unique_var_name($name));
@@ -238,7 +238,7 @@ sub check_type {
 				die "cant return array: $name" if ($current_fun_ret_type->is('T_Array'));
 				my $has_body = defined($body);
 				my $already_defined = 0;
-				my $global = not is_ADT($storage, 'S_Static');
+				my $global = not is_ADT($storage, 'STOR_Static');
 				my @decayed_param_types = map { $_->is('T_Array') ? T_Pointer($_->get('elem_type')) : $_ } $fun_type->get('param_types')->@*;
 				$fun_type->set('param_types', \@decayed_param_types);
 
@@ -251,14 +251,14 @@ sub check_type {
 				}
 				$symbol_table{$name} = {
 					type => $fun_type,
-					attrs => A_FunAttrs(
+					attrs => ATT_FunAttrs(
 						($already_defined || $has_body),
 						0+$global
 					)
 				};
 				if ($has_body) {
 					for (my $i = 0; $i < @$params; $i++) {
-						$symbol_table{$params->[$i]} = { type => $fun_type->get('param_types')->[$i], attrs => A_LocalAttrs };
+						$symbol_table{$params->[$i]} = { type => $fun_type->get('param_types')->[$i], attrs => ATT_LocalAttrs };
 					}
 					check_type($body, $node);
 				}
@@ -272,12 +272,12 @@ sub check_type {
 				if (is_ADT($parent_node, 'AST_Program')) {
 					my $init_val = (defined $init)
 						? INI_Initial([ flatten_init($init, $type) ])
-						: is_ADT($storage, 'S_Extern') ? INI_NoInitializer : INI_Tentative;
-					my $global = not (is_ADT($storage, 'S_Static'));
+						: is_ADT($storage, 'STOR_Extern') ? INI_NoInitializer : INI_Tentative;
+					my $global = not (is_ADT($storage, 'STOR_Static'));
 
 					if (exists $symbol_table{$name}) {
 						die "already declared as other type: $name" unless (types_equal(get_symbol_attr($name, 'type'), $type));
-						if (is_ADT($storage, 'S_Extern')) {
+						if (is_ADT($storage, 'STOR_Extern')) {
 							$global = get_symbol_attr($name, 'global');
 						} elsif (get_symbol_attr($name, 'global') != $global) {
 							die "conflicting linkage, var $name";
@@ -293,35 +293,35 @@ sub check_type {
 					}
 					$symbol_table{$name} = {
 						type => $type,
-						attrs => A_StaticAttrs($init_val, 0+$global)
+						attrs => ATT_StaticAttrs($init_val, 0+$global)
 					};
 	###### local var
 				} else {
 					if ($parent_node isa 'ADT::ADT' && $parent_node->is('AST_ForInitDeclaration') && defined($storage)) {
 						die "for loop header var $name declaration with storage class";
 					}
-					if (is_ADT($storage, 'S_Extern')) {
+					if (is_ADT($storage, 'STOR_Extern')) {
 						die "initalizing local extern variable" if (defined $init);
 						if (exists $symbol_table{$name}) {
 							die "already declared as other type: $name" unless (types_equal(get_symbol_attr($name, 'type'), $type));
 						} else {
 							$symbol_table{$name} = {
 								type => $type,
-								attrs => A_StaticAttrs(INI_NoInitializer, 1)
+								attrs => ATT_StaticAttrs(INI_NoInitializer, 1)
 							};
 						}
-					} elsif (is_ADT($storage, 'S_Static')) {
+					} elsif (is_ADT($storage, 'STOR_Static')) {
 						my $init_val = INI_Initial([
 							defined $init ? flatten_init($init, $type) : get_static_init(C_ConstInt(0), $type)
 						]);
 						$symbol_table{$name} = {
 							type => $type,
-							attrs => A_StaticAttrs($init_val, 0)
+							attrs => ATT_StaticAttrs($init_val, 0)
 						};
 					} else {
 						$symbol_table{$name} = {
 							type => $type,
-							attrs => A_LocalAttrs
+							attrs => ATT_LocalAttrs
 						};
 					}
 				}
@@ -544,15 +544,15 @@ sub get_symbol_attr {
 	my ($symbol, $attr_name) = @_;
 	return $symbol_table{$symbol}->{type} if ($attr_name eq 'type');
 	($symbol_table{$symbol}->{attrs})->match({
-		A_FunAttrs => sub($defined, $global) {
+		ATT_FunAttrs => sub($defined, $global) {
 			return $defined if ($attr_name eq 'defined');
 			return $global if ($attr_name eq 'global');
 		},
-		A_StaticAttrs => sub($init_val, $global) {
+		ATT_StaticAttrs => sub($init_val, $global) {
 			return $init_val if ($attr_name eq 'init_value');
 			return $global if ($attr_name eq 'global');
 		},
-		A_LocalAttrs => sub() { return undef },
+		ATT_LocalAttrs => sub() { return undef },
 		default => sub {
 			die "cant get attribute '$attr_name' of $symbol in " . $symbol_table{$symbol}->{attrs};
 		}
