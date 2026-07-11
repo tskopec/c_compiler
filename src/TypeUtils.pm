@@ -126,10 +126,9 @@ sub create_const {
 sub get_static_init {
 	my ($arg, $type) = @_;
 	my $value = (is_ADT($arg, 'C_Constant'))
-		? do {
-			my $val = $arg->get('val');
-			($arg->is('C_ConstDouble') && !$type->is('T_Double')) ? int($val) : $val;
-		}
+		? ($arg->is('C_ConstDouble') && !$type->is('T_Double'))
+			? int($arg->get('val'))
+			: $arg->get('val')
 		: $arg;
 	return $type->match({
 		T_Int => sub() {

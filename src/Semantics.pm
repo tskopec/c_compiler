@@ -265,7 +265,6 @@ sub check_type {
 			},
 			AST_VarDeclaration => sub($name, $init, $type, $storage) {
 				if (defined $init) {
-					# TODO necheckovat to tadyhle? az pozdejc?
 					check_init_type($init, $type);
 				}
 	###### file scope var
@@ -311,9 +310,8 @@ sub check_type {
 							};
 						}
 					} elsif (is_ADT($storage, 'STOR_Static')) {
-						my $init_val = INI_Initial([
-							defined $init ? flatten_init($init, $type) : get_static_init(C_ConstInt(0), $type)
-						]);
+						$init //= zero_initializer($type);
+						my $init_val = INI_Initial([ flatten_init($init, $type) ]);
 						$symbol_table{$name} = {
 							type => $type,
 							attrs => ATT_StaticAttrs($init_val, 0)
@@ -517,13 +515,21 @@ sub flatten_init {
 	my ($init, $type) = @_;
 	return $init->match({
 		AST_SingleInit => sub($expr, $init_type) {
-			unless (is_ADT($expr, 'AST_ConstantExpr')) {
-				die "initializer is not a constant: $init" ;
-			}
-			return get_static_init($expr, $type);
+			$expr->match({
+				AST_ConstantExpr => sub($const, $const_type) {
+					return get_static_init($const, $type);
+				},
+				AST_Cast => sub($casted_expr, $to_type) {
+					die "initializer is not a constant: $init" unless $casted_expr->is('AST_ConstantExpr');
+					return get_static_init($casted_expr->get('constant'), $to_type);
+				},
+				default => sub {
+					die "initializer is not a constant: $init";
+				}
+			});
 		},
 		AST_CompoundInit => sub($inits, $init_type) {
-			return map { flatten_init($_) } @$inits;
+			return map { flatten_init($_, $_->get('type')) } @$inits;
 		},
 		default => sub { die "wtf" }
 	});
@@ -536,7 +542,7 @@ sub check_type_and_decay {
 		T_Array => sub($elem_type, $size) {
 			return AST_AddrOf($expr, T_Pointer($elem_type));
 		},
-		default => sub { return $expr }
+		default => $expr
 	});
 }
 
