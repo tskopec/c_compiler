@@ -7,7 +7,7 @@ use ADT::ParseASDL;
 use ADT::AlgebraicTypes qw(:AST :TAC :T :C :ATT :SI is_ADT);
 use Semantics;
 use Utils qw(labels);
-use TypeUtils qw(get_int_type_rank is_signed get_static_init);
+use TypeUtils qw(get_int_type_rank is_signed is_integer size_of get_static_init);
 
 BEGIN { # Local data types
 	my @asdl_lines = split /\n/, q{
@@ -194,7 +194,27 @@ sub emit_TAC {
 				my $binop = convert_binop($op);
 				my $src1 = emit_TAC_and_convert($exp1, $instructions);
 				my $src2 = emit_TAC_and_convert($exp2, $instructions);
-				push @$instructions, TAC_Binary($binop, $src1, $src2, $dst);
+				if ($binop->is('TAC_Add')) {
+					if ($exp1->get('type')->is('T_Pointer') && is_integer($exp2->get('type'))) {
+						push @$instructions, TAC_AddPtr($src1, $src2, size_of($exp2->get('type')) );
+					} elsif (is_integer($exp1->get('type')) && $exp2->get('type')->is('T_Pointer')) {
+						push @$instructions, TAC_AddPtr($src2, $src1, size_of($exp1->get('type')) );
+					} else {
+						push @$instructions, TAC_Binary($binop, $src1, $src2, $dst);
+					}
+				} elsif ($binop->is('TAC_Subtract')) {
+					if ($exp1->get('type')->is('T_Pointer') && $exp2->get('type')->is('T_Pointer')) {
+						#
+						# todo return rozdil indexu
+						#
+					} elsif ($exp1->get('type')->is('T_Pointer') && is_integer($exp2->get('type'))) {
+						push @$instructions, TAC_AddPtr($src1, TAC_Unary(TAC_Negate, $src2), size_of($exp2->get('type')) );
+					} else {
+						push @$instructions, TAC_Binary($binop, $src1, $src2, $dst);
+					}
+				} else {
+					push @$instructions, TAC_Binary($binop, $src1, $src2, $dst);
+				}
 			}
 			return PlainOperand($dst);
 		},
@@ -319,6 +339,7 @@ sub covert_symbols_to_TAC {
 		if ($entry->{attrs}->is('ATT_StaticAttrs')) {
 			my $type = $entry->{type};
 			my ($stat_init, $global) = ($entry->{attrs})->values_in_order('ATT_StaticAttrs');
+			# TODO init -> inits
 			$stat_init->match({
 				INI_Initial => sub($init) {
 					push(@tac_vars, TAC_StaticVariable($name, $global, $type, $init));

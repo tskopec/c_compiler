@@ -7,7 +7,7 @@ use ADT::AlgebraicTypes qw(:AST :INI :SI :T :C is_ADT);
 
 use base 'Exporter';
 our @EXPORT_OK = qw(MAX_ULONG MAX_LONG MAX_UINT MAX_INT get_type_of_TAC get_common_type get_common_pointer_type
-	get_int_type_rank is_signed is_arithmetic is_integer convert_type convert_as_if_by_assignment types_equal create_const
+	get_int_type_rank is_signed is_arithmetic is_integer size_of convert_type convert_as_if_by_assignment types_equal create_const
 	get_static_init);
 
 use constant MAX_ULONG => 2 ** 64;
@@ -70,6 +70,18 @@ sub is_integer {
 		return 0 unless $type->is('T_Int', 'T_UInt', 'T_Long', 'T_ULong');
 	}
 	return 1;
+}
+
+sub size_of {
+	my $type = shift;
+	return $type->match({
+		'T_Int, T_UInt' => 4,
+		'T_Long, T_ULong, T_Double, T_Pointer' => 8,
+		'T_Array' => sub($elem_type, $size) {
+			return size_of($elem_type) * $size;
+		},
+		default => sub { die "bad type $type" }
+	});
 }
 
 sub convert_type {

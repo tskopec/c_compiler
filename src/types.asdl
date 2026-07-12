@@ -94,7 +94,7 @@ STOR_StorageClass =
 TAC_Program =
 	TAC_Program(TAC_TopLevelDeclaration* declarations)
 TAC_TopLevelDeclaration =
-	TAC_StaticVariable(string identifier, bool global, T_Type type, SI_StaticInit static_init)
+	TAC_StaticVariable(string identifier, bool global, T_Type type, SI_StaticInit* static_inits)
 	| TAC_Function(string identifier, bool global, string* params, TAC_Instruction* instructions)
 TAC_Instruction =
 	TAC_Return(TAC_Value value)
@@ -116,6 +116,8 @@ TAC_Instruction =
 	| TAC_GetAddress(TAC_Value src, TAC_Value dst)
 	| TAC_Load(TAC_Value src_ptr, TAC_Value dst)
 	| TAC_Store(TAC_Value src, TAC_Value dst_ptr)
+	| TAC_AddPtr(TAC_Value ptr, TAC_Value index, int scale, TAC_Value dst)
+	| TAC_CopyToOffset(TAC_Value src, string ident, int offset)
 TAC_Value =
 	TAC_Constant(C_Constant constant)
 	| TAC_Variable(string name)

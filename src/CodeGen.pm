@@ -80,6 +80,7 @@ sub translate_to_ASM {
 			return ASM_Function($ident, $global, \@asm_instructions);
 		},
 		TAC_StaticVariable => sub($name, $global, $type, $init) {
+			# TODO init -> inits
 			return ASM_StaticVariable($name, $global, size_in_bytes(asm_type_of($type)), $init);
 		},
 		TAC_Return => sub($value) {
