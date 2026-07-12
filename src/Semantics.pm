@@ -233,8 +233,15 @@ sub check_type {
 	my ($node, $parent_node) = @_;
 	if ($node isa 'ADT::ADT') {
 		$node->match({
+			AST_Program => sub($declarations) {
+				for my $declaration (@$declarations) {
+					if (is_ADT($declaration, 'AST_FunDeclaration')) {
+						$current_fun_ret_type = $declaration->get('type')->get('ret_type');
+					}
+					check_type($declaration, $node);
+				}
+			},
 			AST_FunDeclaration => sub($name, $params, $body, $fun_type, $storage) {
-				$current_fun_ret_type = $fun_type->get('ret_type');
 				die "cant return array: $name" if ($current_fun_ret_type->is('T_Array'));
 				my $has_body = defined($body);
 				my $already_defined = 0;
@@ -394,7 +401,7 @@ sub check_type {
 							die "cant subtract $e1 and $e2";
 						}
 					},
-					'AST_Multiply', 'AST_Divide', 'AST_Remainder' => sub {
+					'AST_Multiply, AST_Divide, AST_Remainder' => sub {
 						my $common_type = get_common_type($t1, $t2);
 						die "cant apply '%' to double" if ($common_type->is('T_Double') && $op->is('AST_Remainder'));
 						$node->set('type', $common_type);
@@ -465,7 +472,7 @@ sub check_type {
 					$node->set('expr1', $e1, 'expr2', $e2, 'type', $t1->get('to_type'));
 				} elsif (is_integer($t1) && $t2->is('T_Pointer')) {
 					$e1 = convert_type($e1, T_Long);
-					$node->set('expr1', $1, 'expr2', $e2, 'type', $t2->get('to_type'));
+					$node->set('expr1', $e1, 'expr2', $e2, 'type', $t2->get('to_type'));
 				} else {
 					die "bad operands for subscript: \n\t$e1\n\t$e2";
 				}
@@ -521,7 +528,7 @@ sub flatten_init {
 				},
 				AST_Cast => sub($casted_expr, $to_type) {
 					die "initializer is not a constant: $init" unless $casted_expr->is('AST_ConstantExpr');
-					return get_static_init($casted_expr->get('constant'), $to_type);
+					return get_static_init($casted_expr->get('constant'), $type);
 				},
 				default => sub {
 					die "initializer is not a constant: $init";
