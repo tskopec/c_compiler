@@ -69,7 +69,7 @@ sub valid_name {
 
 sub to_type {
 	my ($name, $is_opt, $is_arr) = $_[0] =~ /^($param_type_re)(\?)?(\*)?$/;
-	return (defined $name && !(length($is_opt) && length($is_arr))) 
+	return (defined $name && !($is_opt && $is_arr))
 		? { full_name => $_[0], name => $name, optional => length $is_opt, array =>  length $is_arr }
 		: die "bad type: " . $_[0];
 }	

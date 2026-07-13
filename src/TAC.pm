@@ -192,23 +192,26 @@ sub emit_TAC {
 					TAC_Label($end_label));
 			} else {
 				my $binop = convert_binop($op);
+				my ($t1, $t2) = map { $_->get('type') } ($exp1, $exp2);
 				my $src1 = emit_TAC_and_convert($exp1, $instructions);
 				my $src2 = emit_TAC_and_convert($exp2, $instructions);
 				if ($binop->is('TAC_Add')) {
-					if ($exp1->get('type')->is('T_Pointer') && is_integer($exp2->get('type'))) {
-						push @$instructions, TAC_AddPtr($src1, $src2, size_of($exp2->get('type')) );
-					} elsif (is_integer($exp1->get('type')) && $exp2->get('type')->is('T_Pointer')) {
-						push @$instructions, TAC_AddPtr($src2, $src1, size_of($exp1->get('type')) );
+					if ($t1->is('T_Pointer') && $t2->is('T_Pointer')) {
+						die "cant add 2 pointers $node";
+					} elsif ($t1->is('T_Pointer') && is_integer($t2)) {
+						push @$instructions, TAC_AddPtr($src1, $src2, size_of($t2), $dst);
+					} elsif (is_integer($t1) && $t2->is('T_Pointer')) {
+						push @$instructions, TAC_AddPtr($src2, $src1, size_of($t1), $dst);
 					} else {
 						push @$instructions, TAC_Binary($binop, $src1, $src2, $dst);
 					}
-				} elsif ($binop->is('TAC_Subtract')) {
+				} elsif ($binop->is('TAC_Subtract')) { # TODO je ok pouzivat $dst pro vic instrukci po sobe, nebo musim mit zvlast var pro kazdou?
 					if ($exp1->get('type')->is('T_Pointer') && $exp2->get('type')->is('T_Pointer')) {
-						#
-						# todo return rozdil indexu
-						#
+						push(@$instructions, TAC_Binary(TAC_Subtract, $src1, $src2, $dst),
+											 TAC_Binary(TAC_Divide, $dst, size_of($t1)), $dst);
 					} elsif ($exp1->get('type')->is('T_Pointer') && is_integer($exp2->get('type'))) {
-						push @$instructions, TAC_AddPtr($src1, TAC_Unary(TAC_Negate, $src2), size_of($exp2->get('type')) );
+						push(@$instructions, TAC_Unary(TAC_Negate, $src2, $dst),
+											 TAC_AddPtr($src1, $dst, size_of($exp2->get('type'))), $dst);
 					} else {
 						push @$instructions, TAC_Binary($binop, $src1, $src2, $dst);
 					}
@@ -270,6 +273,17 @@ sub emit_TAC {
 				},
 				default => sub { die "$val not ExpResult" }
 			});
+		},
+		AST_Subscript => sub($exp1, $exp2, $type) {
+			my $dst = make_TAC_var($type);
+			my ($t1, $t2) = map { $_->get('type') } ($exp1, $exp2);
+			my ($ptr_exp, $index_exp) = $t1->is('T_Pointer') ? ($exp1, $exp2)
+								: $t2->is('T_Pointer') ? ($exp2, $exp1)
+								: die "no pointer: \n\t$exp1\n\t$exp2";
+			push(@$instructions, TAC_AddPtr(emit_TAC_and_convert($ptr_exp, $instructions),
+											emit_TAC_and_convert($index_exp, $instructions),
+											size_of($type), $dst));
+			return DereferencedPointer($dst);
 		},
 		default => sub {
 			die "unknown AST node: $node";

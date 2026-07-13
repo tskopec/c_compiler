@@ -38,7 +38,7 @@ foreach (@ARGV) {
 		$target_phase = $1;
 	} elsif (/^-d(\w*)$/) {
 		$ADT::ADT::DBG = 1;
-		$debug{$_} = 1 for (split('', $1 ? $1 : "lpstceSw")); # l(ex) p(arse) s(emantics) t(ac) c(odegen) e(mit) S(ymtables) w(rite .s files to /tmp)
+		$debug{$_} = 1 for (split('', $1 ? $1 : "lpstceSw")); # l(ex) p(arse) v(alidate) t(ac) c(odegen) e(mit) S(ymtables) w(rite .s files to /tmp)
 	} elsif (/^-c$/) {
 		$dont_link = 1;
 	}
@@ -77,7 +77,7 @@ for my $src_file (@src_files) {
 	# SEMANTICS
 	$error_code = 3;
 	Semantics::run($ast);
-	if ($debug{s}) {
+	if ($debug{v}) {
 		say "> Validator";
 		print_tree($ast);
 	}
