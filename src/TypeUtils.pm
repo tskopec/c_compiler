@@ -8,7 +8,7 @@ use ADT::AlgebraicTypes qw(:AST :INI :SI :T :C is_ADT);
 use base 'Exporter';
 our @EXPORT_OK = qw(MAX_ULONG MAX_LONG MAX_UINT MAX_INT get_type_of_TAC get_common_type get_common_pointer_type
 	get_int_type_rank is_signed is_arithmetic is_integer size_of convert_type convert_as_if_by_assignment types_equal create_const
-	get_static_init);
+	flatten_init get_static_init);
 
 use constant MAX_ULONG => 2 ** 64;
 use constant MAX_LONG => 2 ** 63 - 1;
@@ -132,6 +132,17 @@ sub create_const {
 		default => sub {
 			die "bad type $type";
 		}
+	});
+}
+
+sub flatten_init {
+	my $init = shift;
+	return $init->match({
+		AST_SingleInit => $init,
+		AST_CompoundInit => sub($inits, $init_type) {
+			return map { flatten_init($_) } @$inits;
+		},
+		default => sub { die "wtf" }
 	});
 }
 

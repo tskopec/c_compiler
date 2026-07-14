@@ -7,7 +7,7 @@ use ADT::ParseASDL;
 use ADT::AlgebraicTypes qw(:AST :TAC :T :C :ATT :SI is_ADT);
 use Semantics;
 use Utils qw(labels);
-use TypeUtils qw(get_int_type_rank is_signed is_integer size_of get_static_init);
+use TypeUtils qw(get_int_type_rank is_signed is_integer size_of get_static_init flatten_init create_const);
 
 BEGIN { # Local data types
 	my @asdl_lines = split /\n/, q{
@@ -27,7 +27,7 @@ sub emit_TAC {
 				my $tac_fun = emit_TAC($d);
 				push(@tac_funs, $tac_fun) if (defined $tac_fun);
 			}
-			@tac_vars = covert_symbols_to_TAC();
+			@tac_vars = convert_symbols_to_TAC();
 			return TAC_Program([ @tac_vars, @tac_funs ]);
 		},
 		AST_FunDeclaration => sub($name, $params, $body, $fun_type, $storage) {
@@ -44,7 +44,20 @@ sub emit_TAC {
 		},
 		AST_VarDeclaration => sub($name, $init, $type, $storage) {
 			if (defined $init && !is_ADT($storage, 'STOR_Static')) {
-				emit_TAC_and_convert(AST_Assignment(AST_Var($name, $type), $init, $type), $instructions);
+				$init->match({
+					AST_SingleInit => sub($expr, $init_type) {
+						emit_TAC_and_convert(AST_Assignment(AST_Var($name, $type), $expr, $type), $instructions);
+					},
+					AST_CompoundInit => sub($inits, $init_type) {
+						push @$instructions, TAC_Variable($name);
+						my $n = 0;
+						for my $i (flatten_init($init)) {
+							my $tac_val = TAC_Constant(create_const($i->get('type'), $i->get('val')));
+							push @$instructions, TAC_CopyToOffset($tac_val, $name, $n++ * size_of($i->get('type')));
+						}
+					},
+					default => sub { die "wtf" }
+				});
 			}
 		},
 		AST_Block => sub($items) {
@@ -275,6 +288,7 @@ sub emit_TAC {
 			});
 		},
 		AST_Subscript => sub($exp1, $exp2, $type) {
+			# TODO moc bych za to nedal, ze je toto blbe
 			my $dst = make_TAC_var($type);
 			my ($t1, $t2) = map { $_->get('type') } ($exp1, $exp2);
 			my ($ptr_exp, $index_exp) = $t1->is('T_Pointer') ? ($exp1, $exp2)
@@ -347,19 +361,22 @@ sub temp_name {
 	return "tmp." . $::global_counter++;
 }
 
-sub covert_symbols_to_TAC {
+sub convert_symbols_to_TAC {
 	my @tac_vars;
 	while (my ($name, $entry) = each %Semantics::symbol_table) {
 		if ($entry->{attrs}->is('ATT_StaticAttrs')) {
 			my $type = $entry->{type};
 			my ($stat_init, $global) = ($entry->{attrs})->values_in_order('ATT_StaticAttrs');
-			# TODO init -> inits
 			$stat_init->match({
-				INI_Initial => sub($init) {
-					push(@tac_vars, TAC_StaticVariable($name, $global, $type, $init));
+				INI_Initial => sub($inits) {
+					push(@tac_vars, TAC_StaticVariable($name, $global, $type, $inits));
 				},
 				INI_Tentative => sub() {
-					push(@tac_vars, TAC_StaticVariable($name, $global, $type, get_static_init(0, $type)));
+					if ($type->is('T_Array')) {
+						push(@tac_vars, TAC_StaticVariable($name, $global, $type, SI_ZeroInit(size_of($type))));
+					} else {
+						push(@tac_vars, TAC_StaticVariable($name, $global, $type, get_static_init(0, $type)));
+					}
 				},
 				INI_NoInitializer => sub() { ; }
 			});

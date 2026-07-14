@@ -5,7 +5,7 @@ use feature qw(say state isa signatures);
 
 use ADT::AlgebraicTypes qw(:AST :C :ATT :INI :STOR :T is_ADT);
 use TypeUtils qw(/^MAX_/ get_common_type get_common_pointer_type convert_type convert_as_if_by_assignment types_equal
-	create_const get_static_init is_arithmetic is_integer);
+	create_const get_static_init flatten_init is_arithmetic is_integer);
 
 our %symbol_table;
 
@@ -277,7 +277,7 @@ sub check_type {
 	###### file scope var
 				if (is_ADT($parent_node, 'AST_Program')) {
 					my $init_val = (defined $init)
-						? INI_Initial([ flatten_init($init, $type) ])
+						? INI_Initial([ map { ast_init_to_static_init($_) } flatten_init($init) ])
 						: is_ADT($storage, 'STOR_Extern') ? INI_NoInitializer : INI_Tentative;
 					my $global = not (is_ADT($storage, 'STOR_Static'));
 
@@ -318,7 +318,7 @@ sub check_type {
 						}
 					} elsif (is_ADT($storage, 'STOR_Static')) {
 						$init //= zero_initializer($type);
-						my $init_val = INI_Initial([ flatten_init($init, $type) ]);
+						my $init_val = INI_Initial([ map { ast_init_to_static_init($_) } flatten_init($init) ]);
 						$symbol_table{$name} = {
 							type => $type,
 							attrs => ATT_StaticAttrs($init_val, 0)
@@ -508,6 +508,23 @@ sub check_init_type {
 	$init->set('type', $target_type);
 }
 
+sub ast_init_to_static_init {
+	my $init = shift;
+	my ($expr) = $init->values_in_order('AST_SingleInit');
+	return $expr->match({
+		AST_ConstantExpr => sub($const, $const_type) {
+			return get_static_init($const, $init->get('type'));
+		},
+		AST_Cast => sub($casted_expr, $to_type) {
+			die "initializer is not a constant: $init" unless $casted_expr->is('AST_ConstantExpr');
+			return get_static_init($casted_expr->get('constant'), $init->get('type'));
+		},
+		default => sub {
+			die "initializer is not a constant: $init";
+		}
+	});
+}
+
 sub zero_initializer {
 	my $type = shift;
 	return $type->match({
@@ -515,30 +532,6 @@ sub zero_initializer {
 			AST_CompoundInit([ map { zero_initializer($elem_type) } (1..$size) ], $type);
 		},
 		default => sub { AST_SingleInit(AST_ConstantExpr(create_const($type, 0), $type), $type) }
-	});
-}
-
-sub flatten_init {
-	my ($init, $type) = @_;
-	return $init->match({
-		AST_SingleInit => sub($expr, $init_type) {
-			$expr->match({
-				AST_ConstantExpr => sub($const, $const_type) {
-					return get_static_init($const, $type);
-				},
-				AST_Cast => sub($casted_expr, $to_type) {
-					die "initializer is not a constant: $init" unless $casted_expr->is('AST_ConstantExpr');
-					return get_static_init($casted_expr->get('constant'), $type);
-				},
-				default => sub {
-					die "initializer is not a constant: $init";
-				}
-			});
-		},
-		AST_CompoundInit => sub($inits, $init_type) {
-			return map { flatten_init($_, $_->get('type')) } @$inits;
-		},
-		default => sub { die "wtf" }
 	});
 }
 

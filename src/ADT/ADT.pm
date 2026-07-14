@@ -70,6 +70,19 @@ sub value_by_index {
 	return $self->{$constr_info{$self->{':tag'}}->{params_order}->[$i]};
 }
 
+sub values_in_order {
+	my ($self, $expected_type) = @_;
+	if (defined $expected_type && !$self->is($expected_type)) {
+		die "$self not $expected_type";
+	}
+	return map { $self->get($_) } $self->keys_in_order();
+}
+
+sub keys_in_order {
+	my $self = shift;
+	return $constr_info{$self->{':tag'}}->{params_order}->@*;
+}
+
 sub is {
 	my ($self, @tags) = @_;
 	return $self->index_of_in(@tags) != -1;
@@ -102,20 +115,6 @@ sub match {
 	unshift @match_history, "in " . (caller(1))[3] . " match on $self" if $DBG;
 	my $case = $split_cond_cases{$self->{':tag'}} // $split_cond_cases{default};
 	return ref($case) eq 'CODE' ? $case->($self->values_in_order()) : $case;
-}
-
-
-sub values_in_order {
-	my ($self, $expected_type) = @_;
-	if (defined $expected_type && !$self->is($expected_type)) {
-		die "$self not $expected_type";
-	}
-	return map { $self->get($_) } $self->keys_in_order();
-}
-
-sub keys_in_order {
-	my $self = shift;
-	return $constr_info{$self->{':tag'}}->{params_order}->@*;
 }
 
 sub check_value {
