@@ -474,8 +474,7 @@ sub check_type {
 					$e1 = convert_type($e1, T_Long);
 					$node->set('expr1', $e1, 'expr2', $e2, 'type', $t2->get('to_type'));
 				} else {
-					die "bad operands for subscript: \n\t$e1\n\t$e2";
-				}
+					die "bad operands for subscript: \n\t$e1\n\t$e2";}
 			},
 			default => sub {
 				check_type($_, $node) for $node->values_in_order();
@@ -511,18 +510,11 @@ sub check_init_type {
 sub ast_init_to_static_init {
 	my $init = shift;
 	my ($expr) = $init->values_in_order('AST_SingleInit');
-	return $expr->match({
-		AST_ConstantExpr => sub($const, $const_type) {
-			return get_static_init($const, $init->get('type'));
-		},
-		AST_Cast => sub($casted_expr, $to_type) {
-			die "initializer is not a constant: $init" unless $casted_expr->is('AST_ConstantExpr');
-			return get_static_init($casted_expr->get('constant'), $init->get('type'));
-		},
-		default => sub {
-			die "initializer is not a constant: $init";
-		}
-	});
+	if ($expr->is("AST_Cast")) {
+		$expr = $expr->get('expr');
+	}
+	die "initializer is not a constant: $init" unless $expr->is('AST_ConstantExpr');
+	return get_static_init($expr->get('constant'), $init->get('type'));
 }
 
 sub zero_initializer {

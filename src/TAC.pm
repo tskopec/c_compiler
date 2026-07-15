@@ -49,11 +49,11 @@ sub emit_TAC {
 						emit_TAC_and_convert(AST_Assignment(AST_Var($name, $type), $expr, $type), $instructions);
 					},
 					AST_CompoundInit => sub($inits, $init_type) {
-						push @$instructions, TAC_Variable($name);
+					#	TODO makeTACvar? push @$instructions, TAC_Variable($name);
 						my $n = 0;
 						for my $i (flatten_init($init)) {
-							my $tac_val = TAC_Constant(create_const($i->get('type'), $i->get('val')));
-							push @$instructions, TAC_CopyToOffset($tac_val, $name, $n++ * size_of($i->get('type')));
+							my $src = emit_TAC_and_convert($i->get('expr'), $instructions); # TODO je tohle dobre ??
+							push @$instructions, TAC_CopyToOffset($src, $name, $n++ * size_of($i->get('type')));
 						}
 					},
 					default => sub { die "wtf" }
@@ -221,10 +221,10 @@ sub emit_TAC {
 				} elsif ($binop->is('TAC_Subtract')) { # TODO je ok pouzivat $dst pro vic instrukci po sobe, nebo musim mit zvlast var pro kazdou?
 					if ($exp1->get('type')->is('T_Pointer') && $exp2->get('type')->is('T_Pointer')) {
 						push(@$instructions, TAC_Binary(TAC_Subtract, $src1, $src2, $dst),
-											 TAC_Binary(TAC_Divide, $dst, size_of($t1)), $dst);
+											 TAC_Binary(TAC_Divide, $dst, TAC_Constant(C_ConstInt(size_of($t1))), $dst));
 					} elsif ($exp1->get('type')->is('T_Pointer') && is_integer($exp2->get('type'))) {
 						push(@$instructions, TAC_Unary(TAC_Negate, $src2, $dst),
-											 TAC_AddPtr($src1, $dst, size_of($exp2->get('type'))), $dst);
+											 TAC_AddPtr($src1, $dst, size_of($exp2->get('type')), $dst));
 					} else {
 						push @$instructions, TAC_Binary($binop, $src1, $src2, $dst);
 					}
@@ -373,9 +373,9 @@ sub convert_symbols_to_TAC {
 				},
 				INI_Tentative => sub() {
 					if ($type->is('T_Array')) {
-						push(@tac_vars, TAC_StaticVariable($name, $global, $type, SI_ZeroInit(size_of($type))));
+						push(@tac_vars, TAC_StaticVariable($name, $global, $type, [ SI_ZeroInit(size_of($type)) ]));
 					} else {
-						push(@tac_vars, TAC_StaticVariable($name, $global, $type, get_static_init(0, $type)));
+						push(@tac_vars, TAC_StaticVariable($name, $global, $type, [ get_static_init(0, $type) ]));
 					}
 				},
 				INI_NoInitializer => sub() { ; }
