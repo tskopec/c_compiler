@@ -130,9 +130,9 @@ TAC_BinaryOperator =
 ASM_Program =
 	ASM_Program(ASM_TopLevelDeclaration* declarations)
 ASM_OperandSize =
-	ASM_Longword | ASM_Quadword | ASM_Double
+	ASM_Longword | ASM_Quadword | ASM_Double | ASM_ByteArray(int size, int alignment)
 ASM_TopLevelDeclaration =
-	ASM_StaticVariable(string name, bool global, int alignment, SI_StaticInit static_init)
+	ASM_StaticVariable(string name, bool global, int alignment, SI_StaticInit* static_inits)
 	| ASM_StaticConstant(string name, int alignment, SI_StaticInit static_init)
 	| ASM_Function(string name, bool global, ASM_Instruction* instructions)
 ASM_Instruction =
@@ -165,6 +165,8 @@ ASM_Operand =
 	| ASM_Pseudo(string ident)
 	| ASM_Memory(ASM_Operand reg, int offset)
 	| ASM_Data(string ident)
+	| ASM_PseudoMem(string ident, int offset)
+	| ASM_Indexed(ASM_Register base, ASM_Register index, int scale)
 ASM_CondCode =
 	ASM_E | ASM_NE | ASM_G | ASM_GE | ASM_L | ASM_LE | ASM_A | ASM_AE | ASM_B | ASM_BE
 ASM_Register =

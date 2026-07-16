@@ -205,7 +205,9 @@ sub translate_to_ASM {
 			}
 		},
 		TAC_Variable => sub($ident) {
-			return ASM_Pseudo($ident);
+			return get_type_of_TAC($node)->is('T_Array')
+				? ASM_PseudoMem($ident, 0)
+				: ASM_Pseudo($ident);
 		},
 		TAC_SignExtend => sub($src, $dst) {
 			return ASM_Movsx(translate_to_ASM($src), translate_to_ASM($dst));
@@ -296,6 +298,29 @@ sub translate_to_ASM {
 		TAC_GetAddress => sub($src, $dst) {
 			return ASM_Lea(translate_to_ASM($src), translate_to_ASM($dst));
 		},
+		TAC_CopyToOffset => sub($src, $ident, $offset) {
+			return ASM_Mov(get_type_of_TAC($src), translate_to_ASM($src), ASM_PseudoMem($ident, $offset));
+		},
+		TAC_AddPtr => sub($ptr, $index, $scale, $dst) {
+			if ($index->is('TAC_Constant')) {
+				return (
+					ASM_Mov(ASM_Quadword, translate_to_ASM($ptr), ASM_Reg(ASM_AX)),
+					ASM_Lea(ASM_Memory(ASM_AX, $index->get('constant')->get('val') * $scale), translate_to_ASM($dst))
+				);
+			} else {
+				my @instructions = (
+					ASM_Mov(ASM_Quadword, translate_to_ASM($ptr), ASM_Reg(ASM_AX)),
+					ASM_Mov(ASM_Quadword, translate_to_ASM($index), ASM_Reg(ASM_DX)),
+				);
+				if (grep { $_ == $scale } (1, 2, 4, 8)) {
+					push @instructions, ASM_Lea(ASM_Indexed(ASM_AX, ASM_DX, $scale), translate_to_ASM($dst));
+				} else {
+					push(@instructions, (ASM_Binary(ASM_Mult, ASM_Quadword, ASM_Imm($scale), ASM_Reg(ASM_DX)),
+										 ASM_Lea(ASM_Indexed(ASM_AX, ASM_DX, 1), translate_to_ASM($dst))));
+				}
+				return @instructions;
+			}
+		},
 		default => sub { die "unknown TAC $node" }
 	});
 }
@@ -324,6 +349,7 @@ sub organize_params {
 	return (\@int_reg_params, \@double_reg_params, \@stack_params);
 }
 
+# TODO pomoci convert_ADT, ale musely by se ty typy prejmenovat
 sub convert_unop {
 	my $op = shift;
 	$op->match({
