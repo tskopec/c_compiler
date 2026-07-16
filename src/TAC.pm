@@ -4,7 +4,7 @@ use warnings;
 use feature qw(say state signatures);
 
 use ADT::ParseASDL;
-use ADT::AlgebraicTypes qw(:AST :TAC :T :C :ATT :SI is_ADT);
+use ADT::AlgebraicTypes qw(:AST :TAC :T :C :ATT :SI is_ADT convert_ADT);
 use Semantics;
 use Utils qw(labels);
 use TypeUtils qw(get_int_type_rank is_signed is_integer size_of get_static_init flatten_init create_const);
@@ -173,7 +173,7 @@ sub emit_TAC {
 			return PlainOperand($dst);
 		},
 		AST_Unary => sub($op, $exp, $type) {
-			my $unop = convert_unop($op);
+			my $unop = convert_operator($op);
 			my $src = emit_TAC_and_convert($exp, $instructions);
 			my $dst = make_TAC_var($type);
 			push @$instructions, TAC_Unary($unop, $src, $dst);
@@ -204,7 +204,7 @@ sub emit_TAC {
 					TAC_Copy(TAC_Constant(C_ConstInt(1)), $dst),
 					TAC_Label($end_label));
 			} else {
-				my $binop = convert_binop($op);
+				my $binop = convert_operator($op);
 				my ($t1, $t2) = map { $_->get('type') } ($exp1, $exp2);
 				my $src1 = emit_TAC_and_convert($exp1, $instructions);
 				my $src2 = emit_TAC_and_convert($exp2, $instructions);
@@ -318,34 +318,9 @@ sub emit_TAC_and_convert {
 	});
 }
 
-sub convert_unop {
+sub convert_operator {
 	my $op = shift;
-	state $map = {
-		AST_Complement => TAC_Complement(),
-		AST_Negate => TAC_Negate(),
-		AST_Not => TAC_Not(),
-	};
-	return $map->{$op->{':tag'}} // die "unknown unop $op";
-}
-
-sub convert_binop {
-	my $op = shift;
-	state $map = {
-		AST_Add => TAC_Add(),
-		AST_Subtract => TAC_Subtract(),
-		AST_Multiply => TAC_Multiply(),
-		AST_Divide => TAC_Divide(),
-		AST_Remainder => TAC_Remainder(),
-		AST_And => TAC_And(),
-		AST_Or => TAC_Or(),
-		AST_Equal => TAC_Equal(),
-		AST_NotEqual => TAC_NotEqual(),
-		AST_LessThan => TAC_LessThan(),
-		AST_LessOrEqual => TAC_LessOrEqual(),
-		AST_GreaterThan => TAC_GreaterThan(),
-		AST_GreaterOrEqual => TAC_GreaterOrEqual(),
-	};
-	return $map->{$op->{':tag'}} // die "unknown bin op $op";
+	return convert_ADT($op, sub ($tag) { return $tag =~ s/^AST/TAC/r } );
 }
 
 sub make_TAC_var {

@@ -327,8 +327,8 @@ sub organize_params {
 sub convert_unop {
 	my $op = shift;
 	$op->match({
-		TAC_Complement => sub() { return ASM_Not },
-		TAC_Negate => sub() { return ASM_Neg },
+		TAC_Complement => ASM_Not(),
+		TAC_Negate => ASM_Neg(),
 		default => sub { die "unknown op $op" },
 	});
 }

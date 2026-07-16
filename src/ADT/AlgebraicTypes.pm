@@ -9,7 +9,7 @@ use ADT::ParseASDL;
 
 require Exporter;
 our @ISA = qw(Exporter);
-our @EXPORT = 'is_ADT';
+our @EXPORT = qw(is_ADT convert_ADT);
 our @EXPORT_OK;
 our %EXPORT_TAGS;
 
@@ -46,6 +46,13 @@ sub introduce_types {
 sub is_ADT {
 	my ($adt, @tags) = @_;
 	return $adt isa ADT::ADT && $adt->is(@tags);
+}
+
+sub convert_ADT {
+	my ($obj, $tag_transform) = @_;
+	my $new_tag = $tag_transform->($obj->{':tag'});
+	no strict "refs";
+	return &{$new_tag}($obj->values_in_order());
 }
 
 1;

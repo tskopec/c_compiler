@@ -277,7 +277,7 @@ sub check_type {
 	###### file scope var
 				if (is_ADT($parent_node, 'AST_Program')) {
 					my $init_val = (defined $init)
-						? INI_Initial([ map { ast_init_to_static_init($_) } flatten_init($init) ])
+						? get_initial_value($init)
 						: is_ADT($storage, 'STOR_Extern') ? INI_NoInitializer : INI_Tentative;
 					my $global = not (is_ADT($storage, 'STOR_Static'));
 
@@ -318,7 +318,7 @@ sub check_type {
 						}
 					} elsif (is_ADT($storage, 'STOR_Static')) {
 						$init //= zero_initializer($type);
-						my $init_val = INI_Initial([ map { ast_init_to_static_init($_) } flatten_init($init) ]);
+						my $init_val = get_initial_value($init);
 						$symbol_table{$name} = {
 							type => $type,
 							attrs => ATT_StaticAttrs($init_val, 0)
@@ -507,14 +507,16 @@ sub check_init_type {
 	$init->set('type', $target_type);
 }
 
-sub ast_init_to_static_init {
-	my $init = shift;
-	my ($expr) = $init->values_in_order('AST_SingleInit');
-	if ($expr->is("AST_Cast")) {
-		$expr = $expr->get('expr');
-	}
-	die "initializer is not a constant: $init" unless $expr->is('AST_ConstantExpr');
-	return get_static_init($expr->get('constant'), $init->get('type'));
+sub get_initial_value {
+	my $ast_init = shift;
+	return INI_Initial([ map {
+		my ($expr) = $_->values_in_order('AST_SingleInit');
+		if ($expr->is("AST_Cast")) {
+			$expr = $expr->get('expr');
+		}
+		die "initializer is not a constant: $_" unless $expr->is('AST_ConstantExpr');
+		get_static_init($expr->get('constant'), $_->get('type'));
+	} flatten_init($ast_init) ]);
 }
 
 sub zero_initializer {
