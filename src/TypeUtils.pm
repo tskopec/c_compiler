@@ -7,7 +7,7 @@ use ADT::AlgebraicTypes qw(:AST :INI :SI :T :C is_ADT);
 
 use base 'Exporter';
 our @EXPORT_OK = qw(MAX_ULONG MAX_LONG MAX_UINT MAX_INT get_type_of_TAC get_common_type get_common_pointer_type
-	get_int_type_rank is_signed is_arithmetic is_integer size_of convert_type convert_as_if_by_assignment types_equal create_const
+	get_int_type_rank is_signed is_arithmetic is_integer size_of get_base_type convert_type convert_as_if_by_assignment types_equal create_const
 	flatten_init get_static_init);
 
 use constant MAX_ULONG => 2 ** 64;
@@ -75,12 +75,22 @@ sub is_integer {
 sub size_of {
 	my $type = shift;
 	return $type->match({
-		'T_Int, T_UInt' => 4,
-		'T_Long, T_ULong, T_Double, T_Pointer' => 8,
+		'T_Int, T_UInt, ASM_Longword' => 4,
+		'T_Long, T_ULong, T_Double, T_Pointer, ASM_Quadword, ASM_Double' => 8,
 		'T_Array' => sub($elem_type, $size) {
 			return size_of($elem_type) * $size;
 		},
+		ASM_ByteArray => sub($size, $alignment) { return $size },
 		default => sub { die "bad type $type" }
+	});
+}
+
+sub get_base_type {
+	my $type = shift;
+	return $type->match({
+		T_Array => sub($elem_type, $size) { return get_base_type($elem_type) },
+		"T_Int, T_UInt, T_Long, T_ULong, T_Double, T_Pointer" => $type,
+		default => sub { die "wtf type $type" }
 	});
 }
 

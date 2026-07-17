@@ -7,7 +7,7 @@ use feature qw(say isa state current_sub signatures);
 use List::Util qw(min);
 use ADT::AlgebraicTypes qw(is_ADT :T :SI :C :TAC :ASM);
 use Semantics;
-use TypeUtils qw(/^MAX_/ get_type_of_TAC is_signed);
+use TypeUtils qw(/^MAX_/ get_type_of_TAC is_signed size_of get_base_type);
 
 my @arg_gen_regs = (ASM_DI, ASM_SI, ASM_DX, ASM_CX, ASM_R8, ASM_R9);
 my @arg_xmm_regs = (ASM_XMM0, ASM_XMM1, ASM_XMM2, ASM_XMM3, ASM_XMM4, ASM_XMM5, ASM_XMM6, ASM_XMM7);
@@ -79,9 +79,8 @@ sub translate_to_ASM {
 			push(@asm_instructions, map { translate_to_ASM($_) } @$instructions);
 			return ASM_Function($ident, $global, \@asm_instructions);
 		},
-		TAC_StaticVariable => sub($name, $global, $type, $init) {
-			# TODO init -> inits
-			return ASM_StaticVariable($name, $global, size_in_bytes(asm_type_of($type)), $init);
+		TAC_StaticVariable => sub($name, $global, $type, $inits) {
+			return ASM_StaticVariable($name, $global, calculate_alignment($type), $inits);
 		},
 		TAC_Return => sub($value) {
 			return (ASM_Mov(asm_type_of($value),
@@ -299,13 +298,13 @@ sub translate_to_ASM {
 			return ASM_Lea(translate_to_ASM($src), translate_to_ASM($dst));
 		},
 		TAC_CopyToOffset => sub($src, $ident, $offset) {
-			return ASM_Mov(get_type_of_TAC($src), translate_to_ASM($src), ASM_PseudoMem($ident, $offset));
+			return ASM_Mov(asm_type_of(get_type_of_TAC($src)), translate_to_ASM($src), ASM_PseudoMem($ident, $offset));
 		},
 		TAC_AddPtr => sub($ptr, $index, $scale, $dst) {
 			if ($index->is('TAC_Constant')) {
 				return (
 					ASM_Mov(ASM_Quadword, translate_to_ASM($ptr), ASM_Reg(ASM_AX)),
-					ASM_Lea(ASM_Memory(ASM_AX, $index->get('constant')->get('val') * $scale), translate_to_ASM($dst))
+					ASM_Lea(ASM_Memory(ASM_Reg(ASM_AX), $index->get('constant')->get('val') * $scale), translate_to_ASM($dst))
 				);
 			} else {
 				my @instructions = (
@@ -376,18 +375,11 @@ sub asm_type_of {
 	return $type->match({
 		"T_Int, T_UInt" => ASM_Longword(),
 		"T_Long, T_ULong, T_Pointer" => ASM_Quadword(),
-		"T_Double" => ASM_Double(),
+		T_Double => ASM_Double(),
+		T_Array => sub($elem_type, $size) {
+			ASM_ByteArray(size_of($type), calculate_alignment($type));
+		},
 		default => => sub { die "unknown type $val" }
-	});
-}
-
-sub size_in_bytes {
-	my $type = shift;
-	return $type->match({
-		ASM_Longword => 4,
-		ASM_Quadword => 8,
-		ASM_Double => 8,
-		default => sub { die "unknown type $type" }
 	});
 }
 
@@ -408,6 +400,13 @@ sub get_static_constant {
 	});
 	push(@static_constants, ASM_StaticConstant($label, $alignment, $static_init));
 	return $static_constants[-1];
+}
+
+sub calculate_alignment {
+	my $type = shift;
+	return ($type->is('T_Array'))
+		? (size_of($type) < 16 ? size_of(get_base_type($type)) : 16)
+		: size_of(asm_type_of($type));
 }
 
 
@@ -439,24 +438,40 @@ sub replace_pseudo {
 					return ASM_Data($ident);
 				} else {
 					unless (exists $offsets{$ident}) {
-						my $size = size_in_bytes($asm_symbol_table{$ident}{op_size});
+						my $size = size_of($asm_symbol_table{$ident}{op_size});
 						$offsets{$ident} = ($current_offset -= $size + $current_offset % $size);
 					}
 					return ASM_Memory(ASM_Reg(ASM_BP), $offsets{$ident});
 				}
 			},
-			default => sub {
-				$node->remap_values(sub {
-					my $val = shift;
-					if ($val isa 'ADT::ADT') {
-						$val = $process_node->($val);
-					} elsif (ref($val) eq 'ARRAY') {
-						$val = [ map { $process_node->($_) } @$val ];
-					} elsif (ref($val) eq 'HASH') {
-						die "TODO";
+			# TODO refaktor, pokud je to takhle dobre
+			ASM_PseudoMem => sub($ident, $offset) {
+				if (exists $asm_symbol_table{$ident} && $asm_symbol_table{$ident}->{static}) {
+					return ASM_Data($ident);
+				} else {
+					unless (exists $offsets{$ident}) {
+						my $size = size_of($asm_symbol_table{$ident}{op_size});
+						$offsets{$ident} = ($current_offset -= $size + $current_offset % $size);
 					}
-					return $val;
-				});
+					return ASM_Memory(ASM_Reg(ASM_BP), $offsets{$ident} + $offset);
+				}
+			},
+			default => sub {
+				if ($node isa ADT::ADT) {
+					for my $key ($node->keys_in_order()) {
+						$node->set($key, do {
+							my $val = $node->get($key);
+							if ($val isa 'ADT::ADT') {
+								$val = $process_node->($val);
+							} elsif (ref($val) eq 'ARRAY') {
+								$val = [ map { $process_node->($_) } @$val ];
+							} elsif (ref($val) eq 'HASH') {
+								die "TODO";
+							}
+							$val;
+						});
+					}
+				}
 				return $node;
 			}
 		});
