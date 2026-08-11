@@ -49,10 +49,9 @@ sub emit_TAC {
 						emit_TAC_and_convert(AST_Assignment(AST_Var($name, $type), $expr, $type), $instructions);
 					},
 					AST_CompoundInit => sub($inits, $init_type) {
-					#	TODO makeTACvar? push @$instructions, TAC_Variable($name);
 						my $n = 0;
 						for my $i (flatten_init($init)) {
-							my $src = emit_TAC_and_convert($i->get('expr'), $instructions); # TODO je tohle dobre ??
+							my $src = emit_TAC_and_convert($i->get('expr'), $instructions);
 							push @$instructions, TAC_CopyToOffset($src, $name, $n++ * size_of($i->get('type')));
 						}
 					},
@@ -218,13 +217,15 @@ sub emit_TAC {
 					} else {
 						push @$instructions, TAC_Binary($binop, $src1, $src2, $dst);
 					}
-				} elsif ($binop->is('TAC_Subtract')) { # TODO je ok pouzivat $dst pro vic instrukci po sobe, nebo musim mit zvlast var pro kazdou?
-					if ($exp1->get('type')->is('T_Pointer') && $exp2->get('type')->is('T_Pointer')) {
-						push(@$instructions, TAC_Binary(TAC_Subtract, $src1, $src2, $dst),
-											 TAC_Binary(TAC_Divide, $dst, TAC_Constant(C_ConstInt(size_of($t1))), $dst));
-					} elsif ($exp1->get('type')->is('T_Pointer') && is_integer($exp2->get('type'))) {
-						push(@$instructions, TAC_Unary(TAC_Negate, $src2, $dst),
-											 TAC_AddPtr($src1, $dst, size_of($exp2->get('type')), $dst));
+				} elsif ($binop->is('TAC_Subtract')) {
+					if ($t1->is('T_Pointer') && $t2->is('T_Pointer')) {
+						my $sub_dst = make_TAC_var($type);
+						push(@$instructions, TAC_Binary(TAC_Subtract, $src1, $src2, $sub_dst),
+											 TAC_Binary(TAC_Divide, $sub_dst, TAC_Constant(C_ConstInt(size_of($t1))), $dst));
+					} elsif ($t1->is('T_Pointer') && is_integer($t2)) {
+						my $neg_dst = make_TAC_var($type);
+						push(@$instructions, TAC_Unary(TAC_Negate, $src2, $neg_dst),
+											 TAC_AddPtr($src1, $neg_dst, size_of($t2), $dst));
 					} else {
 						push @$instructions, TAC_Binary($binop, $src1, $src2, $dst);
 					}
@@ -288,7 +289,6 @@ sub emit_TAC {
 			});
 		},
 		AST_Subscript => sub($exp1, $exp2, $type) {
-			# TODO moc bych za to nedal, ze je toto blbe
 			my $dst = make_TAC_var($type);
 			my ($t1, $t2) = map { $_->get('type') } ($exp1, $exp2);
 			my ($ptr_exp, $index_exp) = $t1->is('T_Pointer') ? ($exp1, $exp2)

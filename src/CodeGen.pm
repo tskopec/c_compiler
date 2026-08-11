@@ -8,6 +8,7 @@ use List::Util qw(min);
 use ADT::AlgebraicTypes qw(is_ADT :T :SI :C :TAC :ASM);
 use Semantics;
 use TypeUtils qw(/^MAX_/ get_type_of_TAC is_signed size_of get_base_type);
+use Utils qw(align_to);
 
 my @arg_gen_regs = (ASM_DI, ASM_SI, ASM_DX, ASM_CX, ASM_R8, ASM_R9);
 my @arg_xmm_regs = (ASM_XMM0, ASM_XMM1, ASM_XMM2, ASM_XMM3, ASM_XMM4, ASM_XMM5, ASM_XMM6, ASM_XMM7);
@@ -312,10 +313,10 @@ sub translate_to_ASM {
 					ASM_Mov(ASM_Quadword, translate_to_ASM($index), ASM_Reg(ASM_DX)),
 				);
 				if (grep { $_ == $scale } (1, 2, 4, 8)) {
-					push @instructions, ASM_Lea(ASM_Indexed(ASM_AX, ASM_DX, $scale), translate_to_ASM($dst));
+					push @instructions, ASM_Lea(ASM_Indexed(ASM_Reg(ASM_AX), ASM_Reg(ASM_DX), $scale), translate_to_ASM($dst));
 				} else {
 					push(@instructions, (ASM_Binary(ASM_Mult, ASM_Quadword, ASM_Imm($scale), ASM_Reg(ASM_DX)),
-										 ASM_Lea(ASM_Indexed(ASM_AX, ASM_DX, 1), translate_to_ASM($dst))));
+										 ASM_Lea(ASM_Indexed(ASM_Reg(ASM_AX), ASM_Reg(ASM_DX), 1), translate_to_ASM($dst))));
 				}
 				return @instructions;
 			}
@@ -439,21 +440,20 @@ sub replace_pseudo {
 				} else {
 					unless (exists $offsets{$ident}) {
 						my $size = size_of($asm_symbol_table{$ident}{op_size});
-						$offsets{$ident} = ($current_offset -= $size + $current_offset % $size);
+						$offsets{$ident} = ($current_offset -= $size + ($current_offset % $size));
 					}
 					return ASM_Memory(ASM_Reg(ASM_BP), $offsets{$ident});
 				}
 			},
-			# TODO refaktor, pokud je to takhle dobre
-			ASM_PseudoMem => sub($ident, $offset) {
+			ASM_PseudoMem => sub($ident, $element_offset) {
 				if (exists $asm_symbol_table{$ident} && $asm_symbol_table{$ident}->{static}) {
 					return ASM_Data($ident);
 				} else {
 					unless (exists $offsets{$ident}) {
-						my $size = size_of($asm_symbol_table{$ident}{op_size});
-						$offsets{$ident} = ($current_offset -= $size + $current_offset % $size);
+						my ($size, $alignment) = $asm_symbol_table{$ident}{op_size}->values_in_order('ASM_ByteArray');
+						$offsets{$ident} = $current_offset = -align_to(abs($current_offset - $size), $alignment);
 					}
-					return ASM_Memory(ASM_Reg(ASM_BP), $offsets{$ident} + $offset);
+					return ASM_Memory(ASM_Reg(ASM_BP), $offsets{$ident} + $element_offset);
 				}
 			},
 			default => sub {
@@ -479,7 +479,7 @@ sub replace_pseudo {
 	$process_node->($function);
 	my ($name, $global, $instructions) = $function->values_in_order('ASM_Function');
 	my $max_offset = -$current_offset;
-	unshift(@$instructions, allocate_stack(16 * int(($max_offset + 15) / 16))); # 16 byte aligned
+	unshift(@$instructions, allocate_stack(align_to($max_offset, 16)));
 }
 
 #3# FIX

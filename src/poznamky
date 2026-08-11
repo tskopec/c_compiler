@@ -1,0 +1,3 @@
+
+* gcc z nejakeho alokuje lokalni promenne na stack v poradi od SP k BP, vypina se to -fno-stack-protector
+    * neco se o tom pise i tu: https://en.wikipedia.org/wiki/Buffer_overflow_protection#Canaries

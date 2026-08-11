@@ -5,7 +5,7 @@ use feature qw(state isa say current_sub);
 
 require Exporter;
 our @ISA = qw(Exporter);
-our @EXPORT = qw(print_tree labels);
+our @EXPORT = qw(print_tree labels align_to);
 
 use ADT::ADT;
 
@@ -45,6 +45,12 @@ sub labels {
 	my @res = map { "_${_}_" . $::global_counter } @_;
 	$::global_counter++;
 	return @res;
+}
+
+# round val to next multiple of alignment
+sub align_to {
+	my ($val, $alignment) = @_;
+	return $alignment * int(($val + $alignment - 1) / $alignment);
 }
 
 1;

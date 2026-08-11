@@ -271,11 +271,11 @@ sub check_type {
 				}
 			},
 			AST_VarDeclaration => sub($name, $init, $type, $storage) {
-				if (defined $init) {
-					check_init_type($init, $type);
-				}
 	###### file scope var
 				if (is_ADT($parent_node, 'AST_Program')) {
+					if (defined $init) {
+						check_init_type($init, $type);
+					}
 					my $init_val = (defined $init)
 						? get_initial_value($init)
 						: is_ADT($storage, 'STOR_Extern') ? INI_NoInitializer : INI_Tentative;
@@ -328,6 +328,9 @@ sub check_type {
 							type => $type,
 							attrs => ATT_LocalAttrs
 						};
+					}
+					if (defined $init) {
+						check_init_type($init, $type);
 					}
 				}
 			},

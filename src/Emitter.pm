@@ -34,23 +34,22 @@ sub emit_code {
 			$code .= join "", map { emit_code($_) } @$instructions;
 			return $code;
 		},
-		ASM_StaticVariable => sub($name, $global, $alignment, $init) {
+		ASM_StaticVariable => sub($name, $global, $alignment, $inits) {
 			my $code = $global ? "\t.globl $name\n" : "";
-			my ($init_bytes, $init_word) = translate_type($init);
-			if ($init->get('val') != 0 || $init_word eq 'double') {
-				$code = set_section($code, ".data");
-				$code .= "\t.align $alignment\n";
-				$code .= "$name:\n";
-				if ($init_word eq 'double') {
+			my $section = @$inits == 1 && is_zero_init_or_int_zero($inits->[0]) ? ".bss" : ".data";
+
+			$code = set_section($code, $section);
+			$code .= "\t.align $alignment\n";
+			$code .= "$name:\n";
+			for my $init (@$inits) {
+				my ($init_bytes, $init_word) = translate_type($init);
+				if ($section eq ".bss") {
+					$code .= "\t.zero $init_bytes\n";
+				} elsif ($init_word eq 'double') {
 					$code .= "\t.quad " . raw_double_bytes_to_int($init->get('val')) . "\n";
 				} else {
 					$code .= "\t.$init_word " . $init->get('val') . "\n";
 				}
-			} else {
-				$code = set_section($code, ".bss");
-				$code .= "\t.align $alignment\n";
-				$code .= "$name:\n";
-				$code .= "\t.zero $init_bytes\n";
 			}
 			return $code;
 		},
@@ -149,6 +148,9 @@ sub emit_code {
 		ASM_Imm => sub($val) {
 			return "\$$val";
 		},
+		ASM_Indexed => sub($base, $index, $scale) {
+			return sprintf("(%s, %s, %d)", emit_code($base), emit_code($index), $scale);
+		},
 		ASM_Push => sub($op) {
 			return "\tpushq " . emit_code($op, 8) . "\n";
 		},
@@ -196,6 +198,7 @@ sub translate_type {
 	if ($type->is('T_Int', 'SI_IntInit', 'SI_UIntInit')) { return (4, 'long') }
 	if ($type->is('T_Long', 'SI_LongInit', 'SI_ULongInit')) { return (8, 'quad') }
 	if ($type->is('T_Double', 'SI_DoubleInit')) { return (8, 'double') }
+	if ($type->is('SI_ZeroInit')) { return () }
 	die "unknown type $type";
 }
 
@@ -207,6 +210,13 @@ sub strip_prefix {
 sub raw_double_bytes_to_int {
 	return unpack("Q>", pack("d>", shift()));
 }
+
+sub is_zero_init_or_int_zero {
+	my $i = shift;
+	return $i->is('SI_ZeroInit')
+		|| ($i->is('SI_IntInit', 'SI_UIntInit', 'SI_LongInit', 'SI_ULongInit') && $i->get('val') == 0);
+}
+
 
 1;
 

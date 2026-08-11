@@ -34,11 +34,11 @@ my $dont_link = 0;
 foreach (@ARGV) {
 	if (/\.c$/) {
 		push @src_files, $_;
-	} elsif (/^--(lex|parse|validate|tac|tacky|codegen)$/) {
+	} elsif (/^--(lex|parse|validate|tac|tacky|codegen|emit)$/) {
 		$target_phase = $1;
 	} elsif (/^-d(\w*)$/) {
 		$ADT::ADT::DBG = 1;
-		$debug{$_} = 1 for (split('', $1 ? $1 : "lpstceSw")); # l(ex) p(arse) v(alidate) t(ac) c(odegen) e(mit) S(ymtables) w(rite .s files to /tmp)
+		$debug{$_} = 1 for (split('', $1 ? $1 : "lpvtceSw")); # l(ex) p(arse) v(alidate) t(ac) c(odegen) e(mit) S(ymtables) w(rite .s files to /tmp)
 	} elsif (/^-c$/) {
 		$dont_link = 1;
 	}
@@ -122,6 +122,9 @@ for my $src_file (@src_files) {
 	if ($debug{e}) {
 		say "> Assembly";
 		say($code);
+	}
+	if ($target_phase eq 'emit') {
+		$error_code = 0; exit;
 	}
 	write_file($asm_file, $code);
 	push @asm_files, $asm_file;

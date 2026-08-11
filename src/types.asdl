@@ -128,10 +128,10 @@ ASM_Operand =
 	ASM_Imm(int val)
 	| ASM_Reg(ASM_Register reg)
 	| ASM_Pseudo(string ident)
-	| ASM_Memory(ASM_Operand reg, int offset)
+	| ASM_Memory(ASM_Reg reg, int offset)
 	| ASM_Data(string ident)
 	| ASM_PseudoMem(string ident, int offset)
-	| ASM_Indexed(ASM_Register base, ASM_Register index, int scale)
+	| ASM_Indexed(ASM_Reg base, ASM_Reg index, int scale)
 ASM_CondCode =
 	ASM_E | ASM_NE | ASM_G | ASM_GE | ASM_L | ASM_LE | ASM_A | ASM_AE | ASM_B | ASM_BE
 ASM_Register =
@@ -161,8 +161,8 @@ ATT_IdentifierAttrs =
 	| ATT_StaticAttrs(INI_InitialValue init_val, bool global)
 	| ATT_LocalAttrs
 INI_InitialValue =
-	INI_Tentative
-	| INI_Initial(SI_StaticInit* static_inits)
+	INI_Initial(SI_StaticInit* static_inits)
+	| INI_Tentative
 	| INI_NoInitializer
 SI_StaticInit =
 	SI_IntInit(int val)
