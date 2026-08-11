@@ -317,7 +317,11 @@ sub check_type {
 							};
 						}
 					} elsif (is_ADT($storage, 'STOR_Static')) {
-						$init //= zero_initializer($type);
+						if (defined $init) {
+							check_init_type($init, $type);
+						} else {
+							$init = zero_initializer($type);
+						}
 						my $init_val = get_initial_value($init);
 						$symbol_table{$name} = {
 							type => $type,
@@ -328,9 +332,7 @@ sub check_type {
 							type => $type,
 							attrs => ATT_LocalAttrs
 						};
-					}
-					if (defined $init) {
-						check_init_type($init, $type);
+						check_init_type($init, $type) if (defined $init);
 					}
 				}
 			},
