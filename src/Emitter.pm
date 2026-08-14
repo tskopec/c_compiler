@@ -149,7 +149,7 @@ sub emit_code {
 			return "\$$val";
 		},
 		ASM_Indexed => sub($base, $index, $scale) {
-			return sprintf("(%s, %s, %d)", emit_code($base), emit_code($index), $scale);
+			return sprintf("(%s, %s, %d)", emit_code($base, 8), emit_code($index, 8), $scale); # TODO je hardcode 8 ok?
 		},
 		ASM_Push => sub($op) {
 			return "\tpushq " . emit_code($op, 8) . "\n";
@@ -192,14 +192,18 @@ sub emit_code {
 
 sub translate_type {
 	my $type = shift;
-	if ($type->is('ASM_Longword')) { return (4, 'l') }
-	if ($type->is('ASM_Quadword')) { return (8, 'q') }
-	if ($type->is('ASM_Double')) { return (8, 'sd') }
-	if ($type->is('T_Int', 'SI_IntInit', 'SI_UIntInit')) { return (4, 'long') }
-	if ($type->is('T_Long', 'SI_LongInit', 'SI_ULongInit')) { return (8, 'quad') }
-	if ($type->is('T_Double', 'SI_DoubleInit')) { return (8, 'double') }
-	if ($type->is('SI_ZeroInit')) { return () }
-	die "unknown type $type";
+	return $type->match({
+		'ASM_Longword' => sub { return (4, 'l') },
+		'ASM_Quadword' => sub { return (8, 'q') },
+		'ASM_Double' => sub { return (8, 'sd') },
+		'T_Int, SI_IntInit, SI_UIntInit' => sub { return (4, 'long') },
+		'T_Long, SI_LongInit, SI_ULongInit' => sub { return (8, 'quad') },
+		'T_Double, SI_DoubleInit' => sub { return (8, 'double') },
+		'SI_ZeroInit' => sub($bytes) { return ($bytes, undef) },
+		'default' => sub {
+			die "unknown type $type"
+		}
+	});
 }
 
 sub strip_prefix {

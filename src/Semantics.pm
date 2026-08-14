@@ -383,7 +383,7 @@ sub check_type {
 				die "cant $op pointer" if ($is_pointer_op && $op->is('AST_Multiply', 'AST_Divide', 'AST_Remainder'));
 				$op->match({
 					AST_Add => sub {
-						if (not $is_pointer_op) {
+						if ($is_pointer_op == 0) {
 							my $common_type = get_common_type($t1, $t2);
 							$node->set('expr1', convert_type($e1, $common_type), 'expr2', convert_type($e2, $common_type), 'type', $common_type);
 						} elsif ($t1->is('T_Pointer') && is_integer($t2)) {
@@ -395,7 +395,7 @@ sub check_type {
 						}
 					},
 					AST_Subtract => sub {
-						if (not $is_pointer_op) {
+						if ($is_pointer_op == 0) {
 							my $common_type = get_common_type($t1, $t2);
 							$node->set('expr1', convert_type($e1, $common_type), 'expr2', convert_type($e2, $common_type), 'type', $common_type);
 						} elsif ($t1->is('T_Pointer') && is_integer($t2)) {
@@ -409,7 +409,7 @@ sub check_type {
 					'AST_Multiply, AST_Divide, AST_Remainder' => sub {
 						my $common_type = get_common_type($t1, $t2);
 						die "cant apply '%' to double" if ($common_type->is('T_Double') && $op->is('AST_Remainder'));
-						$node->set('type', $common_type);
+						$node->set('expr1', convert_type($e1, $common_type), 'expr2', convert_type($e2, $common_type), 'type', $common_type);
 					},
 					'AST_And, AST_Or' => sub {
 						$node->set('expr1', $e1, 'expr2', $e2, 'type', T_Int);
@@ -421,7 +421,7 @@ sub check_type {
 					'AST_LessThan, AST_LessOrEqual, AST_GreaterThan, AST_GreaterOrEqual' => sub {
 						if ($is_pointer_op && ($t1 eq $t2)) {
 							$node->set('expr1', $e1, 'expr2', $e2, 'type', T_Int);
-						} elsif (is_integer($t1, $t2)) {
+						} elsif (is_arithmetic($t1, $t2)) {
 							my $common_type = get_common_type($t1, $t2);
 							$node->set('expr1', convert_type($e1, $common_type), 'expr2', convert_type($e2, $common_type), 'type', T_Int);
 						} else {

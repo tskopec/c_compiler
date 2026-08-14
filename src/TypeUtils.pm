@@ -139,6 +139,7 @@ sub create_const {
 		T_Long => sub { C_ConstLong($val) },
 		T_ULong => sub { C_ConstULong($val) },
 		T_Double => sub { C_ConstDouble($val) },
+		T_Pointer => sub { C_ConstULong($val) },
 		default => sub {
 			die "bad type $type";
 		}

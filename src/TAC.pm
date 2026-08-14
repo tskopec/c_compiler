@@ -211,9 +211,9 @@ sub emit_TAC {
 					if ($t1->is('T_Pointer') && $t2->is('T_Pointer')) {
 						die "cant add 2 pointers $node";
 					} elsif ($t1->is('T_Pointer') && is_integer($t2)) {
-						push @$instructions, TAC_AddPtr($src1, $src2, size_of($t2), $dst);
+						push @$instructions, TAC_AddPtr($src1, $src2, size_of($t1->get('to_type')), $dst);
 					} elsif (is_integer($t1) && $t2->is('T_Pointer')) {
-						push @$instructions, TAC_AddPtr($src2, $src1, size_of($t1), $dst);
+						push @$instructions, TAC_AddPtr($src2, $src1, size_of($t2->get('to_type')), $dst);
 					} else {
 						push @$instructions, TAC_Binary($binop, $src1, $src2, $dst);
 					}
@@ -225,7 +225,7 @@ sub emit_TAC {
 					} elsif ($t1->is('T_Pointer') && is_integer($t2)) {
 						my $neg_dst = make_TAC_var($type);
 						push(@$instructions, TAC_Unary(TAC_Negate, $src2, $neg_dst),
-											 TAC_AddPtr($src1, $neg_dst, size_of($t2), $dst));
+											 TAC_AddPtr($src1, $neg_dst, size_of($t1->get('to_type')), $dst));
 					} else {
 						push @$instructions, TAC_Binary($binop, $src1, $src2, $dst);
 					}
