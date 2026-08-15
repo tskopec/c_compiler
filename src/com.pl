@@ -38,7 +38,8 @@ foreach (@ARGV) {
 		$target_phase = $1;
 	} elsif (/^-d(\w*)$/) {
 		$ADT::ADT::DBG = 1;
-		$debug{$_} = 1 for (split('', $1 ? $1 : "lpvtceSw")); # l(ex) p(arse) v(alidate) t(ac) c(odegen) e(mit) S(ymtables) w(rite .s files to /tmp)
+		# l(ex) p(arse) v(alidate) t(ac) c(odegen) e(mit) S(ymtables) w(rite .s files to /tmp) (C)omments in asm
+		$debug{$_} = 1 for (split('', $1 ? $1 : "lpvtceSwC"));
 	} elsif (/^-c$/) {
 		$dont_link = 1;
 	}

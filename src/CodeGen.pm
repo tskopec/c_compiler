@@ -77,7 +77,7 @@ sub translate_to_ASM {
 				push(@asm_instructions, ASM_Mov(asm_type_of($typed_param->{type}), ASM_Memory(ASM_Reg(ASM_BP), $offset), ASM_Pseudo($typed_param->{value})));
 				$offset += 8;
 			}
-			push(@asm_instructions, map { translate_to_ASM($_) } @$instructions);
+			push(@asm_instructions, map { ($::debug{C} ? ASM_Comment("TAC: $_") : (), translate_to_ASM($_)) } @$instructions);
 			return ASM_Function($ident, $global, \@asm_instructions);
 		},
 		TAC_StaticVariable => sub($name, $global, $type, $inits) {

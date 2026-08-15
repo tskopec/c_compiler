@@ -9,6 +9,14 @@ our @EXPORT = qw(print_tree labels align_to);
 
 use ADT::ADT;
 
+our %color = (	# https://ss64.com/nt/syntax-ansi.html
+	r => "\033[31;1m",
+	g => "\033[32;1m",
+	y => "\033[33;1m",
+	b => "\033[34;1m",
+	off => "\033[0m"
+);
+
 sub print_tree {
 	state $tab = "    ";
 	my $print_node = sub {

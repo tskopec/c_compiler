@@ -19,6 +19,9 @@ sub emit_code {
 	my $node = shift;
 	my $register_width = shift // 4;
 	return $node->match({
+		ASM_Comment => sub($text) {
+			return "\t#\t$Utils::color{b}${text}$Utils::color{off}\n";
+		},
 		ASM_Program => sub($definitions) {
 			$current_section = "";
 			my $code = join "\n", map { emit_code($_) } @$definitions;
