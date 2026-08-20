@@ -20,7 +20,10 @@ sub emit_code {
 	my $register_width = shift // 4;
 	return $node->match({
 		ASM_Comment => sub($text) {
-			return "\t#\t$Utils::color{b}${text}$Utils::color{off}\n";
+			if (-t STDOUT) {
+				$text = $Utils::color{b} . $text . $Utils::color{off};
+			}
+			return "\t#\t$text\n";
 		},
 		ASM_Program => sub($definitions) {
 			$current_section = "";

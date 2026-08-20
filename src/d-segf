@@ -1,0 +1,75 @@
+>>> COMPILING file: t/d.c
+
+int main(void) {
+	int arr[3] = {4u,5u,6u};
+	int *p = arr;
+	int x = p[2l]; // kdyz je l => segfault
+	return p[2u];	
+}
+
+
+> Assembly
+	.globl main
+	.section .text
+main:
+	pushq %rbp
+	movq %rsp, %rbp
+	subq $80, %rsp
+	#	TAC: TAC_Copy(src: "TAC_Constant(constant: "C_ConstUInt(val: "4")")", dst: "TAC_Variable(name: "tmp.3")")
+	movl $4, -4(%rbp)
+	#	TAC: TAC_CopyToOffset(src: "TAC_Variable(name: "tmp.3")", ident: "arr.0", offset: "0")
+	movl -4(%rbp), %r10d
+	movl %r10d, -16(%rbp)
+	#	TAC: TAC_Copy(src: "TAC_Constant(constant: "C_ConstUInt(val: "5")")", dst: "TAC_Variable(name: "tmp.4")")
+	movl $5, -20(%rbp)
+	#	TAC: TAC_CopyToOffset(src: "TAC_Variable(name: "tmp.4")", ident: "arr.0", offset: "4")
+	movl -20(%rbp), %r10d
+	movl %r10d, -12(%rbp)
+	#	TAC: TAC_Copy(src: "TAC_Constant(constant: "C_ConstUInt(val: "6")")", dst: "TAC_Variable(name: "tmp.5")")
+	movl $6, -24(%rbp)
+	#	TAC: TAC_CopyToOffset(src: "TAC_Variable(name: "tmp.5")", ident: "arr.0", offset: "8")
+	movl -24(%rbp), %r10d
+	movl %r10d, -8(%rbp)
+	#	TAC: TAC_GetAddress(src: "TAC_Variable(name: "arr.0")", dst: "TAC_Variable(name: "tmp.6")")
+	leaq -16(%rbp), %r11
+	movq %r11, -32(%rbp)
+	#	TAC: TAC_Copy(src: "TAC_Variable(name: "tmp.6")", dst: "TAC_Variable(name: "p.1")")
+	movq -32(%rbp), %r10
+	movq %r10, -40(%rbp)
+	#	TAC: TAC_AddPtr(ptr: "TAC_Variable(name: "p.1")", index: "TAC_Constant(constant: "C_ConstLong(val: "2")")", scale: "4", dst: "TAC_Variable(name: "tmp.7")")
+	movq -40(%rbp), %rax
+	leaq 8(%rax), %r11
+	movq %r11, -44(%rbp)
+	#	TAC: TAC_Load(src_ptr: "TAC_Variable(name: "tmp.7")", dst: "TAC_Variable(name: "tmp.8")")
+	movq -44(%rbp), %rax
+	movl (%rax), %r10d
+	movl %r10d, -48(%rbp)
+	#	TAC: TAC_Copy(src: "TAC_Variable(name: "tmp.8")", dst: "TAC_Variable(name: "x.2")")
+	movl -48(%rbp), %r10d
+	movl %r10d, -52(%rbp)
+	#	TAC: TAC_ZeroExtend(src: "TAC_Constant(constant: "C_ConstUInt(val: "2")")", dst: "TAC_Variable(name: "tmp.10")")
+	movl $2, %r10d
+	movq %r10, -64(%rbp)
+	#	TAC: TAC_AddPtr(ptr: "TAC_Variable(name: "p.1")", index: "TAC_Variable(name: "tmp.10")", scale: "4", dst: "TAC_Variable(name: "tmp.9")")
+	movq -40(%rbp), %rax
+	movq -64(%rbp), %rdx
+	leaq (%rax, %rdx, 4), %r11
+	movq %r11, -68(%rbp)
+	#	TAC: TAC_Load(src_ptr: "TAC_Variable(name: "tmp.9")", dst: "TAC_Variable(name: "tmp.11")")
+	movq -68(%rbp), %rax
+	movl (%rax), %r10d
+	movl %r10d, -72(%rbp)
+	#	TAC: TAC_Return(value: "TAC_Variable(name: "tmp.11")")
+	movl -72(%rbp), %eax
+	movq %rbp, %rsp
+	popq %rbp
+	ret
+	#	TAC: TAC_Return(value: "TAC_Constant(constant: "C_ConstInt(val: "0")")")
+	movl $0, %eax
+	movq %rbp, %rsp
+	popq %rbp
+	ret
+.section .note.GNU-stack,"",@progbits
+
+<<< DONE file: t/d.c
+
