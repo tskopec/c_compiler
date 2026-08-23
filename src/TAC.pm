@@ -219,9 +219,9 @@ sub emit_TAC {
 					}
 				} elsif ($binop->is('TAC_Subtract')) {
 					if ($t1->is('T_Pointer') && $t2->is('T_Pointer')) {
-						my $sub_dst = make_TAC_var($type);
+						my $sub_dst = make_TAC_var(T_Int());
 						push(@$instructions, TAC_Binary(TAC_Subtract, $src1, $src2, $sub_dst),
-											 TAC_Binary(TAC_Divide, $sub_dst, TAC_Constant(C_ConstInt(size_of($t1))), $dst));
+											 TAC_Binary(TAC_Divide, $sub_dst, TAC_Constant(C_ConstInt(size_of($t1->get('to_type')))), $dst));
 					} elsif ($t1->is('T_Pointer') && is_integer($t2)) {
 						my $neg_dst = make_TAC_var($type);
 						push(@$instructions, TAC_Unary(TAC_Negate, $src2, $neg_dst),
@@ -289,7 +289,7 @@ sub emit_TAC {
 			});
 		},
 		AST_Subscript => sub($exp1, $exp2, $type) {
-			my $dst = make_TAC_var($type);
+			my $dst = make_TAC_var(T_Pointer($type));
 			my ($t1, $t2) = map { $_->get('type') } ($exp1, $exp2);
 			my ($ptr_exp, $index_exp) = $t1->is('T_Pointer') ? ($exp1, $exp2)
 								: $t2->is('T_Pointer') ? ($exp2, $exp1)
