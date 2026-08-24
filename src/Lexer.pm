@@ -7,7 +7,7 @@ use ADT::AlgebraicTypes qw(:LEX);
 
 my $sym_re = qr/^([ {} () [\] , ; ])/x;
 my $op_re = qr/^(!=|==|<=|>=|<|>|=|!|\|\||&&|--|-|\+|\*|\/|%|~|\?|:|&)/;
-my $kw_re = qr/^(int|long|double|signed|unsigned|void|return|if|else|do|while|for|break|continue|static|extern)\b/;
+my $kw_re = qr/^(int|long|double|signed|unsigned|void|return|if|else|do|while|for|break|continue|static|extern|char)\b/;
 my $long_const_re = qr/^(([0-9]+)[lL])[^\w.]/;
 my $ulong_const_re = qr/^(([0-9]+)(lu|ul))[^\w.]/i;
 my $int_const_re = qr/^([0-9]+)[^\w.]/;
@@ -17,6 +17,18 @@ my $fp_const_re = qr/^(
 	|[0-9]*\.[0-9]+
 	|[0-9]+\.
 )[^\w.]/xi;
+my $char_const_re = qr/('
+	(
+		[^'\n\\]
+		|\\['"?\\abfnrtv]
+	)
+')/x;
+my $string_literal_re = qr/("
+	(
+		([^"\n\\]
+		|\\['"\\?abfnrtv])*
+	)
+")/x;
 my $iden_re = qr/^([a-zA-Z_]\w*)\b/;
 
 sub tokenize {
@@ -53,9 +65,16 @@ sub tokenize {
 		elsif ($src =~ $iden_re) {
 			push(@tokens, LEX_Identifier($1));
 		}
+		elsif ($src =~ $string_literal_re) {
+			push(@tokens, LEX_StringLiteral($2));
+		}
+		elsif ($src =~ $char_const_re) {
+			push(@tokens, LEX_CharConstant($2));
+		}
 		else {
 			die "neznam token -> $src";
 		}
+
 		$src = substr($src, length $1);
 	}
 
