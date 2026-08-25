@@ -100,6 +100,11 @@ sub parse_type {
 	return T_ULong if ($freqs{long} && $freqs{unsigned});
 	return T_UInt if ($freqs{unsigned});
 	return T_Long if ($freqs{long});
+	if ($freqs{char}) {
+		return $freqs{signed} ? T_SChar :
+			   $freqs{unsigned} ? T_UChar :
+			   T_Char;
+	}
 	return T_Int;
 }
 
@@ -323,6 +328,9 @@ sub parse_factor {
 		},
 		LEX_FPConstant => sub($val) {
 			return AST_ConstantExpr(C_ConstDouble($val), T_Double);
+		},
+		LEX_CharConstant => sub($val) {
+			return AST_ConstantExpr(C_ConstInt(ord($val)));
 		},
 		LEX_Identifier => sub($name) {
 			if (expect_maybe('LEX_Symbol', '(')) {

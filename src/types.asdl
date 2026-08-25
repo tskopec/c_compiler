@@ -52,6 +52,7 @@ AST_Expression =
 	 | AST_Dereference(AST_Expression expr, T_Type type)
 	 | AST_AddrOf(AST_Expression expr, T_Type type)
 	 | AST_Subscript(AST_Expression expr1, AST_Expression expr2, T_Type type)
+	 | AST_String(string val)
 AST_UnaryOperator =
 	AST_Complement | AST_Negate | AST_Not
 AST_BinaryOperator =
@@ -149,6 +150,9 @@ T_Type =
 	| T_Long
 	| T_ULong
 	| T_Double
+	| T_Char
+	| T_SChar
+	| T_UChar
 	| T_FunType(T_Type* param_types, T_Type ret_type)
 	| T_Pointer(T_Type to_type)
 	| T_Array(T_Type elem_type, int size)
@@ -159,6 +163,8 @@ C_Constant =
 	| C_ConstLong(int val)
 	| C_ConstULong(int val)
 	| C_ConstDouble(float val)
+	| C_ConstChar(int val)
+	| C_ConstUChar(int val)
 ATT_IdentifierAttrs =
 	ATT_FunAttrs(bool defined, bool global)
 	| ATT_StaticAttrs(INI_InitialValue init_val, bool global)

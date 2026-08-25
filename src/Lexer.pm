@@ -17,13 +17,13 @@ my $fp_const_re = qr/^(
 	|[0-9]*\.[0-9]+
 	|[0-9]+\.
 )[^\w.]/xi;
-my $char_const_re = qr/('
+my $char_const_re = qr/^('
 	(
 		[^'\n\\]
 		|\\['"?\\abfnrtv]
 	)
 ')/x;
-my $string_literal_re = qr/("
+my $string_literal_re = qr/^("
 	(
 		([^"\n\\]
 		|\\['"\\?abfnrtv])*
@@ -62,14 +62,14 @@ sub tokenize {
 		elsif ($src =~ $fp_const_re) {
 			push(@tokens, LEX_FPConstant($1));
 		}
-		elsif ($src =~ $iden_re) {
-			push(@tokens, LEX_Identifier($1));
-		}
 		elsif ($src =~ $string_literal_re) {
-			push(@tokens, LEX_StringLiteral($2));
+			push(@tokens, LEX_StringLiteral(unescape($2)));
 		}
 		elsif ($src =~ $char_const_re) {
-			push(@tokens, LEX_CharConstant($2));
+			push(@tokens, LEX_CharConstant(unescape($2)));
+		}
+		elsif ($src =~ $iden_re) {
+			push(@tokens, LEX_Identifier($1));
 		}
 		else {
 			die "neznam token -> $src";
@@ -79,6 +79,19 @@ sub tokenize {
 	}
 
 	return @tokens;
+}
+
+my %esc_seq = (
+	'\\\\a' => "\a", '\\\\b' => "\b", '\\\\f' => "\f", '\\\\n' => "\n", '\\\\t' => "\t", '\\\\v' => "\v",
+	"\\\\'" => "\'", '\\\"' => "\\\\", "\\\\" => "\\", "\\\\\\?" => "\?",
+);
+
+sub unescape {
+	my $s = shift;
+	while (my ($seq, $char) = each %esc_seq) {
+		$s =~ s/$seq/$char/g;
+	}
+	return $s;
 }
 
 1;
