@@ -78,7 +78,7 @@ sub parse_specifiers {
 	my (@storage_specs, @type_specs);
 	my $kw;
 	while (1) {
-		if ($kw = expect_maybe('LEX_Keyword', 'int', 'long', 'double', 'signed', 'unsigned')) {
+		if ($kw = expect_maybe('LEX_Keyword', 'int', 'long', 'double', 'signed', 'unsigned', 'char')) {
 			push @type_specs, $kw->get('word');
 		} elsif ($kw = expect_maybe('LEX_Keyword', 'static', 'extern')) {
 			push @storage_specs, $kw->get('word');
@@ -164,6 +164,9 @@ sub parse_array_size {
 		"LEX_IntConstant, LEX_UIntConstant, LEX_LongConstant, LEX_ULongConstant" => sub($val) {
 			die "bad array size: $val" unless ($val > 0);
 			return $val;
+		},
+		LEX_CharConstant => sub($val) {
+			return ord($val);
 		},
 		default => sub {
 			die "only supports constant array sizes (but got $token)";
@@ -330,7 +333,13 @@ sub parse_factor {
 			return AST_ConstantExpr(C_ConstDouble($val), T_Double);
 		},
 		LEX_CharConstant => sub($val) {
-			return AST_ConstantExpr(C_ConstInt(ord($val)));
+			return AST_ConstantExpr(C_ConstInt(ord($val)), T_Int);
+		},
+		LEX_StringLiteral => sub($val) {
+			while (peek()->is('LEX_StringLiteral')) {
+				$val .= shift(@TOKENS)->get('val');
+			}
+			return AST_String($val);
 		},
 		LEX_Identifier => sub($name) {
 			if (expect_maybe('LEX_Symbol', '(')) {
