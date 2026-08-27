@@ -5,7 +5,7 @@ use feature qw(say state isa signatures);
 
 use ADT::AlgebraicTypes qw(:AST :C :ATT :INI :STOR :T is_ADT);
 use TypeUtils qw(/^MAX_/ get_common_type get_common_pointer_type convert_type convert_as_if_by_assignment types_equal
-	create_const get_static_init flatten_init is_arithmetic is_integer);
+	create_const get_static_init flatten_init is_arithmetic is_integer is_character);
 
 our %symbol_table;
 
@@ -366,9 +366,17 @@ sub check_type {
 				$op->match({
 					AST_Complement => sub {
 						die "cant complement $expr_type" if ($expr_type->is('T_Double', 'T_Pointer'));
+						if (is_character($expr_type)) {
+							$expr = convert_type($expr, T_Int);
+							$expr_type = T_Int;
+						}
 					},
 					AST_Negate => sub {
 						die "cant negate $expr_type" if ($expr_type->is('T_Pointer'));
+						if (is_character($expr_type)) {
+							$expr = convert_type($expr, T_Int);
+							$expr_type = T_Int;
+						}
 					},
 					AST_Not => sub {
 						$expr_type = T_Int;
