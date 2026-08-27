@@ -96,15 +96,18 @@ sub parse_type {
 	die "duplicate type spec: " . join(",", @_) if (grep { $_ > 1 } (values %freqs));
 	die "type both signed & unsigned" if ($freqs{signed} && $freqs{unsigned});
 	die "double cant be combined with others" if ($freqs{double} && keys(%freqs) > 1);
+	if ($freqs{char}) {
+		while (my ($word, $count) = each %freqs) {
+			die "char can be combined only with signed/unsigned" if ($count && $word !~ /^char|signed|unsigned$/);
+		}
+		return 	$freqs{signed} ? T_SChar
+			   	: $freqs{unsigned} ? T_UChar
+				: T_Char;
+	}
 	return T_Double if ($freqs{double});
 	return T_ULong if ($freqs{long} && $freqs{unsigned});
 	return T_UInt if ($freqs{unsigned});
 	return T_Long if ($freqs{long});
-	if ($freqs{char}) {
-		return $freqs{signed} ? T_SChar :
-			   $freqs{unsigned} ? T_UChar :
-			   T_Char;
-	}
 	return T_Int;
 }
 
