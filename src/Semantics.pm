@@ -489,6 +489,9 @@ sub check_type {
 				} else {
 					die "bad operands for subscript: \n\t$e1\n\t$e2";}
 			},
+			AST_String => sub($val) {
+				$node->set('type', T_Array(T_Char, length($val) + 1));
+			},
 			default => sub {
 				check_type($_, $node) for $node->values_in_order();
 			}
@@ -502,8 +505,13 @@ sub check_init_type {
 	my ($init, $target_type) = @_;
 	$init->match({
 		AST_SingleInit => sub($expr, $dummy_type) {
-			$expr = check_type_and_decay($expr);
-			$init->set('expr', convert_as_if_by_assignment($expr, $target_type));
+			if ($target_type->is('T_Array') && $expr->is('AST_String')) {
+				die "cant init $target_type with $init" unless (is_character($target_type->get('elem_type')));
+				die "too many chars" if ($expr->get('val') > $target_type->get('size'));
+			} else {
+				$expr = check_type_and_decay($expr);
+				$init->set('expr', convert_as_if_by_assignment($expr, $target_type));
+			}
 		},
 		AST_CompoundInit => sub($inits, $dummy_type) {
 			die "cant initialize scalar $target_type with compound init $init" unless ($target_type->is('T_Array'));
@@ -573,7 +581,7 @@ sub get_symbol_attr {
 }
 
 sub is_lval {
-	return shift()->is('AST_Var', 'AST_Dereference', 'AST_Subscript');
+	return shift()->is('AST_Var', 'AST_Dereference', 'AST_Subscript', 'AST_String');
 }
 
 #3# LOOP LABELING ###

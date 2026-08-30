@@ -178,6 +178,8 @@ SI_StaticInit =
 	| SI_UIntInit(int val)
 	| SI_LongInit(int val)
 	| SI_ULongInit(int val)
+	| SI_CharInit(int val)
+	| SI_UCharInit(int val)
 	| SI_DoubleInit(float val)
 	| SI_ZeroInit(int bytes)
 STOR_StorageClass =

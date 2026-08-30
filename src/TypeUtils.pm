@@ -1,7 +1,7 @@
 package TypeUtils;
 use strict;
 use warnings;
-use feature qw(signatures isa);
+use feature qw(signatures isa state);
 
 use ADT::AlgebraicTypes qw(:AST :INI :SI :T :C is_ADT);
 
@@ -56,27 +56,25 @@ sub get_int_type_rank {
 }
 
 sub is_signed {
-	my $type = shift;
-	return ($type->{':tag'} =~ /^[A-Z]+_U/) ? 0 : 1;
+	return is_one_of(\@_, state $wanted = ['T_Int', 'T_Long', 'T_Double', 'T_Char', 'T_SChar']);
 }
 
 sub is_arithmetic {
-	for my $type (@_) {
-		return 0 unless $type->is('T_Int', 'T_UInt', 'T_Long', 'T_ULong', 'T_Double');
-	}
-	return 1;
+	return is_one_of(\@_, state $wanted = ['T_Int', 'T_UInt', 'T_Long', 'T_ULong', 'T_Char', 'T_SChar', 'T_UChar', 'T_Double']);
 }
 
 sub is_integer {
-	for my $type (@_) {
-		return 0 unless $type->is('T_Int', 'T_UInt', 'T_Long', 'T_ULong');
-	}
-	return 1;
+	return is_one_of(\@_, state $wanted = ['T_Int', 'T_UInt', 'T_Long', 'T_ULong', 'T_Char', 'T_SChar', 'T_UChar']);
 }
 
 sub is_character {
-	for my $type (@_) {
-		return 0 unless $type->is('T_Char', 'T_SChar', 'T_UChar');
+	return is_one_of(\@_, state $wanted = ['T_Char', 'T_SChar', 'T_UChar']);
+}
+
+sub is_one_of {
+	my ($types, $wanted) = @_;
+	for my $type (@$types) {
+		return 0 unless $type->is(@$wanted);
 	}
 	return 1;
 }
@@ -149,6 +147,8 @@ sub create_const {
 		T_ULong => sub { C_ConstULong($val) },
 		T_Double => sub { C_ConstDouble($val) },
 		T_Pointer => sub { C_ConstULong($val) },
+		'T_Char, T_SChar' => sub { C_ConstChar($val) },
+		T_UChar => sub { C_ConstUChar($val) },
 		default => sub {
 			die "bad type $type";
 		}
@@ -175,22 +175,28 @@ sub get_static_init {
 		: $arg;
 	return $type->match({
 		T_Int => sub() {
-			return SI_IntInit($value & 0xffffffff);
+			SI_IntInit($value & 0xffffffff);
 		},
 		T_UInt => => sub() {
-			return SI_UIntInit($value & 0xffffffff);
+			SI_UIntInit($value & 0xffffffff);
 		},
 		T_Long => sub() {
-			return SI_LongInit($value <= MAX_LONG ? $value : die "integer $value too large for long");
+			SI_LongInit($value <= MAX_LONG ? $value : die "integer $value too large for long");
 		},
 		T_ULong => sub() {
-			return SI_ULongInit($value <= MAX_ULONG ? $value : die "integer $value too large for ulong");
+			SI_ULongInit($value <= MAX_ULONG ? $value : die "integer $value too large for ulong");
 		},
 		T_Pointer => sub($to_type) {
-			return SI_ULongInit($value == 0 ? $value : die "$value not null constant");
+			SI_ULongInit($value == 0 ? $value : die "$value not null constant");
 		},
 		T_Double => sub() {
-			return SI_DoubleInit($value);
+			SI_DoubleInit($value);
+		},
+		'T_Char, T_SChar' => sub() {
+			SI_CharInit($value & 0xff);
+		},
+		T_UChar => sub () {
+			SI_UCharInit($value & 0xff);
 		},
 		default => sub {
 			die "unknown type: $type";
