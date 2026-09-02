@@ -195,8 +195,12 @@ sub get_static_init {
 		'T_Char, T_SChar' => sub() {
 			SI_CharInit($value & 0xff);
 		},
-		T_UChar => sub () {
+		T_UChar => sub() {
 			SI_UCharInit($value & 0xff);
+		},
+		T_Array => sub($elem_type, $size) {
+			die "not char array" unless is_character($elem_type);
+			SI_StringInit($value, $size > length($value));
 		},
 		default => sub {
 			die "unknown type: $type";

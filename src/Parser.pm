@@ -342,7 +342,7 @@ sub parse_factor {
 			while (peek()->is('LEX_StringLiteral')) {
 				$val .= shift(@TOKENS)->get('val');
 			}
-			return AST_String($val);
+			return AST_String($val, T_Array(T_Char, length($val)));
 		},
 		LEX_Identifier => sub($name) {
 			if (expect_maybe('LEX_Symbol', '(')) {

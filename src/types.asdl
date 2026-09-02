@@ -52,7 +52,7 @@ AST_Expression =
 	 | AST_Dereference(AST_Expression expr, T_Type type)
 	 | AST_AddrOf(AST_Expression expr, T_Type type)
 	 | AST_Subscript(AST_Expression expr1, AST_Expression expr2, T_Type type)
-	 | AST_String(string val)
+	 | AST_String(string val, T_Type type)
 AST_UnaryOperator =
 	AST_Complement | AST_Negate | AST_Not
 AST_BinaryOperator =
@@ -168,6 +168,7 @@ C_Constant =
 ATT_IdentifierAttrs =
 	ATT_FunAttrs(bool defined, bool global)
 	| ATT_StaticAttrs(INI_InitialValue init_val, bool global)
+	| ATT_ConstantAttrs(SI_StaticInit init)
 	| ATT_LocalAttrs
 INI_InitialValue =
 	INI_Initial(SI_StaticInit* static_inits)
@@ -182,5 +183,7 @@ SI_StaticInit =
 	| SI_UCharInit(int val)
 	| SI_DoubleInit(float val)
 	| SI_ZeroInit(int bytes)
+	| SI_StringInit(string val, bool null_terminated)
+	| SI_PointerInit(string name)
 STOR_StorageClass =
 	STOR_Static | STOR_Extern

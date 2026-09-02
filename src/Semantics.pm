@@ -204,6 +204,7 @@ sub resolve_expr_ids {
 		AST_Subscript => sub($e1, $e2, $type) {
 			resolve_expr_ids($_, $ids_map) for ($e1, $e2);
 		},
+		AST_String => sub($val, $type) { ; },
 		default => sub {
 			die "unknown expression $expr"
 		}
@@ -506,8 +507,8 @@ sub check_init_type {
 	$init->match({
 		AST_SingleInit => sub($expr, $dummy_type) {
 			if ($target_type->is('T_Array') && $expr->is('AST_String')) {
-				die "cant init $target_type with $init" unless (is_character($target_type->get('elem_type')));
-				die "too many chars" if ($expr->get('val') > $target_type->get('size'));
+				die "must be array of chars" unless (is_character($target_type->get('elem_type')));
+				die "too many chars" if (length($expr->get('val')) > $target_type->get('size'));
 			} else {
 				$expr = check_type_and_decay($expr);
 				$init->set('expr', convert_as_if_by_assignment($expr, $target_type));
@@ -531,12 +532,21 @@ sub check_init_type {
 sub get_initial_value {
 	my $ast_init = shift;
 	return INI_Initial([ map {
-		my ($expr) = $_->values_in_order('AST_SingleInit');
-		if ($expr->is("AST_Cast")) {
+		my ($expr, $type) = $_->values_in_order('AST_SingleInit');
+		while ($expr->is("AST_Cast")) {
 			$expr = $expr->get('expr');
 		}
-		die "initializer is not a constant: $_" unless $expr->is('AST_ConstantExpr');
-		get_static_init($expr->get('constant'), $_->get('type'));
+		$expr->match({
+			AST_ConstantExpr => sub($const, $const_type) { get_static_init($const, $type) },
+			AST_String => sub($val, $str_type) {
+				my @res = (get_static_init($val, $type));
+				if (my $extra = $ast_init->get('type')->get('size') - length($val)) {	# TODO ok?
+					push @res, SI_ZeroInit($extra);
+				}
+				@res;
+			},
+			default => sub { die "initializer is not a constant: $_" }
+		});
 	} flatten_init($ast_init) ]);
 }
 
