@@ -44,9 +44,16 @@ sub new {
 
 
 sub get {
-	my ($self, $key) = @_;
-	die "$self: bad key '$key'" unless (exists $self->{$key});
-	return $self->{$key};
+	my ($self, @keys) = @_;
+	my $key = shift(@keys);
+	die "$self: bad key '" . $key . "'" unless (defined($key) && exists($self->{$key}));
+	my $val = $self->{$key};
+	if (@keys) {
+		die "$val not ADT" unless ($val isa 'ADT::ADT');
+		return $val->get(@keys);
+	} else {
+		return $val;
+	}
 }
 
 sub set {

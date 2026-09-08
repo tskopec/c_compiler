@@ -167,7 +167,7 @@ sub flatten_init {
 }
 
 sub get_static_init {
-	my ($arg, $type) = @_;
+	my ($arg, $type, $str_symbol_name) = @_;
 	my $value = (is_ADT($arg, 'C_Constant'))
 		? ($arg->is('C_ConstDouble') && !$type->is('T_Double'))
 			? int($arg->get('val'))
@@ -187,7 +187,12 @@ sub get_static_init {
 			SI_ULongInit($value <= MAX_ULONG ? $value : die "integer $value too large for ulong");
 		},
 		T_Pointer => sub($to_type) {
-			SI_ULongInit($value == 0 ? $value : die "$value not null constant");
+			if ($to_type->is('T_Char')) {
+				die "no str constant" unless length($str_symbol_name);
+				SI_PointerInit($str_symbol_name);
+			} else {
+				SI_ULongInit($value == 0 ? $value : die "$value not null constant");
+			}
 		},
 		T_Double => sub() {
 			SI_DoubleInit($value);
@@ -200,7 +205,11 @@ sub get_static_init {
 		},
 		T_Array => sub($elem_type, $size) {
 			die "not char array" unless is_character($elem_type);
-			SI_StringInit($value, $size > length($value));
+			my $init = SI_StringInit($value, my $null_terminated = $size > length($value));
+			if (my $extra = $size - (length($value) + $null_terminated)) {
+				return ($init, SI_ZeroInit($extra));
+			}
+			return $init;
 		},
 		default => sub {
 			die "unknown type: $type";

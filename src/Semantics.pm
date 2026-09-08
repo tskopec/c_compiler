@@ -280,7 +280,7 @@ sub check_type {
 					my $init_val = (defined $init)
 						? get_initial_value($init)
 						: is_ADT($storage, 'STOR_Extern') ? INI_NoInitializer : INI_Tentative;
-					my $global = not (is_ADT($storage, 'STOR_Static'));
+					my $global = not is_ADT($storage, 'STOR_Static');
 
 					if (exists $symbol_table{$name}) {
 						die "already declared as other type: $name" unless (types_equal(get_symbol_attr($name, 'type'), $type));
@@ -532,18 +532,25 @@ sub check_init_type {
 sub get_initial_value {
 	my $ast_init = shift;
 	return INI_Initial([ map {
-		my ($expr, $type) = $_->values_in_order('AST_SingleInit');
-		while ($expr->is("AST_Cast")) {
-			$expr = $expr->get('expr');
+		my ($init_expr, $init_type) = $_->values_in_order('AST_SingleInit');
+		while ($init_expr->is("AST_Cast")) {
+			$init_expr = $init_expr->get('expr');
 		}
-		$expr->match({
-			AST_ConstantExpr => sub($const, $const_type) { get_static_init($const, $type) },
-			AST_String => sub($val, $str_type) {
-				my @res = (get_static_init($val, $type));
-				if (my $extra = $ast_init->get('type')->get('size') - length($val)) {	# TODO ok?
-					push @res, SI_ZeroInit($extra);
+		$init_expr->match({
+			AST_ConstantExpr => sub($const, $const_type) { get_static_init($const, $init_type) },
+			AST_String => sub($str, $str_type) {
+				if ($init_type->is('T_Array')) {
+					get_static_init($str, $init_type);
+				} elsif ($init_type->is('T_Pointer')) {
+					my $name = "string" . $main::global_counter++;
+					$symbol_table{$name} = {
+						type => T_Array(T_Char, length($str) + 1),
+						attrs => ATT_ConstantAttrs(SI_StringInit($str, 1), 1)
+					};
+					get_static_init($str, $init_type, $name);
+				} else {
+					die "wtf";
 				}
-				@res;
 			},
 			default => sub { die "initializer is not a constant: $_" }
 		});
