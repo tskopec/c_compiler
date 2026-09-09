@@ -490,9 +490,7 @@ sub check_type {
 				} else {
 					die "bad operands for subscript: \n\t$e1\n\t$e2";}
 			},
-			AST_String => sub($val) {
-				$node->set('type', T_Array(T_Char, length($val) + 1));
-			},
+			AST_String => sub($val, $type) { ; },
 			default => sub {
 				check_type($_, $node) for $node->values_in_order();
 			}
@@ -545,7 +543,7 @@ sub get_initial_value {
 					my $name = "string" . $main::global_counter++;
 					$symbol_table{$name} = {
 						type => T_Array(T_Char, length($str) + 1),
-						attrs => ATT_ConstantAttrs(SI_StringInit($str, 1), 1)
+						attrs => ATT_ConstantAttrs(SI_StringInit($str, 1))
 					};
 					get_static_init($str, $init_type, $name);
 				} else {
