@@ -46,7 +46,11 @@ sub emit_TAC {
 			if (defined $init && !is_ADT($storage, 'STOR_Static')) {
 				$init->match({
 					AST_SingleInit => sub($expr, $init_type) {
-						emit_TAC_and_convert(AST_Assignment(AST_Var($name, $type), $expr, $type), $instructions);
+						if ($expr->is('AST_String')) {
+							# TODO chars_to_ints atd.
+						} else {
+							emit_TAC_and_convert(AST_Assignment(AST_Var($name, $type), $expr, $type), $instructions);
+						}
 					},
 					AST_CompoundInit => sub($inits, $init_type) {
 						my $n = 0;
@@ -145,14 +149,14 @@ sub emit_TAC {
 			my $cast_instr;
 			if ($type->is('T_Double')) {
 				$cast_instr = $expr_type->match({
-					'T_Int, T_Long' => TAC_IntToDouble($res, $dst),
-					'T_UInt, T_ULong' => TAC_UIntToDouble($res, $dst),
+					'T_Int, T_Long, T_Char, T_SChar' => TAC_IntToDouble($res, $dst),
+					'T_UInt, T_ULong, T_UChar' => TAC_UIntToDouble($res, $dst),
 					default => sub { die "bad type" }
 				});
 			} elsif ($expr_type->is('T_Double')) {
 				$cast_instr = $type->match({
-					'T_Int, T_Long' => TAC_DoubleToInt($res, $dst),
-					'T_UInt, T_ULong' => TAC_DoubleToUInt($res, $dst),
+					'T_Int, T_Long, T_Char, T_SChar' => TAC_DoubleToInt($res, $dst),
+					'T_UInt, T_ULong, T_UChar' => TAC_DoubleToUInt($res, $dst),
 					default => sub { die "bad type" }
 				});
 			} else {
@@ -298,6 +302,9 @@ sub emit_TAC {
 											emit_TAC_and_convert($index_exp, $instructions),
 											size_of($type), $dst));
 			return DereferencedPointer($dst);
+		},
+		AST_String => sub($val, $type) {
+			# TODO
 		},
 		default => sub {
 			die "unknown AST node: $node";

@@ -61,4 +61,28 @@ sub align_to {
 	return $alignment * int(($val + $alignment - 1) / $alignment);
 }
 
+# TODO nejak lip
+sub chars_to_ints {
+	my ($string, $width) = @_;
+	my @chars = split //, $string;
+	my @result;
+
+	for (my $i = 0; $i < @chars; $i += $width) {
+		if (@chars - $i > $width) {
+			my $n = 0;
+			for (my $j = 0; $j < $width; $j++) {
+				$n |= (ord($chars[$i + $j]) << (8 * $j));
+			}
+			push @result, $n;
+		} else {
+			for (my $j = $i; $j < @chars; $j++) {
+				push @result, ord($chars[$j]);
+			}
+		}
+	}
+	return @result;
+}
+
+
+
 1;

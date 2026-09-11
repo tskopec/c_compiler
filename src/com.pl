@@ -152,9 +152,7 @@ unlink($_) for (@asm_files);
 $error_code = 0;
 
 END {
-	# for my $h (@ADT::ADT::match_history) {
-	# 	# say $h;
-	# }
+	# say join "\n", reverse @ADT::ADT::match_history;
 	$? = $error_code;
 }
 
