@@ -6,7 +6,7 @@ use feature qw(say state signatures);
 use ADT::ParseASDL;
 use ADT::AlgebraicTypes qw(:AST :TAC :T :C :ATT :SI is_ADT convert_ADT);
 use Semantics;
-use Utils qw(labels);
+use Utils qw(labels string_to_ints);
 use TypeUtils qw(get_int_type_rank is_signed is_integer size_of get_static_init flatten_init create_const);
 
 BEGIN { # Local data types
@@ -46,11 +46,18 @@ sub emit_TAC {
 			if (defined $init && !is_ADT($storage, 'STOR_Static')) {
 				$init->match({
 					AST_SingleInit => sub($expr, $init_type) {
-						if ($expr->is('AST_String')) {
-							# TODO chars_to_ints atd.
-						} else {
-							emit_TAC_and_convert(AST_Assignment(AST_Var($name, $type), $expr, $type), $instructions);
-						}
+						$expr->match({
+							AST_String => sub($str, $str_type) {
+								state $int_width = 4;
+								my @offsets = (($int_width) x (length($str) / $int_width), (1) x (length($str) % $int_width));
+								for my $n (string_to_ints($str)) {
+									push @$instructions, TAC_CopyToOffset(TAC_Constant(C_ConstChar($n)), $name, shift @offsets);
+								}
+							},
+							default => sub {
+								emit_TAC_and_convert(AST_Assignment(AST_Var($name, $type), $expr, $type), $instructions);
+							}
+						});
 					},
 					AST_CompoundInit => sub($inits, $init_type) {
 						my $n = 0;

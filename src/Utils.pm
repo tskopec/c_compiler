@@ -5,7 +5,7 @@ use feature qw(state isa say current_sub);
 
 require Exporter;
 our @ISA = qw(Exporter);
-our @EXPORT = qw(print_tree labels align_to);
+our @EXPORT = qw(print_tree labels align_to string_to_ints);
 
 use ADT::ADT;
 
@@ -61,23 +61,17 @@ sub align_to {
 	return $alignment * int(($val + $alignment - 1) / $alignment);
 }
 
-# TODO nejak lip
-sub chars_to_ints {
-	my ($string, $width) = @_;
-	my @chars = split //, $string;
+#  string="abcdefg", width=4 -> 1684234849,101,102,103 (little-endian)
+sub string_to_ints {
+	my ($string, $width) = (shift, shift || 4);
 	my @result;
-
-	for (my $i = 0; $i < @chars; $i += $width) {
-		if (@chars - $i > $width) {
-			my $n = 0;
-			for (my $j = 0; $j < $width; $j++) {
-				$n |= (ord($chars[$i + $j]) << (8 * $j));
-			}
-			push @result, $n;
+	while ($string =~ s/^(.{1,$width})//) {
+		my @chars = split //, $1;
+		if (@chars == $width) {
+			push @result, ord($chars[0]);
+			$result[-1] |= ord($chars[$_]) << (8 * $_) for (1..$#chars);
 		} else {
-			for (my $j = $i; $j < @chars; $j++) {
-				push @result, ord($chars[$j]);
-			}
+			push(@result, ord($_)) for @chars;
 		}
 	}
 	return @result;
