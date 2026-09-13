@@ -48,10 +48,19 @@ sub emit_TAC {
 					AST_SingleInit => sub($expr, $init_type) {
 						$expr->match({
 							AST_String => sub($str, $str_type) {
-								state $int_width = 4;
-								my @offsets = (($int_width) x (length($str) / $int_width), (1) x (length($str) % $int_width));
-								for my $n (string_to_ints($str)) {
-									push @$instructions, TAC_CopyToOffset(TAC_Constant(C_ConstChar($n)), $name, shift @offsets);
+								if ($init_type->is('T_Array')) {
+									state $int_width = 4;
+									my $offset = 0;
+									for my $n (string_to_ints($str, $int_width)) {
+										push @$instructions, TAC_CopyToOffset(TAC_Constant(C_ConstChar($n)), $name, $offset);
+										$offset += (length($str) - $offset < $int_width) ? 1 : $int_width;
+									}
+									for (1..($init_type->get('size') - length($str))) {
+										push @$instructions, TAC_CopyToOffset(TAC_Constant(C_ConstChar(0)), $name, $offset++);
+									}
+								} else {
+									# TODO tak?
+									emit_TAC_and_convert(AST_Assignment(AST_Var($name, $type), $expr, $type), $instructions);
 								}
 							},
 							default => sub {
@@ -311,7 +320,12 @@ sub emit_TAC {
 			return DereferencedPointer($dst);
 		},
 		AST_String => sub($val, $type) {
-			# TODO
+			my $name = "string." . $main::global_counter++;
+			$Semantics::symbol_table{$name} = {
+				type => $type,
+				attrs => ATT_ConstantAttrs(SI_StringInit($val, 1))
+			};
+			return PlainOperand(TAC_Variable($name));
 		},
 		default => sub {
 			die "unknown AST node: $node";
@@ -353,23 +367,28 @@ sub temp_name {
 sub convert_symbols_to_TAC {
 	my @tac_vars;
 	while (my ($name, $entry) = each %Semantics::symbol_table) {
-		if ($entry->{attrs}->is('ATT_StaticAttrs')) {
-			my $type = $entry->{type};
-			my ($stat_init, $global) = ($entry->{attrs})->values_in_order('ATT_StaticAttrs');
-			$stat_init->match({
-				INI_Initial => sub($inits) {
-					push(@tac_vars, TAC_StaticVariable($name, $global, $type, $inits));
-				},
-				INI_Tentative => sub() {
-					if ($type->is('T_Array')) {
-						push(@tac_vars, TAC_StaticVariable($name, $global, $type, [ SI_ZeroInit(size_of($type)) ]));
-					} else {
-						push(@tac_vars, TAC_StaticVariable($name, $global, $type, [ get_static_init(0, $type) ]));
-					}
-				},
-				INI_NoInitializer => sub() { ; }
-			});
-		}
+		my $type = $entry->{type};
+		$entry->{attrs}->match({
+			ATT_StaticAttrs => sub($init_val, $global) {
+				$init_val->match({
+					INI_Initial => sub($inits) {
+						push(@tac_vars, TAC_StaticVariable($name, $global, $type, $inits));
+					},
+					INI_Tentative => sub() {
+						if ($type->is('T_Array')) {
+							push(@tac_vars, TAC_StaticVariable($name, $global, $type, [ SI_ZeroInit(size_of($type)) ]));
+						} else {
+							push(@tac_vars, TAC_StaticVariable($name, $global, $type, [ get_static_init(0, $type) ]));
+						}
+					},
+					INI_NoInitializer => sub() { ; }
+				});
+			},
+			ATT_ConstantAttrs => sub($static_init) {
+				push(@tac_vars, TAC_StaticConstant($name, $type, $static_init));
+			},
+			default => sub { ; }
+		});
 	}
 	return @tac_vars;
 }

@@ -64,6 +64,7 @@ TAC_Program =
 TAC_TopLevelDeclaration =
 	TAC_StaticVariable(string identifier, bool global, T_Type type, SI_StaticInit* static_inits)
 	| TAC_Function(string identifier, bool global, string* params, TAC_Instruction* instructions)
+	| TAC_StaticConstant(string identifier, T_Type type, SI_StaticInit init)
 TAC_Instruction =
 	TAC_Return(TAC_Value value)
 	| TAC_SignExtend(TAC_Value src, TAC_Value dst)

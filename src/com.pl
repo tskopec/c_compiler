@@ -82,10 +82,6 @@ for my $src_file (@src_files) {
 		say "> Validator";
 		print_tree($ast);
 	}
-	if ($debug{S}) {
-		say "> Symbol table";
-		say(Dumper(\%Semantics::symbol_table));
-	}
 	if ($target_phase eq 'validate') {
 		$error_code = 0; exit;
 	}
@@ -107,10 +103,6 @@ for my $src_file (@src_files) {
 	if ($debug{c}) {
 		say "> ASM tree";
 		print_tree($asm);
-	}
-	if ($debug{S}) {
-		say "> ASM Symbol table";
-		say(Dumper(\%CodeGen::asm_symbol_table));
 	}
 	if ($target_phase eq 'codegen') {
 		$error_code = 0; exit;
@@ -152,6 +144,12 @@ unlink($_) for (@asm_files);
 $error_code = 0;
 
 END {
+	if ($debug{S}) {
+		say "> Symbol table";
+		say(Dumper(\%Semantics::symbol_table));
+		say "> ASM Symbol table";
+		say(Dumper(\%CodeGen::asm_symbol_table));
+	}
 	# say join "\n", reverse @ADT::ADT::match_history;
 	$? = $error_code;
 }

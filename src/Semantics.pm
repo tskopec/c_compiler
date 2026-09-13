@@ -540,7 +540,7 @@ sub get_initial_value {
 				if ($init_type->is('T_Array')) {
 					get_static_init($str, $init_type);
 				} elsif ($init_type->is('T_Pointer')) {
-					my $name = "string" . $main::global_counter++;
+					my $name = "string." . $main::global_counter++;
 					$symbol_table{$name} = {
 						type => T_Array(T_Char, length($str) + 1),
 						attrs => ATT_ConstantAttrs(SI_StringInit($str, 1))
