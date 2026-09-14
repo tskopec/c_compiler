@@ -48,7 +48,7 @@ sub get_int_type_rank {
 	my $type = shift;
 	return $type->match({
 		"T_Long, T_ULong, T_Pointer" => 2,
-		"T_Int, T_UInt" => 1,
+		"T_Int, T_UInt, T_Char, T_SChar, T_UChar" => 1,
 		default => sub {
 			die "no rank for type $type"
 		}
@@ -82,6 +82,7 @@ sub is_one_of {
 sub size_of {
 	my $type = shift;
 	return $type->match({
+		'T_Char, T_SChar, T_UChar' => 1,
 		'T_Int, T_UInt, ASM_Longword' => 4,
 		'T_Long, T_ULong, T_Double, T_Pointer, ASM_Quadword, ASM_Double' => 8,
 		'T_Array' => sub($elem_type, $size) {
