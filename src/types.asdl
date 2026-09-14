@@ -99,7 +99,11 @@ TAC_BinaryOperator =
 ASM_Program =
 	ASM_Program(ASM_TopLevelDeclaration* declarations)
 ASM_OperandSize =
-	ASM_Longword | ASM_Quadword | ASM_Double | ASM_ByteArray(int size, int alignment)
+	ASM_Byte
+	| ASM_Longword
+	| ASM_Quadword
+	| ASM_Double
+	| ASM_ByteArray(int size, int alignment)
 ASM_TopLevelDeclaration =
 	ASM_StaticVariable(string name, bool global, int alignment, SI_StaticInit* static_inits)
 	| ASM_StaticConstant(string name, int alignment, SI_StaticInit static_init)
@@ -107,8 +111,8 @@ ASM_TopLevelDeclaration =
 ASM_Instruction =
     ASM_Comment(string text)
 	| ASM_Mov(ASM_OperandSize opsize, ASM_Operand src, ASM_Operand dst)
-	| ASM_Movsx(ASM_Operand src, ASM_Operand dst)
-	| ASM_MovZeroExtend(ASM_Operand src, ASM_Operand dst)
+	| ASM_Movsx(ASM_OperandSize src_size, ASM_OperandSize dst_size, ASM_Operand src, ASM_Operand dst)
+	| ASM_MovZeroExtend(ASM_OperandSize src_size, ASM_OperandSize dst_size, ASM_Operand src, ASM_Operand dst)
 	| ASM_Unary(ASM_UnaryOperator op, ASM_OperandSize opsize, ASM_Operand operand)
 	| ASM_Binary(ASM_BinaryOperator op, ASM_OperandSize opsize, ASM_Operand operand1, ASM_Operand operand2)
 	| ASM_Cmp(ASM_OperandSize opsize, ASM_Operand operand1, ASM_Operand operand2)

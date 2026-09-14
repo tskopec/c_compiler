@@ -83,6 +83,9 @@ sub translate_to_ASM {
 		TAC_StaticVariable => sub($name, $global, $type, $inits) {
 			return ASM_StaticVariable($name, $global, calculate_alignment($type), $inits);
 		},
+		TAC_StaticConstant => sub($ident, $type, $init) {
+			return ASM_StaticConstant($ident, calculate_alignment($type), $init);
+		},
 		TAC_Return => sub($value) {
 			return (ASM_Mov(asm_type_of($value),
 				translate_to_ASM($value),
@@ -210,13 +213,13 @@ sub translate_to_ASM {
 				: ASM_Pseudo($ident);
 		},
 		TAC_SignExtend => sub($src, $dst) {
-			return ASM_Movsx(translate_to_ASM($src), translate_to_ASM($dst));
+			return ASM_Movsx(asm_type_of($src), asm_type_of($dst), translate_to_ASM($src), translate_to_ASM($dst));
 		},
 		TAC_Truncate => sub($src, $dst) {
 			return ASM_Mov(ASM_Longword(), translate_to_ASM($src), translate_to_ASM($dst));
 		},
 		TAC_ZeroExtend => sub($src, $dst) {
-			return ASM_MovZeroExtend(translate_to_ASM($src), translate_to_ASM($dst));
+			return ASM_MovZeroExtend(asm_type_of($src), asm_type_of($dst), translate_to_ASM($src), translate_to_ASM($dst));
 		},
 		TAC_DoubleToInt => sub($src, $dst) {
 			return ASM_Cvttsd2si(asm_type_of($dst), translate_to_ASM($src), translate_to_ASM($dst));
@@ -260,7 +263,7 @@ sub translate_to_ASM {
 			if (get_type_of_TAC($src)->is('T_UInt')) {
 		# uint
 				return (
-					ASM_MovZeroExtend($asm_src, $ax),
+					ASM_MovZeroExtend(asm_type_of($src), ASM_Quadword, $asm_src, $ax),
 					ASM_Cvtsi2sd(ASM_Quadword, $ax, $asm_dst)
 				);
 			} else {
@@ -374,9 +377,10 @@ sub asm_type_of {
 	my $val = shift;
 	my $type = $val->is('T_Type') ? $val : get_type_of_TAC($val);
 	return $type->match({
-		"T_Int, T_UInt" => ASM_Longword(),
-		"T_Long, T_ULong, T_Pointer" => ASM_Quadword(),
-		T_Double => ASM_Double(),
+		"T_Char, T_SChar, T_UChar" => ASM_Byte,
+		"T_Int, T_UInt" => ASM_Longword,
+		"T_Long, T_ULong, T_Pointer" => ASM_Quadword,
+		T_Double => ASM_Double,
 		T_Array => sub($elem_type, $size) {
 			ASM_ByteArray(size_of($type), calculate_alignment($type));
 		},
@@ -541,7 +545,8 @@ sub fix_instr {
 					$instructions = prependMovToScratch($instructions, "operand", $op_size);
 				}
 			},
-			ASM_Movsx => sub($src, $dst) {
+			ASM_Movsx => sub($src_type, $dst_type, $src, $dst) {
+				# TODO typy
 				if ($src->is('ASM_Imm')) {
 					$instructions = prependMovToScratch($instructions, "src", ASM_Longword);
 				}
@@ -549,7 +554,8 @@ sub fix_instr {
 					$instructions = appendMovFromScratch($instructions, "dst", ASM_Quadword);
 				}
 			},
-			ASM_MovZeroExtend => sub($src, $dst) {
+			ASM_MovZeroExtend => sub($src_type, $dst_type, $src, $dst) {
+				# TODO typy
 				if ($dst->is('ASM_Reg')) {
 					$instructions = [ ASM_Mov(ASM_Longword(), $src, $dst) ];
 				} else {
