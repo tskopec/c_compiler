@@ -182,10 +182,8 @@ sub emit_TAC {
 					$cast_instr = TAC_Copy($res, $dst);
 				} elsif ($cast_type_rank < $expr_type_rank) {
 					$cast_instr = TAC_Truncate($res, $dst);
-				} elsif (is_signed($expr_type)) {
-					$cast_instr = TAC_SignExtend($res, $dst);
 				} else {
-					$cast_instr = TAC_ZeroExtend($res, $dst);
+					$cast_instr = is_signed($expr_type) ? TAC_SignExtend($res, $dst) : TAC_ZeroExtend($res, $dst)
 				}
 			}
 			push(@$instructions, $cast_instr);

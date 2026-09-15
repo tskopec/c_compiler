@@ -216,75 +216,104 @@ sub translate_to_ASM {
 			return ASM_Movsx(asm_type_of($src), asm_type_of($dst), translate_to_ASM($src), translate_to_ASM($dst));
 		},
 		TAC_Truncate => sub($src, $dst) {
-			return ASM_Mov(ASM_Longword(), translate_to_ASM($src), translate_to_ASM($dst));
+			return ASM_Mov(asm_type_of($dst), translate_to_ASM($src), translate_to_ASM($dst));
 		},
 		TAC_ZeroExtend => sub($src, $dst) {
 			return ASM_MovZeroExtend(asm_type_of($src), asm_type_of($dst), translate_to_ASM($src), translate_to_ASM($dst));
 		},
 		TAC_DoubleToInt => sub($src, $dst) {
-			return ASM_Cvttsd2si(asm_type_of($dst), translate_to_ASM($src), translate_to_ASM($dst));
+			if (get_type_of_TAC($dst)->is('T_Char', 'T_SChar')) {
+				return (
+					ASM_Cvttsd2si(ASM_Longword, translate_to_ASM($src), ASM_Reg(ASM_AX)),
+					ASM_Mov(ASM_Byte, ASM_Reg(ASM_AX), translate_to_ASM($dst))
+				);
+			} else {
+				return ASM_Cvttsd2si(asm_type_of($dst), translate_to_ASM($src), translate_to_ASM($dst));
+			}
 		},
 		TAC_DoubleToUInt => sub($src, $dst) {
 			my ($asm_src, $asm_dst) = (translate_to_ASM($src), translate_to_ASM($dst));
-			if (get_type_of_TAC($dst)->is('T_UInt')) {
-		# uint
-				my $ax = ASM_Reg(ASM_AX);
-				return (
-					ASM_Cvttsd2si(ASM_Quadword, $asm_src, $ax),
-					ASM_Mov(ASM_Longword, $ax, $asm_dst)
-				);
-			} else {
-		# ulong
-				my $upper_bound = get_static_constant(C_ConstDouble(MAX_LONG + 1), 8);
-				my ($out_of_range_label, $end_label) = Utils::labels("oo_range", "end");
-				my $xmm0 = ASM_Reg(ASM_XMM1);
-				my $dx = ASM_Reg(ASM_DX);
-				return (
-					ASM_Cmp(ASM_Double, ASM_Data($upper_bound->get('name')), $asm_src),
-					ASM_JmpCC(ASM_AE, $out_of_range_label),
-					ASM_Cvttsd2si(ASM_Quadword, $asm_src, $asm_dst),
-					ASM_Jmp($end_label),
-					ASM_Label($out_of_range_label),
-					ASM_Mov(ASM_Double, $asm_src, $xmm0),
-					ASM_Binary(ASM_Sub, ASM_Double, ASM_Data($upper_bound->get('name')), $xmm0),
-					ASM_Cvttsd2si(ASM_Quadword, $xmm0, $asm_dst),
-					ASM_Mov(ASM_Quadword, ASM_Imm(sprintf("%u", MAX_LONG + 1)), $dx),
-					ASM_Binary(ASM_Add, ASM_Quadword, $dx, $asm_dst),
-					ASM_Label($end_label)
-				);
-			}
+			my $ax = ASM_Reg(ASM_AX);
+			get_type_of_TAC($dst)->match({
+				T_UInt => sub {
+					return (
+						ASM_Cvttsd2si(ASM_Quadword, $asm_src, $ax),
+						ASM_Mov(ASM_Longword, $ax, $asm_dst)
+					);
+				},
+				T_ULong => sub {
+					my $upper_bound = get_static_constant(C_ConstDouble(MAX_LONG +1), 8);
+					my ($out_of_range_label, $end_label) = Utils::labels("oo_range", "end");
+					my $xmm0 = ASM_Reg(ASM_XMM1);
+					my $dx = ASM_Reg(ASM_DX);
+					return (
+						ASM_Cmp(ASM_Double, ASM_Data($upper_bound->get('name')), $asm_src),
+						ASM_JmpCC(ASM_AE, $out_of_range_label),
+						ASM_Cvttsd2si(ASM_Quadword, $asm_src, $asm_dst),
+						ASM_Jmp($end_label),
+						ASM_Label($out_of_range_label),
+						ASM_Mov(ASM_Double, $asm_src, $xmm0),
+						ASM_Binary(ASM_Sub, ASM_Double, ASM_Data($upper_bound->get('name')), $xmm0),
+						ASM_Cvttsd2si(ASM_Quadword, $xmm0, $asm_dst),
+						ASM_Mov(ASM_Quadword, ASM_Imm(sprintf("%u", MAX_LONG +1)), $dx),
+						ASM_Binary(ASM_Add, ASM_Quadword, $dx, $asm_dst),
+						ASM_Label($end_label)
+					);
+				},
+				T_UChar => sub {
+					return (
+						ASM_Cvttsd2si(ASM_Longword, translate_to_ASM($src), $ax),
+						ASM_Mov(ASM_Byte, $ax, translate_to_ASM($dst))
+					);
+				}
+			});
 		},
 		TAC_IntToDouble => sub($src, $dst) {
-			return ASM_Cvtsi2sd(asm_type_of($src), translate_to_ASM($src), translate_to_ASM($dst));
+			if (get_type_of_TAC($src)->is('T_Char', 'T_SChar')) {
+				return (
+					ASM_Movsx(ASM_Byte, ASM_Longword, translate_to_ASM($src), ASM_Reg(ASM_AX)),
+					ASM_Cvtsi2sd(ASM_Longword, ASM_Reg(ASM_AX), translate_to_ASM($dst))
+				);
+			} else {
+				return ASM_Cvtsi2sd(asm_type_of($src), translate_to_ASM($src), translate_to_ASM($dst));
+			}
 		},
 		TAC_UIntToDouble => sub($src, $dst) {
 			my ($ax, $dx) = (ASM_Reg(ASM_AX), ASM_Reg(ASM_DX));
 			my ($asm_src, $asm_dst) = (translate_to_ASM($src), translate_to_ASM($dst));
-			if (get_type_of_TAC($src)->is('T_UInt')) {
-		# uint
-				return (
-					ASM_MovZeroExtend(asm_type_of($src), ASM_Quadword, $asm_src, $ax),
-					ASM_Cvtsi2sd(ASM_Quadword, $ax, $asm_dst)
-				);
-			} else {
-		# ulong
-				my ($out_of_range_label, $end_label) = Utils::labels("oo_range", "end");
-				return (
-					ASM_Cmp(ASM_Quadword, ASM_Imm(0), $asm_src),
-					ASM_JmpCC(ASM_L, $out_of_range_label), # is in range of signed?
-					ASM_Cvtsi2sd(ASM_Quadword, $asm_src, $asm_dst),
-					ASM_Jmp($end_label),
-					ASM_Label($out_of_range_label), # div by 2, round to odd, conv to double, mult by 2
-					ASM_Mov(ASM_Quadword, $asm_src, $ax),
-					ASM_Mov(ASM_Quadword, $ax, $dx),
-					ASM_Unary(ASM_Shr, ASM_Quadword, $dx),
-					ASM_Binary(ASM_And, ASM_Quadword, ASM_Imm(1), $ax),
-					ASM_Binary(ASM_Or, ASM_Quadword, $ax, $dx),
-					ASM_Cvtsi2sd(ASM_Quadword, $dx, $asm_dst),
-					ASM_Binary(ASM_Add, ASM_Double, $asm_dst, $asm_dst),
-					ASM_Label($end_label)
-				);
-			}
+			get_type_of_TAC($src)->match({
+				T_UInt => sub {
+					return (
+						ASM_MovZeroExtend(ASM_Longword, ASM_Quadword, $asm_src, $ax),
+						ASM_Cvtsi2sd(ASM_Quadword, $ax, $asm_dst)
+					);
+				},
+				T_ULong => sub {
+					my ($out_of_range_label, $end_label) = Utils::labels("oo_range", "end");
+					return (
+						ASM_Cmp(ASM_Quadword, ASM_Imm(0), $asm_src),
+						ASM_JmpCC(ASM_L, $out_of_range_label), # is in range of signed?
+						ASM_Cvtsi2sd(ASM_Quadword, $asm_src, $asm_dst),
+						ASM_Jmp($end_label),
+						ASM_Label($out_of_range_label), # div by 2, round to odd, conv to double, mult by 2
+						ASM_Mov(ASM_Quadword, $asm_src, $ax),
+						ASM_Mov(ASM_Quadword, $ax, $dx),
+						ASM_Unary(ASM_Shr, ASM_Quadword, $dx),
+						ASM_Binary(ASM_And, ASM_Quadword, ASM_Imm(1), $ax),
+						ASM_Binary(ASM_Or, ASM_Quadword, $ax, $dx),
+						ASM_Cvtsi2sd(ASM_Quadword, $dx, $asm_dst),
+						ASM_Binary(ASM_Add, ASM_Double, $asm_dst, $asm_dst),
+						ASM_Label($end_label)
+					);
+				},
+				T_UChar => sub {
+					return (
+						ASM_MovZeroExtend(ASM_Byte, ASM_Longword, translate_to_ASM($src), $ax),
+						ASM_Cvtsi2sd(ASM_Longword, $ax, translate_to_ASM($dst))
+					);
+				},
+				default => sub { die "wtf" }
+			});
 		},
 		TAC_Load => sub($ptr, $dst) {
 			return (
@@ -519,7 +548,10 @@ sub fix_instr {
 				if (is_mem_addr($src) && is_mem_addr($dst)) {
 					$instructions = prependMovToScratch($instructions, "src", $op_size);
 				} elsif ($src->is('ASM_Imm')) {
-					if ($op_size->is('ASM_Longword')) {
+					# TODO je potreba tyhle "&" oriznuti dat zvlast do dalsiho passu, aby se dotkly i doplnenych MOVu ?
+					if ($op_size->is('ASM_Byte')) {
+						$src->set('val', $src->get('val') & 0xff);
+					} elsif ($op_size->is('ASM_Longword')) {
 						$src->set('val', $src->get('val') & 0xffffffff);
 					} elsif ($op_size->is('ASM_Quadword') && $src->get('val') > MAX_INT) {
 						$instructions = prependMovToScratch($instructions, "src", $op_size);
@@ -546,7 +578,6 @@ sub fix_instr {
 				}
 			},
 			ASM_Movsx => sub($src_type, $dst_type, $src, $dst) {
-				# TODO typy
 				if ($src->is('ASM_Imm')) {
 					$instructions = prependMovToScratch($instructions, "src", ASM_Longword);
 				}
@@ -555,11 +586,19 @@ sub fix_instr {
 				}
 			},
 			ASM_MovZeroExtend => sub($src_type, $dst_type, $src, $dst) {
-				# TODO typy
-				if ($dst->is('ASM_Reg')) {
-					$instructions = [ ASM_Mov(ASM_Longword(), $src, $dst) ];
+				if ($src_type->is('T_Byte')) {
+					if ($src->is('ASM_Imm')) {
+						$instructions = prependMovToScratch($instructions, "src", $src_type);
+					}
+					if ($dst->is('ASM_Reg')) {
+						$instructions = appendMovFromScratch($instructions, "dst", $dst_type);
+					}
 				} else {
-					$instructions = prependMovToScratch([ ASM_Mov(ASM_Quadword(), $src, $dst) ], "src", ASM_Longword);
+					if ($dst->is('ASM_Reg')) {
+						$instructions = [ ASM_Mov(ASM_Longword(), $src, $dst) ];
+					} else {
+						$instructions = prependMovToScratch([ ASM_Mov(ASM_Quadword(), $src, $dst) ], "src", ASM_Longword);
+					}
 				}
 			},
 			ASM_Push => sub($operand) {
