@@ -117,7 +117,9 @@ sub match {
 	}
 	if (!exists $split_cond_cases{default}) {
 		my @missing = grep { !exists $split_cond_cases{$_} } $variants_info{$self->{':base_type'}}->@*;
-		die("missing cases for type " . $self->{':base_type'} . ": @missing") if (@missing);
+		if (@missing) {
+			die("missing cases for type " . $self->{':base_type'} . ": @missing")
+		}
 	}
 	unshift @match_history, "in " . (caller(1))[3] . " match on $self" if $DBG;
 	my $case = $split_cond_cases{$self->{':tag'}} // $split_cond_cases{default};

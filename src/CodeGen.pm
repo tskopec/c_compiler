@@ -265,7 +265,8 @@ sub translate_to_ASM {
 						ASM_Cvttsd2si(ASM_Longword, translate_to_ASM($src), $ax),
 						ASM_Mov(ASM_Byte, $ax, translate_to_ASM($dst))
 					);
-				}
+				},
+				default => sub { die "wtf" }
 			});
 		},
 		TAC_IntToDouble => sub($src, $dst) {

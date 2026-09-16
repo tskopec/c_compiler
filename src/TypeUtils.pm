@@ -89,6 +89,7 @@ sub size_of {
 			return size_of($elem_type) * $size;
 		},
 		ASM_ByteArray => sub($size, $alignment) { return $size },
+		ASM_Byte => 1,
 		default => sub { die "bad type $type" }
 	});
 }
@@ -97,7 +98,7 @@ sub get_base_type {
 	my $type = shift;
 	return $type->match({
 		T_Array => sub($elem_type, $size) { return get_base_type($elem_type) },
-		"T_Int, T_UInt, T_Long, T_ULong, T_Double, T_Pointer" => $type,
+		"T_Int, T_UInt, T_Long, T_ULong, T_Double, T_Pointer, T_Char, T_SChar, T_UChar" => $type,
 		default => sub { die "wtf type $type" }
 	});
 }
@@ -228,6 +229,8 @@ sub get_type_of_TAC {
 				C_ConstLong => T_Long,
 				C_ConstULong => T_ULong,
 				C_ConstDouble => T_Double,
+				C_ConstChar => T_Char,
+				C_ConstUChar => T_UChar,
 				default => sub { die "unknown constant type $const" }
 			});
 		},
