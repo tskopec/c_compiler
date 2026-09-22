@@ -48,7 +48,7 @@ sub emit_code {
 			$code .= "\t.align $alignment\n";
 			$code .= "$name:\n";
 			for my $init (@$inits) {
-				my ($init_bytes, $init_word) = translate_type($init);
+				my ($init_bytes, $init_word) = translate_init($init);
 				if ($section eq ".bss") {
 					$code .= "\t.zero $init_bytes\n";
 				} elsif ($init_word eq 'double') {
@@ -60,7 +60,7 @@ sub emit_code {
 			return $code;
 		},
 		ASM_StaticConstant => sub($name, $alignment, $init) {
-			my ($init_bytes, $init_word) = translate_type($init);
+			my ($init_bytes, $init_word) = translate_init($init);
 			my $code = set_section("", ".rodata");
 			$code .= "\t.align $alignment\n";
 			$code .= "$name:\n";
@@ -164,7 +164,7 @@ sub emit_code {
 			return "\tcall $label" . (Semantics::get_symbol_attr($label, 'defined') ? "" : '@PLT') . "\n";
 		},
 		ASM_Lea => sub($src, $dst) {
-			return "\tleaq ". emit_code($src, 8) . ", " . emit_code($dst, 8) . "\n";
+			return "\tleaq " . emit_code($src, 8) . ", " . emit_code($dst, 8) . "\n";
 		},
 		ASM_Reg => sub($reg) {
 			state $register_names = {
@@ -199,16 +199,37 @@ sub emit_code {
 sub translate_type {
 	my $type = shift;
 	return $type->match({
-		'ASM_Longword' => sub { return (4, 'l') },
-		'ASM_Quadword' => sub { return (8, 'q') },
-		'ASM_Double' => sub { return (8, 'sd') },
-		'T_Int, SI_IntInit, SI_UIntInit' => sub { return (4, 'long') },
-		'T_Long, SI_LongInit, SI_ULongInit' => sub { return (8, 'quad') },
-		'T_Double, SI_DoubleInit' => sub { return (8, 'double') },
-		'SI_ZeroInit' => sub($bytes) { return ($bytes, undef) },
-		'default' => sub {
+		ASM_Byte => qw(1 b),
+		ASM_Longword => qw(4 l),
+		ASM_Quadword => qw(8 q),
+		ASM_Double => qw(8 sd),
+		default => sub {
 			die "unknown type $type"
 		}
+	});
+}
+
+sub translate_init {
+	my $init = shift;
+	return $init->match({
+		'SI_IntInit, SI_UIntInit' => qw(4 long),
+		'SI_LongInit, SI_ULongInit' => qw(8 quad),
+		'SI_DoubleInit' => qw(8 double),
+		'SI_CharInit, SI_UCharInit' => sub($val) {
+			return $val == 0
+				? (1, 'zero')
+				: ($val, 'byte')
+		},
+		SI_StringInit => sub($val, $null_terminated) {
+			return (undef, $null_terminated ? 'asciz' : 'ascii')
+		},
+		SI_PointerInit => sub($label) {
+			return (undef, 'quad')
+		},
+		SI_ZeroInit => sub($bytes) {
+			return ($bytes, undef)
+		},
+		default => sub { die "wtf" }
 	});
 }
 
@@ -224,9 +245,9 @@ sub raw_double_bytes_to_int {
 sub is_zero_init_or_int_zero {
 	my $i = shift;
 	return $i->is('SI_ZeroInit')
-		|| ($i->is('SI_IntInit', 'SI_UIntInit', 'SI_LongInit', 'SI_ULongInit') && $i->get('val') == 0);
+		|| ($i->is('SI_IntInit', 'SI_UIntInit', 'SI_LongInit', 'SI_ULongInit', 'SI_CharInit', 'SI_UCharInit')
+		&& $i->get('val') == 0);
 }
-
 
 1;
 
