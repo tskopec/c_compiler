@@ -577,6 +577,7 @@ sub check_type_and_decay {
 }
 
 sub get_symbol_attr {
+	# TODO refaktor
 	my ($symbol, $attr_name) = @_;
 	return $symbol_table{$symbol}->{type} if ($attr_name eq 'type');
 	($symbol_table{$symbol}->{attrs})->match({

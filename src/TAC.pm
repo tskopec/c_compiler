@@ -373,11 +373,8 @@ sub convert_symbols_to_TAC {
 						push(@tac_vars, TAC_StaticVariable($name, $global, $type, $inits));
 					},
 					INI_Tentative => sub() {
-						if ($type->is('T_Array')) {
-							push(@tac_vars, TAC_StaticVariable($name, $global, $type, [ SI_ZeroInit(size_of($type)) ]));
-						} else {
-							push(@tac_vars, TAC_StaticVariable($name, $global, $type, [ get_static_init(0, $type) ]));
-						}
+						push(@tac_vars, TAC_StaticVariable($name, $global, $type,
+							[ $type->is('T_Array') ? SI_ZeroInit(size_of($type)) : get_static_init(0, $type) ]));
 					},
 					INI_NoInitializer => sub() { ; }
 				});

@@ -41,42 +41,36 @@ sub emit_code {
 			return $code;
 		},
 		ASM_StaticVariable => sub($name, $global, $alignment, $inits) {
-			my $code = $global ? "\t.globl $name\n" : "";
 			my $section = @$inits == 1 && is_zero_init_or_int_zero($inits->[0]) ? ".bss" : ".data";
-
-			$code = set_section($code, $section);
+			my $code = set_section("", $section);
+			$code .= "\t.globl $name\n" if $global;
 			$code .= "\t.align $alignment\n";
 			$code .= "$name:\n";
 			for my $init (@$inits) {
-				my ($init_bytes, $init_word) = translate_init($init);
-				if ($section eq ".bss") {
-					$code .= "\t.zero $init_bytes\n";
-				} elsif ($init_word eq 'double') {
-					$code .= "\t.quad " . raw_double_bytes_to_int($init->get('val')) . "\n";
-				} else {
-					$code .= "\t.$init_word " . $init->get('val') . "\n";
-				}
+				my ($init_word, $init_val) = translate_init($init);
+				$code .= "\t.$init_word $init_val\n";
 			}
 			return $code;
 		},
 		ASM_StaticConstant => sub($name, $alignment, $init) {
-			my ($init_bytes, $init_word) = translate_init($init);
+			my ($init_word, $init_val) = translate_init($init);
 			my $code = set_section("", ".rodata");
 			$code .= "\t.align $alignment\n";
 			$code .= "$name:\n";
-			if ($init_word eq 'double') {
-				$code .= "\t.quad " . raw_double_bytes_to_int($init->get('val'));
-			} else {
-				$code .= "\t.$init_word " . $init->get('val') . "\n";
-			}
+			$code .= "\t.$init_word $init_val\n";
 			return $code;
 		},
 		ASM_Mov => sub($type, $src, $dst) {
 			my ($n_bytes, $suffix) = translate_type($type);
 			return "\tmov" . $suffix . " " . emit_code($src, $n_bytes) . ", " . emit_code($dst, $n_bytes) . "\n";
 		},
-		ASM_Movsx => sub($src, $dst) {
-			return "\tmovslq " . emit_code($src) . ", " . emit_code($dst, 8) . "\n";
+		ASM_Movsx => sub($src_size, $dst_size, $src, $dst) {
+			my (undef, $src_t, undef, $dst_t) = (translate_type($src_size), translate_type($dst_size));
+			return "\tmovs${src_t}${$dst_t} " . emit_code($src) . ", " . emit_code($dst, 8) . "\n";
+		},
+		ASM_MovZeroExtend => sub($src_size, $dst_size, $src, $dst) {
+			my (undef, $src_t, undef, $dst_t) = (translate_type($src_size), translate_type($dst_size));
+			return "\tmovz${src_t}${$dst_t} " . emit_code($src) . ", " . emit_code($dst);
 		},
 		ASM_Ret => sub() {
 			my $code = "\tmovq %rbp, %rsp\n";
@@ -168,27 +162,27 @@ sub emit_code {
 		},
 		ASM_Reg => sub($reg) {
 			state $register_names = {
-				ASM_AX => { 	1 => "%al", 	4 => "%eax", 	8 => "%rax" },
-				ASM_CX => { 	1 => "%cl", 	4 => "%ecx", 	8 => "%rcx" },
-				ASM_DX => {	 	1 => "%dl", 	4 => "%edx", 	8 => "%rdx" },
-				ASM_DI => {	 	1 => "%dil", 	4 => "%edi", 	8 => "%rdi" },
-				ASM_SI => {	 	1 => "%sil", 	4 => "%esi", 	8 => "%rsi" },
-				ASM_R8 => {	 	1 => "%r8b", 	4 => "%r8d", 	8 => "%r8" },
-				ASM_R9 => {	 	1 => "%r9b", 	4 => "%r9d", 	8 => "%r9" },
-				ASM_R10 => { 	1 => "%r10b", 	4 => "%r10d", 	8 => "%r10" },
-				ASM_R11 => { 	1 => "%r11b", 	4 => "%r11d", 	8 => "%r11" },
-				ASM_SP => { 	1 => "%rsp", 	4 => "%rsp", 	8 => "%rsp" },
-				ASM_BP => {		1 => "%rsp",	4 => "%rbp",	8 => "%rbp" },
-				ASM_XMM0 => { 	1 => "%xmm0",	4 => "%xmm0",	8 => "%xmm0" },
-				ASM_XMM1 => { 	1 => "%xmm1", 	4 => "%xmm1", 	8 => "%xmm1" },
-				ASM_XMM2 => { 	1 => "%xmm2", 	4 => "%xmm2", 	8 => "%xmm2" },
-				ASM_XMM3 => { 	1 => "%xmm3", 	4 => "%xmm3", 	8 => "%xmm3" },
-				ASM_XMM4 => { 	1 => "%xmm4", 	4 => "%xmm4", 	8 => "%xmm4" },
-				ASM_XMM5 => { 	1 => "%xmm5", 	4 => "%xmm5", 	8 => "%xmm5" },
-				ASM_XMM6 => { 	1 => "%xmm6", 	4 => "%xmm6", 	8 => "%xmm6" },
-				ASM_XMM7 => { 	1 => "%xmm7", 	4 => "%xmm7", 	8 => "%xmm7" },
-				ASM_XMM14 => {	1 => "%xmm14",	4 => "%xmm14",	8 => "%xmm14" },
-				ASM_XMM15 => {	1 => "%xmm15",	4 => "%xmm15",	8 => "%xmm15" },
+				ASM_AX    => { 1 => "%al",    4 => "%eax",   8 => "%rax"   },
+				ASM_CX    => { 1 => "%cl",    4 => "%ecx",   8 => "%rcx"   },
+				ASM_DX    => { 1 => "%dl",    4 => "%edx",   8 => "%rdx"   },
+				ASM_DI    => { 1 => "%dil",   4 => "%edi",   8 => "%rdi"   },
+				ASM_SI    => { 1 => "%sil",   4 => "%esi",   8 => "%rsi"   },
+				ASM_R8    => { 1 => "%r8b",   4 => "%r8d",   8 => "%r8"    },
+				ASM_R9    => { 1 => "%r9b",   4 => "%r9d",   8 => "%r9"    },
+				ASM_R10   => { 1 => "%r10b",  4 => "%r10d",  8 => "%r10"   },
+				ASM_R11   => { 1 => "%r11b",  4 => "%r11d",  8 => "%r11"   },
+				ASM_SP 	  => { 1 => "%rsp",   4 => "%rsp",   8 => "%rsp"   },
+				ASM_BP	  => { 1 => "%rsp",   4 => "%rbp",   8 => "%rbp"   },
+				ASM_XMM0  => { 1 => "%xmm0",  4 => "%xmm0",  8 => "%xmm0"  },
+				ASM_XMM1  => { 1 => "%xmm1",  4 => "%xmm1",  8 => "%xmm1"  },
+				ASM_XMM2  => { 1 => "%xmm2",  4 => "%xmm2",  8 => "%xmm2"  },
+				ASM_XMM3  => { 1 => "%xmm3",  4 => "%xmm3",  8 => "%xmm3"  },
+				ASM_XMM4  => { 1 => "%xmm4",  4 => "%xmm4",  8 => "%xmm4"  },
+				ASM_XMM5  => { 1 => "%xmm5",  4 => "%xmm5",  8 => "%xmm5"  },
+				ASM_XMM6  => { 1 => "%xmm6",  4 => "%xmm6",  8 => "%xmm6"  },
+				ASM_XMM7  => { 1 => "%xmm7",  4 => "%xmm7",  8 => "%xmm7"  },
+				ASM_XMM14 => { 1 => "%xmm14", 4 => "%xmm14", 8 => "%xmm14" },
+				ASM_XMM15 => { 1 => "%xmm15", 4 => "%xmm15", 8 => "%xmm15" },
 			};
 			return $register_names->{$reg->{':tag'}}->{$register_width} // die "unknown register $reg w: $register_width";
 		},
@@ -212,25 +206,33 @@ sub translate_type {
 sub translate_init {
 	my $init = shift;
 	return $init->match({
-		'SI_IntInit, SI_UIntInit' => qw(4 long),
-		'SI_LongInit, SI_ULongInit' => qw(8 quad),
-		'SI_DoubleInit' => qw(8 double),
+		'SI_IntInit, SI_UIntInit' => sub($val) {
+			return ('long', $val)
+		},
+		'SI_LongInit, SI_ULongInit' => sub($val) {
+			return ('quad', $val)
+		},
 		'SI_CharInit, SI_UCharInit' => sub($val) {
-			return $val == 0
-				? (1, 'zero')
-				: ($val, 'byte')
+			return $val == 0 ? ('zero', 1) : ('byte', $val)
+		},
+		SI_DoubleInit => sub($val) {
+			return ('quad', raw_double_bytes_to_int($val))
 		},
 		SI_StringInit => sub($val, $null_terminated) {
-			return (undef, $null_terminated ? 'asciz' : 'ascii')
+			return ($null_terminated ? 'asciz' : 'ascii', qq("@{[escape_str($val)]}"));
 		},
 		SI_PointerInit => sub($label) {
-			return (undef, 'quad')
+			return ('quad', $label)
 		},
 		SI_ZeroInit => sub($bytes) {
-			return ($bytes, undef)
+			return ('zero', $bytes)
 		},
 		default => sub { die "wtf" }
 	});
+}
+
+sub escape_str {
+	return shift =~ s/(["\n\\])/\\$1/gr;
 }
 
 sub strip_prefix {
@@ -250,5 +252,3 @@ sub is_zero_init_or_int_zero {
 }
 
 1;
-
-
