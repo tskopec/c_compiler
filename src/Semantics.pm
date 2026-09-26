@@ -290,7 +290,7 @@ sub check_type {
 							die "conflicting linkage, var $name";
 						}
 
-						my $prev_init = get_symbol_attr($name, 'init_value');
+						my $prev_init = get_symbol_attr($name, 'init_val');
 						if ($prev_init->is('INI_Initial')) {
 							die "conflicting file scope var definitions: $name " if ($init_val->is('INI_Initial'));
 							$init_val = $prev_init;
@@ -577,23 +577,11 @@ sub check_type_and_decay {
 }
 
 sub get_symbol_attr {
-	# TODO refaktor
 	my ($symbol, $attr_name) = @_;
-	return $symbol_table{$symbol}->{type} if ($attr_name eq 'type');
-	($symbol_table{$symbol}->{attrs})->match({
-		ATT_FunAttrs => sub($defined, $global) {
-			return $defined if ($attr_name eq 'defined');
-			return $global if ($attr_name eq 'global');
-		},
-		ATT_StaticAttrs => sub($init_val, $global) {
-			return $init_val if ($attr_name eq 'init_value');
-			return $global if ($attr_name eq 'global');
-		},
-		ATT_LocalAttrs => sub() { return undef },
-		default => sub {
-			die "cant get attribute '$attr_name' of $symbol in " . $symbol_table{$symbol}->{attrs};
-		}
-	});
+	die "bad symbol $symbol" unless exists $symbol_table{$symbol};
+	return ($attr_name eq 'type')
+		? $symbol_table{$symbol}->{type}
+		: $symbol_table{$symbol}->{attrs}->get($attr_name);
 }
 
 sub is_lval {

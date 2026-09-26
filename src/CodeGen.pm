@@ -37,7 +37,7 @@ sub fill_asm_symtable {
 			$asm_symbol_table{$name} = {
 				entry_type => 'Obj',
 				op_size => asm_type_of($entry->{type}),
-				static => 0 + ($attrs->is('ATT_StaticAttrs')),
+				static => 0 + ($attrs->is('ATT_StaticAttrs', 'ATT_ConstantAttrs')),
 				is_constant => 0
 			};
 		}

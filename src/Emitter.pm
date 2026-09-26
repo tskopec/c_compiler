@@ -207,25 +207,25 @@ sub translate_init {
 	my $init = shift;
 	return $init->match({
 		'SI_IntInit, SI_UIntInit' => sub($val) {
-			return ('long', $val)
+			return ('long', $val);
 		},
 		'SI_LongInit, SI_ULongInit' => sub($val) {
-			return ('quad', $val)
+			return ('quad', $val);
 		},
 		'SI_CharInit, SI_UCharInit' => sub($val) {
-			return $val == 0 ? ('zero', 1) : ('byte', $val)
+			return $val == 0 ? ('zero', 1) : ('byte', $val);
 		},
 		SI_DoubleInit => sub($val) {
-			return ('quad', raw_double_bytes_to_int($val))
+			return ('quad', raw_double_bytes_to_int($val));
 		},
 		SI_StringInit => sub($val, $null_terminated) {
 			return ($null_terminated ? 'asciz' : 'ascii', qq("@{[escape_str($val)]}"));
 		},
 		SI_PointerInit => sub($label) {
-			return ('quad', $label)
+			return ('quad', $label);
 		},
 		SI_ZeroInit => sub($bytes) {
-			return ('zero', $bytes)
+			return ('zero', $bytes);
 		},
 		default => sub { die "wtf" }
 	});
