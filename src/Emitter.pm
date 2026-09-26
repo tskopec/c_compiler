@@ -61,16 +61,16 @@ sub emit_code {
 			return $code;
 		},
 		ASM_Mov => sub($type, $src, $dst) {
-			my ($n_bytes, $suffix) = translate_type($type);
+			my ($n_bytes, $suffix) = translate_type($type)->@*;
 			return "\tmov" . $suffix . " " . emit_code($src, $n_bytes) . ", " . emit_code($dst, $n_bytes) . "\n";
 		},
 		ASM_Movsx => sub($src_size, $dst_size, $src, $dst) {
-			my (undef, $src_t, undef, $dst_t) = (translate_type($src_size), translate_type($dst_size));
-			return "\tmovs${src_t}${$dst_t} " . emit_code($src) . ", " . emit_code($dst, 8) . "\n";
+			my (undef, $src_t, undef, $dst_t) = (translate_type($src_size)->@*, translate_type($dst_size)->@*);
+			return "\tmovs${src_t}${dst_t} " . emit_code($src) . ", " . emit_code($dst, 8) . "\n";
 		},
 		ASM_MovZeroExtend => sub($src_size, $dst_size, $src, $dst) {
-			my (undef, $src_t, undef, $dst_t) = (translate_type($src_size), translate_type($dst_size));
-			return "\tmovz${src_t}${$dst_t} " . emit_code($src) . ", " . emit_code($dst);
+			my (undef, $src_t, undef, $dst_t) = (translate_type($src_size)->@*, translate_type($dst_size)->@*);
+			return "\tmovz${src_t}${dst_t} " . emit_code($src) . ", " . emit_code($dst);
 		},
 		ASM_Ret => sub() {
 			my $code = "\tmovq %rbp, %rsp\n";
@@ -79,19 +79,19 @@ sub emit_code {
 			return $code;
 		},
 		ASM_Cvtsi2sd => sub($type, $src, $dst) {
-			my ($n_bytes, $suffix) = translate_type($type);
+			my ($n_bytes, $suffix) = translate_type($type)->@*;
 			return "\tcvtsi2sd" . $suffix . " " . emit_code($src, $n_bytes) . ", " . emit_code($dst, $n_bytes) . "\n";
 		},
 		ASM_Cvttsd2si => sub($type, $src, $dst) {
-			my ($n_bytes, $suffix) = translate_type($type);
+			my ($n_bytes, $suffix) = translate_type($type)->@*;
 			return "\tcvttsd2si" . $suffix . " " . emit_code($src, $n_bytes) . ", " . emit_code($dst, $n_bytes) . "\n";
 		},
 		ASM_Unary => sub($operator, $type, $operand) {
-			my ($n_bytes, $suffix) = translate_type($type);
+			my ($n_bytes, $suffix) = translate_type($type)->@*;
 			return emit_code($operator) . $suffix . " " . emit_code($operand, $n_bytes) . "\n";
 		},
 		ASM_Binary => sub($operator, $type, $src, $dst) {
-			my ($n_bytes, $suffix) = translate_type($type);
+			my ($n_bytes, $suffix) = translate_type($type)->@*;
 			if ($type->is('ASM_Double')) {
 				if ($operator->is('ASM_Xor')) {
 					return "\txorpd " . emit_code($src, 8) . ", " . emit_code($dst, 8) . "\n";
@@ -102,7 +102,7 @@ sub emit_code {
 			return emit_code($operator) . $suffix . " " . emit_code($src, $n_bytes) . ", " . emit_code($dst, $n_bytes) . "\n";
 		},
 		"ASM_Idiv, ASM_Div" => sub($type, $operand) {
-			my ($n_bytes, $suffix) = translate_type($type);
+			my ($n_bytes, $suffix) = translate_type($type)->@*;
 			return "\t" . lc(strip_prefix($node->{':tag'})) . $suffix . " " . emit_code($operand, $n_bytes) . "\n";
 		},
 		ASM_Cdq => sub($type) {
@@ -111,7 +111,7 @@ sub emit_code {
 			die "unknown cdq type $type";
 		},
 		ASM_Cmp => sub($type, $first, $second) {
-			my ($n_bytes, $suffix) = translate_type($type);
+			my ($n_bytes, $suffix) = translate_type($type)->@*;
 			if ($type->is('ASM_Double')) {
 				return "\tcomisd " . emit_code($first, 8) . ", " . emit_code($second, 8) . "\n";
 			} else {
@@ -193,10 +193,10 @@ sub emit_code {
 sub translate_type {
 	my $type = shift;
 	return $type->match({
-		ASM_Byte => qw(1 b),
-		ASM_Longword => qw(4 l),
-		ASM_Quadword => qw(8 q),
-		ASM_Double => qw(8 sd),
+		ASM_Byte => [1, 'b'],
+		ASM_Longword => [4, 'l'],
+		ASM_Quadword => [8, 'q'],
+		ASM_Double => [8, 'sd'],
 		default => sub {
 			die "unknown type $type"
 		}
