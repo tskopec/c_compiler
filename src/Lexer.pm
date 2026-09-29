@@ -82,8 +82,8 @@ sub tokenize {
 }
 
 my %esc_seq = (
-	qr/\Q\a/ => "\a", qr/\Q\b/ => "\b", qr/\Q\f/ => "\f", qr/\Q\n/ => "\n", qr/\Q\t/ => "\t", qr/\Q\v/ => "\\v",
-	qr/\Q\'/ => "'", qr/\Q\"/ => "\"", qr/\Q\\/ => "\\", qr/\Q\?/ => "\?",
+	qr/\Q\a/ => "\a", qr/\Q\b/ => "\b", qr/\Q\f/ => "\f", qr/\Q\n/ => "\n", qr/\Q\t/ => "\t", qr/\Q\v/ => '', 		# perl zrusil \v https://prog21.dadgum.com/76.html
+	qr/\Q\r/ => "\r", qr/\Q\'/ => "'", qr/\Q\"/ => "\"", qr/\Q\\/ => "\\", qr/\Q\?/ => "\?",
 );
 
 sub unescape {

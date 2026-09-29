@@ -15,6 +15,27 @@ use constant MAX_LONG => 2 ** 63 - 1;
 use constant MAX_UINT => 2 ** 32;
 use constant MAX_INT => 2 ** 31 - 1;
 
+my $signed_types = ['T_Int', 'T_Long', 'T_Double', 'T_Char', 'T_SChar'];
+my $arithmetic_types = ['T_Int', 'T_UInt', 'T_Long', 'T_ULong', 'T_Char', 'T_SChar', 'T_UChar', 'T_Double'];
+my $integer_types = ['T_Int', 'T_UInt', 'T_Long', 'T_ULong', 'T_Char', 'T_SChar', 'T_UChar'];
+my $character_types = ['T_Char', 'T_SChar', 'T_UChar'];
+
+sub is_signed {
+	return is_one_of(\@_, $signed_types);
+}
+
+sub is_arithmetic {
+	return is_one_of(\@_, $arithmetic_types);
+}
+
+sub is_integer {
+	return is_one_of(\@_, $integer_types);
+}
+
+sub is_character {
+	return is_one_of(\@_, $character_types);
+}
+
 sub get_common_type {
 	my ($t1, $t2) = @_;
 	$t1 = T_Int if (is_character($t1));
@@ -53,22 +74,6 @@ sub get_int_type_rank {
 			die "no rank for type $type"
 		}
 	});
-}
-
-sub is_signed {
-	return is_one_of(\@_, state $wanted = ['T_Int', 'T_Long', 'T_Double', 'T_Char', 'T_SChar']);
-}
-
-sub is_arithmetic {
-	return is_one_of(\@_, state $wanted = ['T_Int', 'T_UInt', 'T_Long', 'T_ULong', 'T_Char', 'T_SChar', 'T_UChar', 'T_Double']);
-}
-
-sub is_integer {
-	return is_one_of(\@_, state $wanted = ['T_Int', 'T_UInt', 'T_Long', 'T_ULong', 'T_Char', 'T_SChar', 'T_UChar']);
-}
-
-sub is_character {
-	return is_one_of(\@_, state $wanted = ['T_Char', 'T_SChar', 'T_UChar']);
 }
 
 sub is_one_of {

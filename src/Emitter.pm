@@ -44,7 +44,7 @@ sub emit_code {
 			my $section = @$inits == 1 && is_zero_init_or_int_zero($inits->[0]) ? ".bss" : ".data";
 			my $code = set_section("", $section);
 			$code .= "\t.globl $name\n" if $global;
-			$code .= "\t.align $alignment\n";
+			$code .= "\t.align $alignment\n" if ($alignment > 1);
 			$code .= "$name:\n";
 			for my $init (@$inits) {
 				my ($init_word, $init_val) = translate_init($init);
@@ -55,7 +55,7 @@ sub emit_code {
 		ASM_StaticConstant => sub($name, $alignment, $init) {
 			my ($init_word, $init_val) = translate_init($init);
 			my $code = set_section("", ".rodata");
-			$code .= "\t.align $alignment\n";
+			$code .= "\t.align $alignment\n" if ($alignment > 1);
 			$code .= "$name:\n";
 			$code .= "\t.$init_word $init_val\n";
 			return $code;
@@ -194,6 +194,9 @@ sub translate_type {
 	my $type = shift;
 	return $type->match({
 		ASM_Byte => [1, 'b'],
+		ASM_ByteArray => sub($size, $alignment) {
+			return [$alignment, 'b'] # TODO
+		},
 		ASM_Longword => [4, 'l'],
 		ASM_Quadword => [8, 'q'],
 		ASM_Double => [8, 'sd'],

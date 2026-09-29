@@ -6,7 +6,7 @@ use feature qw(say state signatures);
 use ADT::ParseASDL;
 use ADT::AlgebraicTypes qw(:AST :TAC :T :C :ATT :SI is_ADT convert_ADT);
 use Semantics;
-use Utils qw(labels string_to_ints);
+use Utils qw(labels string_to_int_consts);
 use TypeUtils qw(get_int_type_rank is_signed is_integer size_of get_static_init flatten_init create_const);
 
 BEGIN { # Local data types
@@ -49,11 +49,10 @@ sub emit_TAC {
 						$expr->match({
 							AST_String => sub($str, $str_type) {
 								if ($init_type->is('T_Array')) {
-									state $int_width = 4;
 									my $offset = 0;
-									for my $n (string_to_ints($str, $int_width)) {
-										push @$instructions, TAC_CopyToOffset(TAC_Constant(C_ConstChar($n)), $name, $offset);
-										$offset += (length($str) - $offset < $int_width) ? 1 : $int_width;
+									for my $const (string_to_int_consts($str)) {
+										push @$instructions, TAC_CopyToOffset(TAC_Constant($const), $name, $offset);
+										$offset += (length($str) - $offset < 4) ? 1 : 4;
 									}
 									for (1..($init_type->get('size') - length($str))) {
 										push @$instructions, TAC_CopyToOffset(TAC_Constant(C_ConstChar(0)), $name, $offset++);
@@ -318,7 +317,7 @@ sub emit_TAC {
 			return DereferencedPointer($dst);
 		},
 		AST_String => sub($val, $type) {
-			my $name = "string." . $main::global_counter++;
+			my $name = "_string." . $main::global_counter++;
 			$Semantics::symbol_table{$name} = {
 				type => $type,
 				attrs => ATT_ConstantAttrs(SI_StringInit($val, 1))

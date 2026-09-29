@@ -5,9 +5,10 @@ use feature qw(state isa say current_sub);
 
 require Exporter;
 our @ISA = qw(Exporter);
-our @EXPORT = qw(print_tree labels align_to string_to_ints);
+our @EXPORT = qw(print_tree labels align_to string_to_int_consts);
 
 use ADT::ADT;
+use ADT::AlgebraicTypes qw(:C);
 
 our %color = (	# https://ss64.com/nt/syntax-ansi.html
 	r => "\033[31;1m",
@@ -62,16 +63,18 @@ sub align_to {
 }
 
 #  string="abcdefg", width=4 -> 1684234849,101,102,103 (little-endian)
-sub string_to_ints {
-	my ($string, $width) = (shift, shift || 4);
+sub string_to_int_consts {
+	my $string = shift;
+	my $width = 4;
 	my @result;
 	while ($string =~ s/^(.{1,$width})//) {
 		my @chars = split //, $1;
 		if (@chars == $width) {
-			push @result, ord($chars[0]);
-			$result[-1] |= ord($chars[$_]) << (8 * $_) for (1..$#chars);
+			my $int = ord($chars[0]);
+			$int |= ord($chars[$_]) << (8 * $_) for (1..$#chars);
+			push @result, C_ConstInt($int);
 		} else {
-			push(@result, ord($_)) for @chars;
+			push(@result, C_ConstChar(ord($_))) for @chars;
 		}
 	}
 	return @result;
