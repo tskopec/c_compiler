@@ -195,9 +195,10 @@ sub get_static_init {
 		},
 		T_Pointer => sub($to_type) {
 			if ($to_type->is('T_Char')) {
-				die "no str constant" unless length($str_symbol_name);
+				die "no str constant" unless defined($str_symbol_name);
 				SI_PointerInit($str_symbol_name);
 			} else {
+				die "string can only initialize pointer to char" if defined($str_symbol_name);
 				SI_ULongInit($value == 0 ? $value : die "$value not null constant");
 			}
 		},
@@ -212,6 +213,7 @@ sub get_static_init {
 		},
 		T_Array => sub($elem_type, $size) {
 			die "not char array" unless is_character($elem_type);
+			die "array too short" unless $size >= length($value);
 			my $init = SI_StringInit($value, my $null_terminated = $size > length($value));
 			if (my $extra = $size - (length($value) + $null_terminated)) {
 				return ($init, SI_ZeroInit($extra));

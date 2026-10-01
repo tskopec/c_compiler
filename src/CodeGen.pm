@@ -57,7 +57,7 @@ sub translate_to_ASM {
 	my $node = shift;
 	return $node->match({
 		TAC_Program => sub($declarations) {
-			my $program = ASM_Program([ map { translate_to_ASM($_) } @$declarations ]);
+			my $program = ASM_Program([ grep { defined } map { translate_to_ASM($_) } @$declarations ]);
 			unshift($program->get('declarations')->@*, @static_constants);
 			return $program;
 		},
@@ -84,7 +84,8 @@ sub translate_to_ASM {
 			return ASM_StaticVariable($name, $global, calculate_alignment($type), $inits);
 		},
 		TAC_StaticConstant => sub($ident, $type, $init) {
-			return ASM_StaticConstant($ident, calculate_alignment($type), $init);
+			push(@static_constants, ASM_StaticConstant($ident, calculate_alignment($type), $init));
+			return undef; # prida se to do vysledku v ramci @static_constants, tnehle undedf se vyfiltruje # TODO nejak lip?
 		},
 		TAC_Return => sub($value) {
 			return (ASM_Mov(asm_type_of($value),
@@ -107,7 +108,7 @@ sub translate_to_ASM {
 							ASM_SetCC(ASM_E, $asm_dst));
 				}
 			} elsif ($op->is('TAC_Negate') && get_type_of_TAC($src)->is('T_Double')) {
-				my $neg_zero = get_static_constant(C_ConstDouble(-0.0), 16);
+				my $neg_zero = get_static_double_constant(C_ConstDouble(-0.0), 16);
 				return (ASM_Mov(ASM_Double, translate_to_ASM($src), $asm_dst),
 						ASM_Binary(ASM_Xor, ASM_Double, ASM_Data($neg_zero->get('name')), $asm_dst));
 			}
@@ -201,7 +202,7 @@ sub translate_to_ASM {
 		},
 		TAC_Constant => sub($const) {
 			if ($const->is('C_ConstDouble')) {
-				my $static_constant = get_static_constant($const, 8);
+				my $static_constant = get_static_double_constant($const, 8);
 				return ASM_Data($static_constant->get('name'));
 			} else {
 				return ASM_Imm($const->get('val'));
@@ -242,7 +243,7 @@ sub translate_to_ASM {
 					);
 				},
 				T_ULong => sub {
-					my $upper_bound = get_static_constant(C_ConstDouble(MAX_LONG +1), 8);
+					my $upper_bound = get_static_double_constant(C_ConstDouble(MAX_LONG + 1), 8);
 					my ($out_of_range_label, $end_label) = Utils::labels("oo_range", "end");
 					my $xmm0 = ASM_Reg(ASM_XMM1);
 					my $dx = ASM_Reg(ASM_DX);
@@ -418,7 +419,7 @@ sub asm_type_of {
 	});
 }
 
-sub get_static_constant {
+sub get_static_double_constant {
 	my ($constant, $alignment) = @_;
 	my $static_init = SI_DoubleInit($constant->get('val'));
 	for my $existing_constant (@static_constants) {

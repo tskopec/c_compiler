@@ -52,7 +52,9 @@ sub emit_TAC {
 									my $offset = 0;
 									for my $const (string_to_int_consts($str)) {
 										push @$instructions, TAC_CopyToOffset(TAC_Constant($const), $name, $offset);
-										$offset += (length($str) - $offset < 4) ? 1 : 4;
+										$offset += $const->is('C_ConstChar') ? 1
+												 : $const->is('C_ConstInt') ? 4
+												 : die "wtf $const";
 									}
 									for (1..($init_type->get('size') - length($str))) {
 										push @$instructions, TAC_CopyToOffset(TAC_Constant(C_ConstChar(0)), $name, $offset++);
@@ -317,7 +319,7 @@ sub emit_TAC {
 			return DereferencedPointer($dst);
 		},
 		AST_String => sub($val, $type) {
-			my $name = "_string." . $main::global_counter++;
+			my $name = "_string_const_" . $main::global_counter++;
 			$Semantics::symbol_table{$name} = {
 				type => $type,
 				attrs => ATT_ConstantAttrs(SI_StringInit($val, 1))
