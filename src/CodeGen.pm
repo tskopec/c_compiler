@@ -5,24 +5,44 @@ use warnings;
 use feature qw(say isa state current_sub signatures);
 
 use List::Util qw(min);
+
 use ADT::AlgebraicTypes qw(is_ADT :T :SI :C :TAC :ASM);
 use Semantics;
 use TypeUtils qw(/^MAX_/ get_type_of_TAC is_signed size_of get_base_type);
 use Utils qw(align_to);
 
-my @arg_gen_regs = (ASM_DI, ASM_SI, ASM_DX, ASM_CX, ASM_R8, ASM_R9);
-my @arg_xmm_regs = (ASM_XMM0, ASM_XMM1, ASM_XMM2, ASM_XMM3, ASM_XMM4, ASM_XMM5, ASM_XMM6, ASM_XMM7);
-
 our %asm_symbol_table;
 my @static_constants;
 
+my @arg_gen_regs = map { ASM_Reg($_) } (ASM_DI, ASM_SI, ASM_DX, ASM_CX, ASM_R8, ASM_R9);
+my @arg_xmm_regs = map { ASM_Reg($_) } (ASM_XMM0, ASM_XMM1, ASM_XMM2, ASM_XMM3, ASM_XMM4, ASM_XMM5, ASM_XMM6, ASM_XMM7);
+# common registers
+my ($sp, 	$bp, 	$ax, 	$dx,	$xmm0, 	  $xmm1, 	$xmm14,    $xmm15, 	  $r10,    $r11) = map { ASM_Reg($_) }
+   (ASM_SP, ASM_BP, ASM_AX, ASM_DX, ASM_XMM0, ASM_XMM1, ASM_XMM14, ASM_XMM15, ASM_R10, ASM_R11);
+
 sub generate {
-	(%asm_symbol_table, @static_constants) = ();
-	my $tac = shift;
-	my $asm = translate_to_ASM($tac);
+	my ($tac_program, $tac_statics) = @_;
+	%asm_symbol_table = ();
+	@static_constants = translate_statics($tac_statics);
+	my $asm = translate_to_ASM($tac_program);
 	fill_asm_symtable();
 	fix_up($asm);
 	return $asm;
+}
+
+sub translate_statics {
+	my $tac_statics = shift;
+	return map {
+		$_->match({
+			TAC_StaticVariable => sub($name, $global, $type, $inits) {
+				ASM_StaticVariable($name, $global, calculate_alignment($type), $inits);
+			},
+			TAC_StaticConstant => sub($ident, $type, $init) {
+				ASM_StaticConstant($ident, calculate_alignment($type), $init);
+			},
+			default => sub { die "wtf $_" }
+		});
+	} @$tac_statics;
 }
 
 sub fill_asm_symtable {
@@ -65,96 +85,89 @@ sub translate_to_ASM {
 			my @asm_instructions;
 			my ($from_gen_regs, $from_xmm_regs, $from_stack) = organize_params($params);
 			while (my ($i, $typed_param) = each @$from_gen_regs) {
-				my $reg = ASM_Reg($arg_gen_regs[$i] // die "out of registers");
+				my $reg = $arg_gen_regs[$i] // die "out of registers";
 				push(@asm_instructions, ASM_Mov(asm_type_of($typed_param->{type}), $reg, ASM_Pseudo($typed_param->{value})));
 			}
 			while (my ($i, $typed_param) = each @$from_xmm_regs) {
-				my $reg = ASM_Reg($arg_xmm_regs[$i] // die "out of registers");
+				my $reg = $arg_xmm_regs[$i] // die "out of registers";
 				push(@asm_instructions, ASM_Mov(ASM_Double, $reg, ASM_Pseudo($typed_param->{value})));
 			}
 			my $offset = 16;
 			for my $typed_param (@$from_stack) {
-				push(@asm_instructions, ASM_Mov(asm_type_of($typed_param->{type}), ASM_Memory(ASM_Reg(ASM_BP), $offset), ASM_Pseudo($typed_param->{value})));
+				push(@asm_instructions, ASM_Mov(asm_type_of($typed_param->{type}), ASM_Memory($bp, $offset), ASM_Pseudo($typed_param->{value})));
 				$offset += 8;
 			}
 			push(@asm_instructions, map { ($::debug{C} ? ASM_Comment("TAC: $_") : (), translate_to_ASM($_)) } @$instructions);
 			return ASM_Function($ident, $global, \@asm_instructions);
 		},
-		TAC_StaticVariable => sub($name, $global, $type, $inits) {
-			return ASM_StaticVariable($name, $global, calculate_alignment($type), $inits);
-		},
-		TAC_StaticConstant => sub($ident, $type, $init) {
-			push(@static_constants, ASM_StaticConstant($ident, calculate_alignment($type), $init));
-			return undef; # prida se to do vysledku v ramci @static_constants, tnehle undedf se vyfiltruje # TODO nejak lip?
-		},
 		TAC_Return => sub($value) {
 			return (ASM_Mov(asm_type_of($value),
-				translate_to_ASM($value),
-				ASM_Reg(get_type_of_TAC($value)->is('T_Double') ? ASM_XMM0 : ASM_AX)),
-				ASM_Ret());
+							translate_to_ASM($value),
+							(get_type_of_TAC($value)->is('T_Double') ? $xmm0 : $ax)),
+					ASM_Ret());
 		},
 		TAC_Unary => sub($op, $src, $dst) {
 			my $asm_dst = translate_to_ASM($dst);
 			if ($op->is('TAC_Not')) {
 				if (get_type_of_TAC($src)->is('T_Double')) {
-					my $reg = ASM_Reg(ASM_XMM0); # TODO je jedno kterej registr? - jinej nez pro rewrite fazi
+					my $reg = $xmm0; # TODO je jedno kterej registr? - jinej nez pro rewrite fazi
 					return (ASM_Binary(ASM_Xor, ASM_Double, $reg, $reg),
-							ASM_Cmp(ASM_Double, translate_to_ASM($src), $reg),
-								ASM_Mov(asm_type_of($dst), ASM_Imm(0), $asm_dst),
-								ASM_SetCC(ASM_E, $asm_dst));
+						ASM_Cmp(ASM_Double, translate_to_ASM($src), $reg),
+						ASM_Mov(asm_type_of($dst), ASM_Imm(0), $asm_dst),
+						ASM_SetCC(ASM_E, $asm_dst));
 				} else {
 					return (ASM_Cmp(asm_type_of($src), ASM_Imm(0), translate_to_ASM($src)),
-							ASM_Mov(asm_type_of($dst), ASM_Imm(0), $asm_dst),
-							ASM_SetCC(ASM_E, $asm_dst));
+						ASM_Mov(asm_type_of($dst), ASM_Imm(0), $asm_dst),
+						ASM_SetCC(ASM_E, $asm_dst));
 				}
 			} elsif ($op->is('TAC_Negate') && get_type_of_TAC($src)->is('T_Double')) {
 				my $neg_zero = get_static_double_constant(C_ConstDouble(-0.0), 16);
 				return (ASM_Mov(ASM_Double, translate_to_ASM($src), $asm_dst),
-						ASM_Binary(ASM_Xor, ASM_Double, ASM_Data($neg_zero->get('name')), $asm_dst));
+					ASM_Binary(ASM_Xor, ASM_Double, ASM_Data($neg_zero->get('name')), $asm_dst));
 			}
 			my $src_op_size = asm_type_of($src);
 			return (ASM_Mov($src_op_size, translate_to_ASM($src), $asm_dst),
-					ASM_Unary(convert_unop($op), $src_op_size, $asm_dst));
+				ASM_Unary(convert_unop($op), $src_op_size, $asm_dst));
 		},
 		TAC_Binary => sub($op, $src1, $src2, $dst) {
 			my $asm_dst = translate_to_ASM($dst);
 			my $src_asm_type = asm_type_of($src1);
-			if (-1 != (my $i = $op->index_of_in(qw(TAC_Equal TAC_NotEqual TAC_LessThan TAC_LessOrEqual TAC_GreaterThan TAC_GreaterOrEqual)))) {
+			if (-1 != (my $i = $op->index_of_in(qw(TAC_Equal TAC_NotEqual TAC_LessThan TAC_LesFIXsOrEqual TAC_GreaterThan TAC_GreaterOrEqual)))) {
 				my $codes = get_type_of_TAC($src1)->match({
-					"T_Int, T_Long" => 						  [ ASM_E(), ASM_NE(), ASM_L(), ASM_LE(), ASM_G(), ASM_GE() ],
+					"T_Int, T_Long" => [ ASM_E(), ASM_NE(), ASM_L(), ASM_LE(), ASM_G(), ASM_GE() ],
 					"T_UInt, T_ULong, T_Double, T_Pointer" => [ ASM_E(), ASM_NE(), ASM_B(), ASM_BE(), ASM_A(), ASM_AE() ], # TODO pointer jako unsigned?
 					default => sub { die "bad type of $src1" }
 				});
 				return (ASM_Cmp($src_asm_type, translate_to_ASM($src2), translate_to_ASM($src1)),
-						ASM_Mov(asm_type_of($dst), ASM_Imm(0), $asm_dst),
-						ASM_SetCC($codes->[$i], $asm_dst));
+					ASM_Mov(asm_type_of($dst), ASM_Imm(0), $asm_dst),
+					ASM_SetCC($codes->[$i], $asm_dst));
 			} elsif (not $src_asm_type->is('ASM_Double')) {
 				if (-1 != ($i = $op->index_of_in(qw(TAC_Divide TAC_Remainder)))) {
 					return (
-						ASM_Mov($src_asm_type, translate_to_ASM($src1), ASM_Reg(ASM_AX())),
+						ASM_Mov($src_asm_type, translate_to_ASM($src1), $ax),
 						(is_signed(get_type_of_TAC($src1)) ? (
 							ASM_Cdq($src_asm_type),
 							ASM_Idiv($src_asm_type, translate_to_ASM($src2))
 						) : (
-							ASM_Mov($src_asm_type, ASM_Imm(0), ASM_Reg(ASM_DX())),
+							ASM_Mov($src_asm_type, ASM_Imm(0), $dx),
 							ASM_Div($src_asm_type, translate_to_ASM($src2)))
 						),
-						ASM_Mov($src_asm_type, ASM_Reg((ASM_AX(), ASM_DX())[$i]), $asm_dst));
+						ASM_Mov($src_asm_type, ($ax, $dx)[$i], $asm_dst));
 				}
 			}
 			# vsechny double operace + int operace co nejsou pokryte vyse
 			return (ASM_Mov($src_asm_type, translate_to_ASM($src1), $asm_dst),
-					ASM_Binary(convert_binop($op), $src_asm_type, translate_to_ASM($src2), $asm_dst));
+				ASM_Binary(convert_binop($op), $src_asm_type, translate_to_ASM($src2), $asm_dst));
 		},
 		"TAC_JumpIfZero, TAC_JumpIfNotZero" => sub($cond, $target) {
 			my $cond_code = $node->is('TAC_JumpIfZero') ? ASM_E : ASM_NE;
 			if (get_type_of_TAC($cond)->is('T_Double')) {
-				return (ASM_Binary(ASM_Xor, ASM_Double, ASM_Reg(ASM_XMM0), ASM_Reg(ASM_XMM0)),
-						ASM_Cmp(ASM_Double, translate_to_ASM($cond), ASM_Reg(ASM_XMM0)),
-						ASM_JmpCC($cond_code, $target));
+				return (ASM_Binary(ASM_Xor, ASM_Double, $xmm0, $xmm0),
+					ASM_Cmp(ASM_Double, translate_to_ASM($cond), $xmm0),
+					ASM_JmpCC($cond_code, $target));
 			} else {
 				return (ASM_Cmp(asm_type_of($cond), ASM_Imm(0), translate_to_ASM($cond)),
-						ASM_JmpCC($cond_code, $target));
+					ASM_JmpCC($cond_code, $target));
 			}
 		},
 		TAC_Jump => sub($target) {
@@ -175,11 +188,11 @@ sub translate_to_ASM {
 			}
 			while (my ($i, $typed_arg) = each @$to_int_regs) {
 				my $asm_arg = translate_to_ASM($typed_arg->{value});
-				push(@instructions, ASM_Mov(asm_type_of($typed_arg->{type}), $asm_arg, ASM_Reg($arg_gen_regs[$i])));
+				push(@instructions, ASM_Mov(asm_type_of($typed_arg->{type}), $asm_arg, $arg_gen_regs[$i]));
 			}
 			while (my ($i, $typed_arg) = each @$to_xmm_regs) {
 				my $asm_arg = translate_to_ASM($typed_arg->{value});
-				push(@instructions, ASM_Mov(ASM_Double, $asm_arg, ASM_Reg($arg_xmm_regs[$i])));
+				push(@instructions, ASM_Mov(ASM_Double, $asm_arg, $arg_xmm_regs[$i]));
 			}
 			for my $typed_arg (reverse @$to_stack) {
 				my $asm_arg = translate_to_ASM($typed_arg->{value});
@@ -187,8 +200,8 @@ sub translate_to_ASM {
 				if ($asm_arg->is(qw(ASM_Imm ASM_Reg)) || ($asm_type->is('ASM_Quadword', 'ASM_Double'))) {
 					push(@instructions, ASM_Push($asm_arg));
 				} else {
-					push(@instructions, (ASM_Mov($asm_type, $asm_arg, ASM_Reg(ASM_AX)),
-						ASM_Push(ASM_Reg(ASM_AX))));
+					push(@instructions, (ASM_Mov($asm_type, $asm_arg, $ax),
+						ASM_Push($ax)));
 				}
 			}
 			push(@instructions, ASM_Call($ident));
@@ -197,7 +210,7 @@ sub translate_to_ASM {
 				push(@instructions, deallocate_stack($remove_bytes));
 			}
 			my $ret_type = asm_type_of($dst);
-			push(@instructions, ASM_Mov($ret_type, ASM_Reg($ret_type->is('ASM_Double') ? ASM_XMM0 : ASM_AX), translate_to_ASM($dst)));
+			push(@instructions, ASM_Mov($ret_type, ($ret_type->is('ASM_Double') ? $xmm0 : $ax), translate_to_ASM($dst)));
 			return @instructions;
 		},
 		TAC_Constant => sub($const) {
@@ -223,18 +236,18 @@ sub translate_to_ASM {
 			return ASM_MovZeroExtend(asm_type_of($src), asm_type_of($dst), translate_to_ASM($src), translate_to_ASM($dst));
 		},
 		TAC_DoubleToInt => sub($src, $dst) {
+			my ($asm_src, $asm_dst) = (translate_to_ASM($src), translate_to_ASM($dst));
 			if (get_type_of_TAC($dst)->is('T_Char', 'T_SChar')) {
 				return (
-					ASM_Cvttsd2si(ASM_Longword, translate_to_ASM($src), ASM_Reg(ASM_AX)),
-					ASM_Mov(ASM_Byte, ASM_Reg(ASM_AX), translate_to_ASM($dst))
+					ASM_Cvttsd2si(ASM_Longword, $asm_src, $ax),
+					ASM_Mov(ASM_Byte, $ax, $asm_dst)
 				);
 			} else {
-				return ASM_Cvttsd2si(asm_type_of($dst), translate_to_ASM($src), translate_to_ASM($dst));
+				return ASM_Cvttsd2si(asm_type_of($dst), $asm_src, $asm_dst);
 			}
 		},
 		TAC_DoubleToUInt => sub($src, $dst) {
 			my ($asm_src, $asm_dst) = (translate_to_ASM($src), translate_to_ASM($dst));
-			my $ax = ASM_Reg(ASM_AX);
 			get_type_of_TAC($dst)->match({
 				T_UInt => sub {
 					return (
@@ -243,19 +256,17 @@ sub translate_to_ASM {
 					);
 				},
 				T_ULong => sub {
-					my $upper_bound = get_static_double_constant(C_ConstDouble(MAX_LONG + 1), 8);
+					my $upper_bound = get_static_double_constant(C_ConstDouble(MAX_LONG +1), 8);
 					my ($out_of_range_label, $end_label) = Utils::labels("oo_range", "end");
-					my $xmm0 = ASM_Reg(ASM_XMM1);
-					my $dx = ASM_Reg(ASM_DX);
 					return (
 						ASM_Cmp(ASM_Double, ASM_Data($upper_bound->get('name')), $asm_src),
 						ASM_JmpCC(ASM_AE, $out_of_range_label),
 						ASM_Cvttsd2si(ASM_Quadword, $asm_src, $asm_dst),
 						ASM_Jmp($end_label),
 						ASM_Label($out_of_range_label),
-						ASM_Mov(ASM_Double, $asm_src, $xmm0),
-						ASM_Binary(ASM_Sub, ASM_Double, ASM_Data($upper_bound->get('name')), $xmm0),
-						ASM_Cvttsd2si(ASM_Quadword, $xmm0, $asm_dst),
+						ASM_Mov(ASM_Double, $asm_src, $xmm1),
+						ASM_Binary(ASM_Sub, ASM_Double, ASM_Data($upper_bound->get('name')), $xmm1),
+						ASM_Cvttsd2si(ASM_Quadword, $xmm1, $asm_dst),
 						ASM_Mov(ASM_Quadword, ASM_Imm(sprintf("%u", MAX_LONG +1)), $dx),
 						ASM_Binary(ASM_Add, ASM_Quadword, $dx, $asm_dst),
 						ASM_Label($end_label)
@@ -263,25 +274,25 @@ sub translate_to_ASM {
 				},
 				T_UChar => sub {
 					return (
-						ASM_Cvttsd2si(ASM_Longword, translate_to_ASM($src), $ax),
-						ASM_Mov(ASM_Byte, $ax, translate_to_ASM($dst))
+						ASM_Cvttsd2si(ASM_Longword, $asm_src, $ax),
+						ASM_Mov(ASM_Byte, $ax, $asm_dst)
 					);
 				},
 				default => sub { die "wtf" }
 			});
 		},
 		TAC_IntToDouble => sub($src, $dst) {
+			my ($asm_src, $asm_dst) = (translate_to_ASM($src), translate_to_ASM($dst));
 			if (get_type_of_TAC($src)->is('T_Char', 'T_SChar')) {
 				return (
-					ASM_Movsx(ASM_Byte, ASM_Longword, translate_to_ASM($src), ASM_Reg(ASM_AX)),
-					ASM_Cvtsi2sd(ASM_Longword, ASM_Reg(ASM_AX), translate_to_ASM($dst))
+					ASM_Movsx(ASM_Byte, ASM_Longword, $asm_src, $ax),
+					ASM_Cvtsi2sd(ASM_Longword, $ax, $asm_dst)
 				);
 			} else {
-				return ASM_Cvtsi2sd(asm_type_of($src), translate_to_ASM($src), translate_to_ASM($dst));
+				return ASM_Cvtsi2sd(asm_type_of($src), $asm_src, $asm_dst);
 			}
 		},
 		TAC_UIntToDouble => sub($src, $dst) {
-			my ($ax, $dx) = (ASM_Reg(ASM_AX), ASM_Reg(ASM_DX));
 			my ($asm_src, $asm_dst) = (translate_to_ASM($src), translate_to_ASM($dst));
 			get_type_of_TAC($src)->match({
 				T_UInt => sub {
@@ -310,8 +321,8 @@ sub translate_to_ASM {
 				},
 				T_UChar => sub {
 					return (
-						ASM_MovZeroExtend(ASM_Byte, ASM_Longword, translate_to_ASM($src), $ax),
-						ASM_Cvtsi2sd(ASM_Longword, $ax, translate_to_ASM($dst))
+						ASM_MovZeroExtend(ASM_Byte, ASM_Longword, $asm_src, $ax),
+						ASM_Cvtsi2sd(ASM_Longword, $ax, $asm_dst)
 					);
 				},
 				default => sub { die "wtf" }
@@ -319,14 +330,14 @@ sub translate_to_ASM {
 		},
 		TAC_Load => sub($ptr, $dst) {
 			return (
-				ASM_Mov(ASM_Quadword, translate_to_ASM($ptr), ASM_Reg(ASM_AX)),
-				ASM_Mov(asm_type_of($dst), ASM_Memory(ASM_Reg(ASM_AX), 0), translate_to_ASM($dst))
+				ASM_Mov(ASM_Quadword, translate_to_ASM($ptr), $ax),
+				ASM_Mov(asm_type_of($dst), ASM_Memory($ax, 0), translate_to_ASM($dst))
 			);
 		},
 		TAC_Store => sub($src, $ptr) {
 			return (
-				ASM_Mov(ASM_Quadword, translate_to_ASM($ptr), ASM_Reg(ASM_AX)),
-				ASM_Mov(asm_type_of($src), translate_to_ASM($src), ASM_Memory(ASM_Reg(ASM_AX), 0))
+				ASM_Mov(ASM_Quadword, translate_to_ASM($ptr), $ax),
+				ASM_Mov(asm_type_of($src), translate_to_ASM($src), ASM_Memory($ax, 0))
 			);
 		},
 		TAC_GetAddress => sub($src, $dst) {
@@ -338,19 +349,19 @@ sub translate_to_ASM {
 		TAC_AddPtr => sub($ptr, $index, $scale, $dst) {
 			if ($index->is('TAC_Constant')) {
 				return (
-					ASM_Mov(ASM_Quadword, translate_to_ASM($ptr), ASM_Reg(ASM_AX)),
-					ASM_Lea(ASM_Memory(ASM_Reg(ASM_AX), $index->get('constant')->get('val') * $scale), translate_to_ASM($dst))
+					ASM_Mov(ASM_Quadword, translate_to_ASM($ptr), $ax),
+					ASM_Lea(ASM_Memory($ax, $index->get('constant')->get('val') * $scale), translate_to_ASM($dst))
 				);
 			} else {
 				my @instructions = (
-					ASM_Mov(ASM_Quadword, translate_to_ASM($ptr), ASM_Reg(ASM_AX)),
-					ASM_Mov(ASM_Quadword, translate_to_ASM($index), ASM_Reg(ASM_DX)),
+					ASM_Mov(ASM_Quadword, translate_to_ASM($ptr), $ax),
+					ASM_Mov(ASM_Quadword, translate_to_ASM($index), $dx),
 				);
 				if (grep { $_ == $scale } (1, 2, 4, 8)) {
-					push @instructions, ASM_Lea(ASM_Indexed(ASM_Reg(ASM_AX), ASM_Reg(ASM_DX), $scale), translate_to_ASM($dst));
+					push @instructions, ASM_Lea(ASM_Indexed($ax, $dx, $scale), translate_to_ASM($dst));
 				} else {
-					push(@instructions, (ASM_Binary(ASM_Mult, ASM_Quadword, ASM_Imm($scale), ASM_Reg(ASM_DX)),
-										 ASM_Lea(ASM_Indexed(ASM_Reg(ASM_AX), ASM_Reg(ASM_DX), 1), translate_to_ASM($dst))));
+					push(@instructions, (ASM_Binary(ASM_Mult, ASM_Quadword, ASM_Imm($scale), $dx),
+						ASM_Lea(ASM_Indexed($ax, $dx, 1), translate_to_ASM($dst))));
 				}
 				return @instructions;
 			}
@@ -360,10 +371,10 @@ sub translate_to_ASM {
 }
 
 sub allocate_stack {
-	return ASM_Binary(ASM_Sub, ASM_Quadword, ASM_Imm(shift()), ASM_Reg(ASM_SP));
+	return ASM_Binary(ASM_Sub, ASM_Quadword, ASM_Imm(shift()), $sp);
 }
 sub deallocate_stack {
-	return ASM_Binary(ASM_Add, ASM_Quadword, ASM_Imm(shift()), ASM_Reg(ASM_SP));
+	return ASM_Binary(ASM_Add, ASM_Quadword, ASM_Imm(shift()), $sp);
 }
 
 sub organize_params {
@@ -453,10 +464,8 @@ sub fix_up {
 		$declaration->match({
 			ASM_Function => sub($name, $global, $instructions) {
 				replace_pseudo($declaration);
-				fix_instr($declaration);
+				rewrite_instrs($declaration);
 			},
-			ASM_StaticVariable => sub($name, $global, $alignment, $init) { ; },
-			ASM_StaticConstant => sub($name, $alignment, $init) { ; },
 			default => sub { die "not a declaration: $declaration" }
 		});
 	}
@@ -477,7 +486,7 @@ sub replace_pseudo {
 						my $size = size_of($asm_symbol_table{$ident}{op_size});
 						$offsets{$ident} = ($current_offset -= $size + ($current_offset % $size));
 					}
-					return ASM_Memory(ASM_Reg(ASM_BP), $offsets{$ident});
+					return ASM_Memory($bp, $offsets{$ident});
 				}
 			},
 			ASM_PseudoMem => sub($ident, $element_offset) {
@@ -488,7 +497,7 @@ sub replace_pseudo {
 						my ($size, $alignment) = $asm_symbol_table{$ident}{op_size}->values_in_order('ASM_ByteArray');
 						$offsets{$ident} = $current_offset = -align_to(abs($current_offset - $size), $alignment);
 					}
-					return ASM_Memory(ASM_Reg(ASM_BP), $offsets{$ident} + $element_offset);
+					return ASM_Memory($bp, $offsets{$ident} + $element_offset);
 				}
 			},
 			default => sub {
@@ -517,10 +526,10 @@ sub replace_pseudo {
 	unshift(@$instructions, allocate_stack(align_to($max_offset, 16)));
 }
 
-#3# FIX
-sub fix_instr {
+#3# REWRITE
+sub rewrite_instrs {
 	my $function = shift;
-	my $fix = sub {
+	my $rewrite_fun = sub {
 		my $instruction = shift;
 		my $instructions = [ $instruction ];
 		$instruction->match({
@@ -592,7 +601,7 @@ sub fix_instr {
 					if ($src->is('ASM_Imm')) {
 						$instructions = prependMovToScratch($instructions, "src", $src_type);
 					}
-					if ($dst->is('ASM_Reg')) {
+					if ($dst->is('ASM_Reg')) { # TODO unless ??
 						$instructions = appendMovFromScratch($instructions, "dst", $dst_type);
 					}
 				} else {
@@ -605,13 +614,11 @@ sub fix_instr {
 			},
 			ASM_Push => sub($operand) {
 				if ($operand =~ /^ASM_XMM/) {
-					my $rsp = ASM_Reg(ASM_SP);
 					$instructions = [
-						ASM_Binary(ASM_Sub, ASM_Quadword, ASM_Imm(8), $rsp),
-						ASM_Mov(ASM_Double, $operand, ASM_Memory($rsp, 0))
+						ASM_Binary(ASM_Sub, ASM_Quadword, ASM_Imm(8), $sp),
+						ASM_Mov(ASM_Double, $operand, ASM_Memory($sp, 0))
 					];
-				}
-				elsif (check_imm_too_large($operand)) {
+				} elsif (check_imm_too_large($operand)) {
 					$instructions = prependMovToScratch($instructions, "operand", ASM_Quadword);
 				}
 			},
@@ -638,10 +645,10 @@ sub fix_instr {
 		return @$instructions;
 	};
 	my ($name, $global, $instructions) = $function->values_in_order('ASM_Function');
-	$function->set('instructions', [ map { $fix->($_) } @$instructions ]);
+	$function->set('instructions', [ map { $rewrite_fun->($_) } @$instructions ]);
 }
 
-# FIX utils
+# REWRITE utils
 sub is_mem_addr {
 	return shift()->is('ASM_Memory', 'ASM_Data');
 }
@@ -656,28 +663,28 @@ sub check_imm_too_large {
 sub prependMovToScratch {
 	my ($instructions, $key, $op_size) = @_;
 	my $scratch = $key =~ /src|operand1/
-		? $op_size->is('ASM_Double') ? ASM_Reg(ASM_XMM14) : ASM_Reg(ASM_R10)  # registry pro src
-		: $op_size->is('ASM_Double') ? ASM_Reg(ASM_XMM15) : ASM_Reg(ASM_R11); # registry pro dst
+		? $op_size->is('ASM_Double') ? $xmm14 : $r10  # registry pro src
+		: $op_size->is('ASM_Double') ? $xmm15 : $r11; # registry pro dst
 	my $old_op = $instructions->[-1]->swap($key, $scratch);
 	return [ ASM_Mov($op_size, $old_op, $scratch),
-			 @$instructions ];
+		@$instructions ];
 }
 
 sub appendMovFromScratch {
 	my ($instructions, $key, $op_size) = @_;
-	my $scratch = $op_size->is('ASM_Double') ? ASM_Reg(ASM_XMM15) : ASM_Reg(ASM_R11); # asi ma smysl jenom pro dst
+	my $scratch = $op_size->is('ASM_Double') ? $xmm15 : $r11; # asi ma smysl jenom pro dst
 	my $old_op = $instructions->[-1]->swap($key, $scratch);
 	return [ @$instructions,
-			 ASM_Mov($op_size, $scratch, $old_op) ];
+		ASM_Mov($op_size, $scratch, $old_op) ];
 }
 
 sub toScratchAndBack {
 	my ($instructions, $key, $op_size) = @_;
-	my $scratch = $op_size->is('ASM_Double') ? ASM_Reg(ASM_XMM15) : ASM_Reg(ASM_R11); # asi ma smysl jenom pro dst
+	my $scratch = $op_size->is('ASM_Double') ? $xmm15 : $r11; # asi ma smysl jenom pro dst
 	my $old_op = $instructions->[-1]->swap($key, $scratch);
 	return [ ASM_Mov($op_size, $old_op, $scratch),
-			 @$instructions,
-			 ASM_Mov($op_size, $scratch, $old_op) ];
+		@$instructions,
+		ASM_Mov($op_size, $scratch, $old_op) ];
 }
 
 1;

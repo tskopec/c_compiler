@@ -21,14 +21,14 @@ sub emit_TAC {
 	my ($node, $instructions) = @_;
 	$node->match({
 		AST_Program => sub($declarations) {
-			my (@tac_funs, @tac_vars);
+			my @tac_funs;
 			for my $d (@$declarations) {
 				next if (not $d->is('AST_FunDeclaration'));
 				my $tac_fun = emit_TAC($d);
 				push(@tac_funs, $tac_fun) if (defined $tac_fun);
 			}
-			@tac_vars = convert_symbols_to_TAC();
-			return TAC_Program([ @tac_vars, @tac_funs ]);
+			my @tac_statics = convert_symbols_to_TAC();
+			return (TAC_Program(\@tac_funs), \@tac_statics);
 		},
 		AST_FunDeclaration => sub($name, $params, $body, $fun_type, $storage) {
 			if (defined $body) {

@@ -88,10 +88,10 @@ for my $src_file (@src_files) {
 
 	# TAC
 	$error_code = 4;
-	my $tac = TAC::emit_TAC($ast);
+	my ($tac_program, $tac_statics) = TAC::emit_TAC($ast);
 	if ($debug{t}) {
 		say "> TAC tree";
-		print_tree($tac);
+		print_tree($tac_program);
 	}
 	if ($target_phase =~ /^tac/) {
 		$error_code = 0; exit;
@@ -99,7 +99,7 @@ for my $src_file (@src_files) {
 
 	# ASSEMBLY GEN
 	$error_code = 5;
-	my $asm = CodeGen::generate($tac);
+	my $asm = CodeGen::generate($tac_program, $tac_statics);
 	if ($debug{c}) {
 		say "> ASM tree";
 		print_tree($asm);
