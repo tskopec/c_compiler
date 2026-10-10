@@ -12,21 +12,23 @@ use TypeUtils qw(/^MAX_/ get_type_of_TAC is_signed size_of get_base_type);
 use Utils qw(align_to);
 
 our %asm_symbol_table;
-my @static_constants;
+my @asm_statics;
 
+# SysV ABI arg passing registers
 my @arg_gen_regs = map { ASM_Reg($_) } (ASM_DI, ASM_SI, ASM_DX, ASM_CX, ASM_R8, ASM_R9);
 my @arg_xmm_regs = map { ASM_Reg($_) } (ASM_XMM0, ASM_XMM1, ASM_XMM2, ASM_XMM3, ASM_XMM4, ASM_XMM5, ASM_XMM6, ASM_XMM7);
 # common registers
-my ($sp, 	$bp, 	$ax, 	$dx,	$xmm0, 	  $xmm1, 	$xmm14,    $xmm15, 	  $r10,    $r11) = map { ASM_Reg($_) }
+my ($sp, 	$bp, 	$ax, 	$dx, 	$xmm0, 	  $xmm1, 	$xmm14,    $xmm15, 	  $r10,    $r11) = map { ASM_Reg($_) }
    (ASM_SP, ASM_BP, ASM_AX, ASM_DX, ASM_XMM0, ASM_XMM1, ASM_XMM14, ASM_XMM15, ASM_R10, ASM_R11);
 
 sub generate {
 	my ($tac_program, $tac_statics) = @_;
 	%asm_symbol_table = ();
-	@static_constants = translate_statics($tac_statics);
+	@asm_statics = translate_statics($tac_statics);
 	my $asm = translate_to_ASM($tac_program);
 	fill_asm_symtable();
 	fix_up($asm);
+	unshift($asm->get('declarations')->@*, @asm_statics);
 	return $asm;
 }
 
@@ -37,8 +39,8 @@ sub translate_statics {
 			TAC_StaticVariable => sub($name, $global, $type, $inits) {
 				ASM_StaticVariable($name, $global, calculate_alignment($type), $inits);
 			},
-			TAC_StaticConstant => sub($ident, $type, $init) {
-				ASM_StaticConstant($ident, calculate_alignment($type), $init);
+			TAC_StaticConstant => sub($name, $type, $init) {
+				ASM_StaticConstant($name, calculate_alignment($type), $init);
 			},
 			default => sub { die "wtf $_" }
 		});
@@ -49,12 +51,12 @@ sub fill_asm_symtable {
 	while (my ($name, $entry) = each %Semantics::symbol_table) {
 		my $attrs = $entry->{attrs};
 		if ($entry->{type}->is('T_FunType')) {
-			$asm_symbol_table{$name} = {
+			$asm_symbol_table{$name} //= {
 				entry_type => 'Fun',
 				defined => $attrs->get('defined')
 			};
 		} else {
-			$asm_symbol_table{$name} = {
+			$asm_symbol_table{$name} //= {
 				entry_type => 'Obj',
 				op_size => asm_type_of($entry->{type}),
 				static => 0 + ($attrs->is('ATT_StaticAttrs', 'ATT_ConstantAttrs')),
@@ -62,13 +64,21 @@ sub fill_asm_symtable {
 			};
 		}
 	}
-	for my $stat_const (@static_constants) {
-		$asm_symbol_table{$stat_const->get('name')} = {
-			entry_type => 'Obj',
-			op_size => ASM_Quadword(), # TODO jine typy
-			static => 1,
-			is_constant => 1
-		}
+	for my $stat (@asm_statics) {
+		$stat->match({
+			ASM_StaticVariable => sub($name, $global, $alignment, $inits) {
+				die "uz by melo v asm sym tab byt: $name " unless exists $asm_symbol_table{$name};
+			},
+			ASM_StaticConstant => sub($name, $alignment, $init) {
+				$asm_symbol_table{$name} //= {
+					entry_type => 'Obj',
+					op_size => asm_type_of($init),
+					static => 1,
+					is_constant => 1
+				};
+			},
+			default => sub { die "wtf: $stat" }
+		});
 	}
 }
 
@@ -77,8 +87,7 @@ sub translate_to_ASM {
 	my $node = shift;
 	return $node->match({
 		TAC_Program => sub($declarations) {
-			my $program = ASM_Program([ grep { defined } map { translate_to_ASM($_) } @$declarations ]);
-			unshift($program->get('declarations')->@*, @static_constants);
+			my $program = ASM_Program([ map { translate_to_ASM($_) } @$declarations ]);
 			return $program;
 		},
 		TAC_Function => sub($ident, $global, $params, $instructions) {
@@ -132,10 +141,10 @@ sub translate_to_ASM {
 		TAC_Binary => sub($op, $src1, $src2, $dst) {
 			my $asm_dst = translate_to_ASM($dst);
 			my $src_asm_type = asm_type_of($src1);
-			if (-1 != (my $i = $op->index_of_in(qw(TAC_Equal TAC_NotEqual TAC_LessThan TAC_LesFIXsOrEqual TAC_GreaterThan TAC_GreaterOrEqual)))) {
+			if (-1 != (my $i = $op->index_of_in(qw(TAC_Equal TAC_NotEqual TAC_LessThan TAC_LessOrEqual TAC_GreaterThan TAC_GreaterOrEqual)))) {
 				my $codes = get_type_of_TAC($src1)->match({
-					"T_Int, T_Long" => [ ASM_E(), ASM_NE(), ASM_L(), ASM_LE(), ASM_G(), ASM_GE() ],
-					"T_UInt, T_ULong, T_Double, T_Pointer" => [ ASM_E(), ASM_NE(), ASM_B(), ASM_BE(), ASM_A(), ASM_AE() ], # TODO pointer jako unsigned?
+					"T_Int, T_Long" 						=> [ ASM_E(), ASM_NE(), ASM_L(), ASM_LE(), ASM_G(), ASM_GE() ],
+					"T_UInt, T_ULong, T_Double, T_Pointer" 	=> [ ASM_E(), ASM_NE(), ASM_B(), ASM_BE(), ASM_A(), ASM_AE() ], # TODO pointer jako unsigned?
 					default => sub { die "bad type of $src1" }
 				});
 				return (ASM_Cmp($src_asm_type, translate_to_ASM($src2), translate_to_ASM($src1)),
@@ -157,7 +166,7 @@ sub translate_to_ASM {
 			}
 			# vsechny double operace + int operace co nejsou pokryte vyse
 			return (ASM_Mov($src_asm_type, translate_to_ASM($src1), $asm_dst),
-				ASM_Binary(convert_binop($op), $src_asm_type, translate_to_ASM($src2), $asm_dst));
+					ASM_Binary(convert_binop($op), $src_asm_type, translate_to_ASM($src2), $asm_dst));
 		},
 		"TAC_JumpIfZero, TAC_JumpIfNotZero" => sub($cond, $target) {
 			my $cond_code = $node->is('TAC_JumpIfZero') ? ASM_E : ASM_NE;
@@ -417,12 +426,12 @@ sub convert_binop {
 
 sub asm_type_of {
 	my $val = shift;
-	my $type = $val->is('T_Type') ? $val : get_type_of_TAC($val);
+	my $type = $val->is('TAC_Value') ? get_type_of_TAC($val) : $val;
 	return $type->match({
-		"T_Char, T_SChar, T_UChar" => ASM_Byte,
-		"T_Int, T_UInt" => ASM_Longword,
-		"T_Long, T_ULong, T_Pointer" => ASM_Quadword,
-		T_Double => ASM_Double,
+		"T_Char, T_SChar, T_UChar, SI_CharInit, SI_UCharInit" => ASM_Byte,
+		"T_Int, T_UInt, SI_IntInit, SI_UIntInit" => ASM_Longword,
+		"T_Long, T_ULong, T_Pointer, SI_LongInit, SI_ULongInit, SI_PointerInit" => ASM_Quadword,
+		"T_Double, SI_DoubleInit" => ASM_Double,
 		T_Array => sub($elem_type, $size) {
 			ASM_ByteArray(size_of($type), calculate_alignment($type));
 		},
@@ -432,10 +441,9 @@ sub asm_type_of {
 
 sub get_static_double_constant {
 	my ($constant, $alignment) = @_;
-	my $static_init = SI_DoubleInit($constant->get('val'));
-	for my $existing_constant (@static_constants) {
-		if ($existing_constant->get('static_init')->get('val') == $constant->get('val')
-			&& $existing_constant->get('alignment') == $alignment) {
+	for my $existing_constant (grep { $_->is('ASM_StaticConstant') } @asm_statics) {
+		my ($exi_name, $exi_alignment, $exi_init) = $existing_constant->values_in_order('ASM_StaticConstant');
+		if ($exi_init->is('SI_DoubleInit') && $exi_init->get('val') == $constant->get('val') && $exi_alignment == $alignment) {
 			return $existing_constant;
 		}
 	}
@@ -445,8 +453,8 @@ sub get_static_double_constant {
 		},
 		default => sub { die "unknown constant type $constant" }
 	});
-	push(@static_constants, ASM_StaticConstant($label, $alignment, $static_init));
-	return $static_constants[-1];
+	push(@asm_statics, ASM_StaticConstant($label, $alignment, SI_DoubleInit($constant->get('val'))));
+	return $asm_statics[-1];
 }
 
 sub calculate_alignment {

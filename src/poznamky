@@ -1,3 +1,17 @@
 
 * gcc z nejakeho alokuje lokalni promenne na stack v poradi od SP k BP, vypina se to -fno-stack-protector
     * neco se o tom pise i tu: https://en.wikipedia.org/wiki/Buffer_overflow_protection#Canaries
+
+# static var:
+# Semantics: filescope, static, extern AST_VarDeclaration -> do symbol table zaznam s ATT_StaticAttrs
+# TAC: ze symbol table, z polozek co maji StaticAttrs se udela TAC_StaticVariable -> zabali se do listu, vrati spolu s TAC programem
+# ASM: TAC_ se zkonvertuji na ASM_StaticConstant, naprcaji do asm_symbol_table, ta se pak pouzije pro fix-up step,
+# 	zaroven se do asm_sym_table pridavaji constants co vzniknou pri konverzi TAC stromu
+# emitter: vyzaduje
+#
+# static const:
+# Semantics: u VarDecl, kde AST_String inicializuje pointer se udela ATT_Constant zaznam v symtable
+# TAC: symbol table - ATT_ConstAtt -> TAC_StaticConstant, vrati se spolu s TAC programem
+# ASM: TAC_ -> ASM_
+# 	vzniknou nove konstanty behem konverze TAC stromu
+# emitter: vyzaduje
