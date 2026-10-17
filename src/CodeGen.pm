@@ -148,8 +148,8 @@ sub translate_to_ASM {
 					default => sub { die "bad type of $src1" }
 				});
 				return (ASM_Cmp($src_asm_type, translate_to_ASM($src2), translate_to_ASM($src1)),
-					ASM_Mov(asm_type_of($dst), ASM_Imm(0), $asm_dst),
-					ASM_SetCC($codes->[$i], $asm_dst));
+						ASM_Mov(asm_type_of($dst), ASM_Imm(0), $asm_dst),
+						ASM_SetCC($codes->[$i], $asm_dst));
 			} elsif (not $src_asm_type->is('ASM_Double')) {
 				if (-1 != ($i = $op->index_of_in(qw(TAC_Divide TAC_Remainder)))) {
 					return (
@@ -172,11 +172,11 @@ sub translate_to_ASM {
 			my $cond_code = $node->is('TAC_JumpIfZero') ? ASM_E : ASM_NE;
 			if (get_type_of_TAC($cond)->is('T_Double')) {
 				return (ASM_Binary(ASM_Xor, ASM_Double, $xmm0, $xmm0),
-					ASM_Cmp(ASM_Double, translate_to_ASM($cond), $xmm0),
-					ASM_JmpCC($cond_code, $target));
+						ASM_Cmp(ASM_Double, translate_to_ASM($cond), $xmm0),
+						ASM_JmpCC($cond_code, $target));
 			} else {
 				return (ASM_Cmp(asm_type_of($cond), ASM_Imm(0), translate_to_ASM($cond)),
-					ASM_JmpCC($cond_code, $target));
+						ASM_JmpCC($cond_code, $target));
 			}
 		},
 		TAC_Jump => sub($target) {
@@ -491,7 +491,7 @@ sub replace_pseudo {
 					return ASM_Data($ident);
 				} else {
 					unless (exists $offsets{$ident}) {
-						my $size = size_of($asm_symbol_table{$ident}{op_size});
+						my $size = size_of($asm_symbol_table{$ident}->{op_size});
 						$offsets{$ident} = ($current_offset -= $size + ($current_offset % $size));
 					}
 					return ASM_Memory($bp, $offsets{$ident});
@@ -502,7 +502,7 @@ sub replace_pseudo {
 					return ASM_Data($ident);
 				} else {
 					unless (exists $offsets{$ident}) {
-						my ($size, $alignment) = $asm_symbol_table{$ident}{op_size}->values_in_order('ASM_ByteArray');
+						my ($size, $alignment) = $asm_symbol_table{$ident}->{op_size}->values_in_order('ASM_ByteArray');
 						$offsets{$ident} = $current_offset = -align_to(abs($current_offset - $size), $alignment);
 					}
 					return ASM_Memory($bp, $offsets{$ident} + $element_offset);
@@ -577,6 +577,31 @@ sub rewrite_instrs {
 					}
 				}
 			},
+			ASM_Movsx => sub($src_type, $dst_type, $src, $dst) {
+				if ($src->is('ASM_Imm')) {
+					$instructions = prependMovToScratch($instructions, "src", ASM_Longword);
+				}
+				if (is_mem_addr($dst)) {
+					$instructions = appendMovFromScratch($instructions, "dst", ASM_Quadword);
+				}
+			},
+			ASM_MovZeroExtend => sub($src_type, $dst_type, $src, $dst) {
+				if ($src_type->is('T_Byte')) {
+					if ($src->is('ASM_Imm')) {
+						$src->set('val', $src->get('val') & 0xff);
+						$instructions = prependMovToScratch($instructions, "src", $src_type);
+					}
+					unless ($dst->is('ASM_Reg')) {
+						$instructions = appendMovFromScratch($instructions, "dst", $dst_type);
+					}
+				} else {
+					if ($dst->is('ASM_Reg')) {
+						$instructions = [ ASM_Mov(ASM_Longword(), $src, $dst) ];
+					} else {
+						$instructions = prependMovToScratch([ ASM_Mov(ASM_Quadword(), $src, $dst) ], "src", ASM_Longword);
+					}
+				}
+			},
 			ASM_Cmp => sub($op_size, $src, $dst) {
 				if ($op_size->is('ASM_Double')) {
 					unless ($dst->is('ASM_Reg')) {
@@ -594,30 +619,6 @@ sub rewrite_instrs {
 			"ASM_Idiv, ASM_Div" => sub($op_size, $operand) {
 				if ($operand->is('ASM_Imm')) {
 					$instructions = prependMovToScratch($instructions, "operand", $op_size);
-				}
-			},
-			ASM_Movsx => sub($src_type, $dst_type, $src, $dst) {
-				if ($src->is('ASM_Imm')) {
-					$instructions = prependMovToScratch($instructions, "src", ASM_Longword);
-				}
-				if (is_mem_addr($dst)) {
-					$instructions = appendMovFromScratch($instructions, "dst", ASM_Quadword);
-				}
-			},
-			ASM_MovZeroExtend => sub($src_type, $dst_type, $src, $dst) {
-				if ($src_type->is('T_Byte')) {
-					if ($src->is('ASM_Imm')) {
-						$instructions = prependMovToScratch($instructions, "src", $src_type);
-					}
-					if ($dst->is('ASM_Reg')) { # TODO unless ??
-						$instructions = appendMovFromScratch($instructions, "dst", $dst_type);
-					}
-				} else {
-					if ($dst->is('ASM_Reg')) {
-						$instructions = [ ASM_Mov(ASM_Longword(), $src, $dst) ];
-					} else {
-						$instructions = prependMovToScratch([ ASM_Mov(ASM_Quadword(), $src, $dst) ], "src", ASM_Longword);
-					}
 				}
 			},
 			ASM_Push => sub($operand) {

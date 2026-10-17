@@ -5,8 +5,9 @@ use feature qw(state isa say current_sub);
 
 require Exporter;
 our @ISA = qw(Exporter);
-our @EXPORT = qw(print_tree labels align_to string_to_int_consts);
+our @EXPORT = qw(print_tree labels align_to string_to_int_consts escape_str unescape_str);
 
+use feature qw(state);
 use ADT::ADT;
 use ADT::AlgebraicTypes qw(:C);
 
@@ -80,6 +81,28 @@ sub string_to_int_consts {
 	return @result;
 }
 
+sub escape_str {
+	state %seqs = (
+		qr/\x{07}/ => '\x07', qr/\x{08}/ => '\b', qr/\x{0c}/ => '\f', qr/\x{0a}/ => '\n', qr/\x{09}/ => '\t',
+		qr/\x{0b}/ => '\x0b', qr/\x{0d}/ => '\r', qr/'/ => '\'', qr/"/ => '\"'
+	);
+	return replace_all(shift =~ s/\\/\\\\/gr, \%seqs);
+}
 
+sub unescape_str {
+	state %seqs = (
+		qr/\Q\a/ => "\a", qr/\Q\b/ => "\b", qr/\Q\f/ => "\f", qr/\Q\n/ => "\n", qr/\Q\t/ => "\t", qr/\Q\v/ => '', 		# perl zrusil \v https://prog21.dadgum.com/76.html
+		qr/\Q\r/ => "\r", qr/\Q\'/ => "'", qr/\Q\"/ => "\"", qr/\Q\\/ => "\\", qr/\Q\?/ => "?",
+	);
+	return replace_all(shift, \%seqs);
+}
+
+sub replace_all {
+	my ($str, $map) = @_;
+	while (my ($pattern, $replace) = each %$map) {
+		$str =~ s/$pattern/$replace/g;
+	}
+	return $str;
+}
 
 1;

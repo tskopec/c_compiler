@@ -4,6 +4,7 @@ use warnings;
 use feature qw(say);
 
 use ADT::AlgebraicTypes qw(:LEX);
+use Utils qw(unescape_str);
 
 my $sym_re = qr/^([ {} () [\] , ; ])/x;
 my $op_re = qr/^(!=|==|<=|>=|<|>|=|!|\|\||&&|--|-|\+|\*|\/|%|~|\?|:|&)/;
@@ -63,10 +64,10 @@ sub tokenize {
 			push(@tokens, LEX_FPConstant($1));
 		}
 		elsif ($src =~ $string_literal_re) {
-			push(@tokens, LEX_StringLiteral(unescape($2)));
+			push(@tokens, LEX_StringLiteral(unescape_str($2)));
 		}
 		elsif ($src =~ $char_const_re) {
-			push(@tokens, LEX_CharConstant(unescape($2)));
+			push(@tokens, LEX_CharConstant(unescape_str($2)));
 		}
 		elsif ($src =~ $iden_re) {
 			push(@tokens, LEX_Identifier($1));
@@ -79,19 +80,6 @@ sub tokenize {
 	}
 
 	return @tokens;
-}
-
-my %esc_seq = (
-	qr/\Q\a/ => "\a", qr/\Q\b/ => "\b", qr/\Q\f/ => "\f", qr/\Q\n/ => "\n", qr/\Q\t/ => "\t", qr/\Q\v/ => '', 		# perl zrusil \v https://prog21.dadgum.com/76.html
-	qr/\Q\r/ => "\r", qr/\Q\'/ => "'", qr/\Q\"/ => "\"", qr/\Q\\/ => "\\", qr/\Q\?/ => "\?",
-);
-
-sub unescape {
-	my $s = shift;
-	while (my ($seq, $char) = each %esc_seq) {
-		$s =~ s/$seq/$char/g;
-	}
-	return $s;
 }
 
 1;

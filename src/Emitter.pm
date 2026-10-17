@@ -4,6 +4,7 @@ use warnings;
 use feature qw(say state signatures);
 
 use ADT::AlgebraicTypes qw(:ASM);
+use Utils qw(escape_str);
 
 my $current_section;
 sub set_section {
@@ -65,12 +66,12 @@ sub emit_code {
 			return "\tmov" . $suffix . " " . emit_code($src, $n_bytes) . ", " . emit_code($dst, $n_bytes) . "\n";
 		},
 		ASM_Movsx => sub($src_size, $dst_size, $src, $dst) {
-			my (undef, $src_t, undef, $dst_t) = (translate_type($src_size)->@*, translate_type($dst_size)->@*);
-			return "\tmovs${src_t}${dst_t} " . emit_code($src) . ", " . emit_code($dst, 8) . "\n";
+			my ($src_bytes, $src_t, $dst_bytes, $dst_t) = (translate_type($src_size)->@*, translate_type($dst_size)->@*);
+			return "\tmovs${src_t}${dst_t} " . emit_code($src, $src_bytes) . ", " . emit_code($dst, $dst_bytes) . "\n";
 		},
 		ASM_MovZeroExtend => sub($src_size, $dst_size, $src, $dst) {
-			my (undef, $src_t, undef, $dst_t) = (translate_type($src_size)->@*, translate_type($dst_size)->@*);
-			return "\tmovz${src_t}${dst_t} " . emit_code($src) . ", " . emit_code($dst);
+			my ($src_bytes, $src_t, $dst_bytes, $dst_t) = (translate_type($src_size)->@*, translate_type($dst_size)->@*);
+			return "\tmovz${src_t}${dst_t} " . emit_code($src, $src_bytes) . ", " . emit_code($dst, $dst_bytes);
 		},
 		ASM_Ret => sub() {
 			my $code = "\tmovq %rbp, %rsp\n";
@@ -232,10 +233,6 @@ sub translate_init {
 		},
 		default => sub { die "wtf" }
 	});
-}
-
-sub escape_str {
-	return shift =~ s/(["\n\\])/\\$1/gr;
 }
 
 sub strip_prefix {
