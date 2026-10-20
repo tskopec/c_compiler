@@ -319,7 +319,7 @@ sub emit_TAC {
 			return DereferencedPointer($dst);
 		},
 		AST_String => sub($val, $type) {
-			my $name = "_string_const_" . $main::global_counter++;
+			my $name = ".string_const_" . $main::global_counter++;
 			$Semantics::symbol_table{$name} = {
 				type => $type,
 				attrs => ATT_ConstantAttrs(SI_StringInit($val, 1))

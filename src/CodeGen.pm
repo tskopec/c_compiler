@@ -579,14 +579,14 @@ sub rewrite_instrs {
 			},
 			ASM_Movsx => sub($src_type, $dst_type, $src, $dst) {
 				if ($src->is('ASM_Imm')) {
-					$instructions = prependMovToScratch($instructions, "src", ASM_Longword);
+					$instructions = prependMovToScratch($instructions, "src", $src_type);
 				}
 				if (is_mem_addr($dst)) {
-					$instructions = appendMovFromScratch($instructions, "dst", ASM_Quadword);
+					$instructions = appendMovFromScratch($instructions, "dst", $dst_type);
 				}
 			},
 			ASM_MovZeroExtend => sub($src_type, $dst_type, $src, $dst) {
-				if ($src_type->is('T_Byte')) {
+				if ($src_type->is('ASM_Byte')) {
 					if ($src->is('ASM_Imm')) {
 						$src->set('val', $src->get('val') & 0xff);
 						$instructions = prependMovToScratch($instructions, "src", $src_type);
@@ -596,9 +596,9 @@ sub rewrite_instrs {
 					}
 				} else {
 					if ($dst->is('ASM_Reg')) {
-						$instructions = [ ASM_Mov(ASM_Longword(), $src, $dst) ];
+						$instructions = [ ASM_Mov($src_type, $src, $dst) ];
 					} else {
-						$instructions = prependMovToScratch([ ASM_Mov(ASM_Quadword(), $src, $dst) ], "src", ASM_Longword);
+						$instructions = prependMovToScratch([ ASM_Mov($dst_type, $src, $dst) ], "src", $src_type);
 					}
 				}
 			},

@@ -71,7 +71,7 @@ sub emit_code {
 		},
 		ASM_MovZeroExtend => sub($src_size, $dst_size, $src, $dst) {
 			my ($src_bytes, $src_t, $dst_bytes, $dst_t) = (translate_type($src_size)->@*, translate_type($dst_size)->@*);
-			return "\tmovz${src_t}${dst_t} " . emit_code($src, $src_bytes) . ", " . emit_code($dst, $dst_bytes);
+			return "\tmovz${src_t}${dst_t} " . emit_code($src, $src_bytes) . ", " . emit_code($dst, $dst_bytes) . "\n";
 		},
 		ASM_Ret => sub() {
 			my $code = "\tmovq %rbp, %rsp\n";
