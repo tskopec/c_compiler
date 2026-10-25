@@ -44,23 +44,25 @@ sub emit_TAC {
 		},
 		AST_VarDeclaration => sub($name, $init, $type, $storage) {
 			if (defined $init && !is_ADT($storage, 'STOR_Static')) {
+				my $offset = 0;
+				state $str_init_converter = sub($str, $size) {
+					for my $const (string_to_int_consts($str)) {
+						push @$instructions, TAC_CopyToOffset(TAC_Constant($const), $name, $offset);
+						$offset += $const->is('C_ConstChar') ? 1
+							: $const->is('C_ConstInt') ? 4
+							: die "wtf $const";
+					}
+					for (1..($size - length($str))) {
+						push @$instructions, TAC_CopyToOffset(TAC_Constant(C_ConstChar(0)), $name, $offset++);
+					}
+				};
 				$init->match({
 					AST_SingleInit => sub($expr, $init_type) {
 						$expr->match({
 							AST_String => sub($str, $str_type) {
 								if ($init_type->is('T_Array')) {
-									my $offset = 0;
-									for my $const (string_to_int_consts($str)) {
-										push @$instructions, TAC_CopyToOffset(TAC_Constant($const), $name, $offset);
-										$offset += $const->is('C_ConstChar') ? 1
-												 : $const->is('C_ConstInt') ? 4
-												 : die "wtf $const";
-									}
-									for (1..($init_type->get('size') - length($str))) {
-										push @$instructions, TAC_CopyToOffset(TAC_Constant(C_ConstChar(0)), $name, $offset++);
-									}
+									$str_init_converter->($str, $init_type->get('size'));
 								} else {
-									# TODO tak?
 									emit_TAC_and_convert(AST_Assignment(AST_Var($name, $type), $expr, $type), $instructions);
 								}
 							},
@@ -70,10 +72,14 @@ sub emit_TAC {
 						});
 					},
 					AST_CompoundInit => sub($inits, $init_type) {
-						my $n = 0;
 						for my $i (flatten_init($init)) {
-							my $src = emit_TAC_and_convert($i->get('expr'), $instructions);
-							push @$instructions, TAC_CopyToOffset($src, $name, $n++ * size_of($i->get('type')));
+							if ($i->get('expr')->is('AST_String')) {
+								$str_init_converter->($i->get('expr')->get('val'), $i->get('type')->get('size'));
+							} else {
+								my $src = emit_TAC_and_convert($i->get('expr'), $instructions);
+								push @$instructions, TAC_CopyToOffset($src, $name, $offset);
+								$offset += size_of($i->get('type'));
+							}
 						}
 					},
 					default => sub { die "wtf" }

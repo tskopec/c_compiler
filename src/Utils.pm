@@ -68,7 +68,7 @@ sub string_to_int_consts {
 	my $string = shift;
 	my $width = 4;
 	my @result;
-	while ($string =~ s/^(.{1,$width})//) {
+	while ($string =~ s/^(.{1,$width})//s) {
 		my @chars = split //, $1;
 		if (@chars == $width) {
 			my $int = ord($chars[0]);
