@@ -7,7 +7,8 @@ use ADT::ParseASDL;
 use ADT::AlgebraicTypes qw(:LEX :AST :T :C :STOR);
 use TypeUtils qw(/^MAX_/);
 
-BEGIN { # Local data types
+BEGIN {
+	# Local data types
 	my @asdl_lines = split /\n/, q{
 		Declarator =
 			Identifier(string name)
@@ -39,9 +40,8 @@ sub parse_program {
 }
 
 sub parse_declaration {
-	my @specs = parse_specifiers();
-	return undef unless @specs;
-	my ($type, $storage_class) = @specs;
+	my ($type, $storage_class) = parse_specifiers();
+	return undef unless defined $type;
 	my $declarator = parse_declarator();
 	my ($name, $declarator_type, $params) = process_declarator($declarator, $type);
 	if ($declarator_type->is('T_FunType')) {
@@ -78,13 +78,13 @@ sub parse_specifiers {
 	my (@storage_specs, @type_specs);
 	my $kw;
 	while (1) {
-		if ($kw = expect_maybe('LEX_Keyword', 'int', 'long', 'double', 'signed', 'unsigned', 'char')) {
+		if ($kw = expect_maybe('LEX_Keyword', 'int', 'long', 'double', 'signed', 'unsigned', 'char', 'void')) {
 			push @type_specs, $kw->get('word');
 		} elsif ($kw = expect_maybe('LEX_Keyword', 'static', 'extern')) {
 			push @storage_specs, $kw->get('word');
 		} else { last }
 	}
-	die "too many storage specs: @{[@storage_specs]}" if (@storage_specs > 1);
+	die "too many storage specs: @{[ @storage_specs ]}" if (@storage_specs > 1);
 	if (@type_specs == 0) {
 		return (@storage_specs == 0) ? () : die "missing type specifier";
 	}
@@ -92,10 +92,11 @@ sub parse_specifiers {
 }
 
 sub parse_type {
-	my %freqs = map { my $_outer = $_; ($_outer, 0+grep { $_outer eq $_ } @_) } @_;
+	my %freqs = map { my $_outer = $_; ($_outer, 0 + grep { $_outer eq $_ } @_) } @_;
 	die "duplicate type spec: " . join(",", @_) if (grep { $_ > 1 } (values %freqs));
 	die "type both signed & unsigned" if ($freqs{signed} && $freqs{unsigned});
 	die "double cant be combined with others" if ($freqs{double} && keys(%freqs) > 1);
+	die "void cant be combined with others" if ($freqs{void} && keys(%freqs) > 1);
 	if ($freqs{char}) {
 		while (my ($word, $count) = each %freqs) {
 			die "char can be combined only with signed/unsigned" if ($count && $word !~ /^char|signed|unsigned$/);
@@ -113,9 +114,9 @@ sub parse_type {
 
 sub parse_storage_class {
 	my $storage_spec = shift;
-	if (!defined $storage_spec)		{ return undef }
-	if ($storage_spec eq 'static')	{ return STOR_Static }
-	if ($storage_spec eq 'extern')	{ return STOR_Extern }
+	if (!defined $storage_spec) { return undef }
+	if ($storage_spec eq 'static') { return STOR_Static }
+	if ($storage_spec eq 'extern') { return STOR_Extern }
 	die "unknown storage specifier: $storage_spec";
 }
 
@@ -146,17 +147,17 @@ sub parse_declarator {
 }
 
 sub parse_params_list {
+	if (my $void_kw = expect_maybe('LEX_Keyword', 'void')) {
+		return [] if (expect_maybe('LEX_Symbol', ')'));
+		unshift(@TOKENS, $void_kw);
+	}
 	my @list;
-	if (expect_maybe('LEX_Keyword', 'void')) {
-		expect('LEX_Symbol', ')');
-	} else {
-		while (1) {
-			my ($type, $storage) = parse_specifiers();
-			die "invalid specifiers for fun param: $type $storage" if (!defined $type || defined $storage);
-			push(@list, Param($type, parse_declarator()));
-			last if expect_maybe('LEX_Symbol', ')');
-			expect('LEX_Symbol', ',');
-		}
+	while (1) {
+		my ($type, $storage) = parse_specifiers();
+		die "invalid specifiers for fun param: $type $storage" if (!defined $type || defined $storage);
+		push(@list, Param($type, parse_declarator()));
+		last if expect_maybe('LEX_Symbol', ')');
+		expect('LEX_Symbol', ',');
 	}
 	return \@list;
 }
@@ -226,16 +227,16 @@ sub parse_block_item {
 
 sub parse_statement {
 	if (expect_maybe('LEX_Keyword', 'return')) {
-		my $ret_val = parse_expr(0);
+		my $ret_val = next_is('LEX_Symbol', ';') ? undef : parse_expr(0);
 		expect('LEX_Symbol', ';');
 		return AST_Return($ret_val);
 	} elsif (expect_maybe('LEX_Symbol', '{')) {
 		return AST_Compound(parse_block());
-	} elsif (expect_maybe('LEX_Symbol', ';')){
+	} elsif (expect_maybe('LEX_Symbol', ';')) {
 		return AST_Null();
 	} elsif (expect_maybe('LEX_Keyword', 'if')) {
 		expect('LEX_Symbol', '(');
-		my $cond = parse_expr(0);	
+		my $cond = parse_expr(0);
 		expect('LEX_Symbol', ')');
 		my $then = parse_statement();
 		my $else = parse_statement() if expect_maybe('LEX_Keyword', 'else');
@@ -265,6 +266,20 @@ sub parse_statement {
 		my $post = parse_opt_expr(')');
 		my $body = parse_statement();
 		return AST_For($init, $cond, $post, $body, 'dummy');
+	} elsif (expect_maybe('LEX_Keyword', 'sizeof')) {
+		if (expect_maybe('LEX_Symbol', '(')) {
+			my ($type, $storage) = parse_specifiers();
+			die "storage specifier in cast" if (defined $storage);
+			if (defined $type) {
+				my $declarator = parse_abstract_declarator();
+				$type = process_abstract_declarator($declarator, $type);
+				expect("LEX_Symbol", ")") && expect('LEX_Symbol', ';');
+				return AST_SizeOfT($type);
+			}
+		}
+		my $expr = parse_expr(0);
+		expect('LEX_Symbol', ';');
+		return AST_SizeOf($expr);
 	} else {
 		my $expr = parse_expr(0);
 		expect('LEX_Symbol', ';');
@@ -329,7 +344,7 @@ sub parse_factor {
 		},
 		"LEX_UIntConstant, LEX_ULongConstant" => sub($val) {
 			die "too large $val" if ($val > MAX_ULONG);
-			return AST_ConstantExpr(C_ConstULong($val), T_ULong) if ($token->is('LEX_ULongConstant')|| $val > MAX_UINT);
+			return AST_ConstantExpr(C_ConstULong($val), T_ULong) if ($token->is('LEX_ULongConstant') || $val > MAX_UINT);
 			return AST_ConstantExpr(C_ConstUInt($val), T_UInt);
 		},
 		LEX_FPConstant => sub($val) {
@@ -441,7 +456,7 @@ sub process_abstract_declarator {
 
 sub parse_identifier {
 	my $token = shift @TOKENS;
-	return $token->is('LEX_Identifier') ? $token->get('name') : die  "$token not identifier";
+	return $token->is('LEX_Identifier') ? $token->get('name') : die "$token not identifier";
 }
 
 sub parse_unop {
@@ -451,7 +466,7 @@ sub parse_unop {
 		'~' => AST_Complement(),
 		'!' => AST_Not(),
 	};
-	return $map->{$op} // die "unknown unop $op"; 
+	return $map->{$op} // die "unknown unop $op";
 }
 
 sub parse_binop {
@@ -466,9 +481,9 @@ sub parse_binop {
 		'||' => AST_Or,
 		'==' => AST_Equal,
 		'!=' => AST_NotEqual,
-		'<'  => AST_LessThan,
+		'<' => AST_LessThan,
 		'<=' => AST_LessOrEqual,
-		'>'  => AST_GreaterThan,
+		'>' => AST_GreaterThan,
 		'>=' => AST_GreaterOrEqual,
 	};
 	return $map->{$op} // die "unknown binop $op";
@@ -481,9 +496,9 @@ sub get_precedence {
 	return 35 if $op =~ /<=|>=|<|>/;
 	return 30 if $op =~ /==|!=/;
 	return 10 if $op eq '&&';
-	return 5  if $op eq '||';
-	return 3  if $op eq '?';
-	return 1  if $op eq '=';
+	return 5 if $op eq '||';
+	return 3 if $op eq '?';
+	return 1 if $op eq '=';
 	die "no precedence defined for $op";
 }
 
@@ -493,12 +508,12 @@ sub peek {
 
 sub next_is {
 	my ($tag, $val) = @_;
-	return _expect(tag => $tag, possible_vals => [$val], fatal => 0, consume => 0);
+	return _expect(tag => $tag, possible_vals => [ $val ], fatal => 0, consume => 0);
 }
 
 sub expect {
 	my ($tag, $val) = @_;
-	return _expect(tag => $tag, possible_vals => [$val], fatal => 1, consume => 1);
+	return _expect(tag => $tag, possible_vals => [ $val ], fatal => 1, consume => 1);
 }
 
 sub expect_maybe {

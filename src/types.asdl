@@ -28,7 +28,7 @@ AST_BlockItem =
 	| AST_BlockDeclaration(AST_Declaration decl)
 AST_Statement =
 	AST_Null
-	| AST_Return(AST_Expression expr)
+	| AST_Return(AST_Expression? expr)
 	| AST_ExprStatement(AST_Expression expr)
 	| AST_If(AST_Expression cond, AST_Statement then, AST_Statement? else)
 	| AST_Compound(AST_Block block)
@@ -53,6 +53,8 @@ AST_Expression =
 	 | AST_AddrOf(AST_Expression expr, T_Type type)
 	 | AST_Subscript(AST_Expression expr1, AST_Expression expr2, T_Type type)
 	 | AST_String(string val, T_Type type)
+	 | AST_SizeOf(AST_Expression expr)
+	 | AST_SizeOfT(T_Type type)
 AST_UnaryOperator =
 	AST_Complement | AST_Negate | AST_Not
 AST_BinaryOperator =
@@ -161,6 +163,7 @@ T_Type =
 	| T_FunType(T_Type* param_types, T_Type ret_type)
 	| T_Pointer(T_Type to_type)
 	| T_Array(T_Type elem_type, int size)
+	| T_Void
 	| T_DummyType
 C_Constant =
 	C_ConstInt(int val)

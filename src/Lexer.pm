@@ -8,7 +8,7 @@ use Utils qw(unescape_str);
 
 my $sym_re = qr/^([ {} () [\] , ; ])/x;
 my $op_re = qr/^(!=|==|<=|>=|<|>|=|!|\|\||&&|--|-|\+|\*|\/|%|~|\?|:|&)/;
-my $kw_re = qr/^(int|long|double|signed|unsigned|void|return|if|else|do|while|for|break|continue|static|extern|char)\b/;
+my $kw_re = qr/^(int|long|double|signed|unsigned|void|return|if|else|do|while|for|break|continue|static|extern|char|sizeof)\b/;
 my $long_const_re = qr/^(([0-9]+)[lL])[^\w.]/;
 my $ulong_const_re = qr/^(([0-9]+)(lu|ul))[^\w.]/i;
 my $int_const_re = qr/^([0-9]+)[^\w.]/;
