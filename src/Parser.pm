@@ -266,20 +266,6 @@ sub parse_statement {
 		my $post = parse_opt_expr(')');
 		my $body = parse_statement();
 		return AST_For($init, $cond, $post, $body, 'dummy');
-	} elsif (expect_maybe('LEX_Keyword', 'sizeof')) {
-		if (expect_maybe('LEX_Symbol', '(')) {
-			my ($type, $storage) = parse_specifiers();
-			die "storage specifier in cast" if (defined $storage);
-			if (defined $type) {
-				my $declarator = parse_abstract_declarator();
-				$type = process_abstract_declarator($declarator, $type);
-				expect("LEX_Symbol", ")") && expect('LEX_Symbol', ';');
-				return AST_SizeOfT($type);
-			}
-		}
-		my $expr = parse_expr(0);
-		expect('LEX_Symbol', ';');
-		return AST_SizeOf($expr);
 	} else {
 		my $expr = parse_expr(0);
 		expect('LEX_Symbol', ';');
@@ -403,6 +389,21 @@ sub parse_factor {
 			} else {
 				die "cant parse factor: symbol '$char'";
 			}
+		},
+		LEX_Keyword => sub($word) {
+			if ($word eq 'sizeof') {
+				if (expect_maybe('LEX_Symbol', '(')) {
+					my ($type, $storage) = parse_specifiers();
+					die "storage specifier in cast" if (defined $storage);
+					my $result = defined($type)
+						? AST_SizeOfT(process_abstract_declarator(parse_abstract_declarator(), $type))
+						: AST_SizeOf(parse_expr(0));
+					expect("LEX_Symbol", ")");
+					return $result;
+				}
+				return AST_SizeOf(parse_expr(0));
+			}
+			die "cant parse $token as factor";
 		},
 		default => sub {
 			die "cant parse $token as factor";
@@ -531,6 +532,7 @@ sub _expect {
 		}
 	}
 	if ($args{fatal}) {
+		say "todo pryc";
 		die(sprintf("syntax err -> expected: %s (%s), but found: %s",
 			$args{tag}, join(',', $args{possible_vals}->@*), $next));
 	}
