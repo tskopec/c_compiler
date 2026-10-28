@@ -53,8 +53,8 @@ AST_Expression =
 	 | AST_AddrOf(AST_Expression expr, T_Type type)
 	 | AST_Subscript(AST_Expression expr1, AST_Expression expr2, T_Type type)
 	 | AST_String(string val, T_Type type)
-	 | AST_SizeOf(AST_Expression expr)
-	 | AST_SizeOfT(T_Type type)
+	 | AST_SizeOf(AST_Expression expr, T_Type type)
+	 | AST_SizeOfT(T_Type of_type, T_Type type)
 AST_UnaryOperator =
 	AST_Complement | AST_Negate | AST_Not
 AST_BinaryOperator =

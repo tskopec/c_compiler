@@ -122,7 +122,7 @@ sub resolve_statement_ids {
 	my ($statement, $ids_map) = @_;
 	$statement->match({
 		"AST_Return, AST_ExprStatement" => sub($e) {
-			resolve_expr_ids($e, $ids_map);
+			resolve_expr_ids($e, $ids_map) if (defined $e);
 		},
 		AST_Null => sub() { ; },
 		AST_If => sub($cond, $then, $else) {
@@ -205,6 +205,10 @@ sub resolve_expr_ids {
 			resolve_expr_ids($_, $ids_map) for ($e1, $e2);
 		},
 		AST_String => sub($val, $type) { ; },
+		AST_SizeOf => sub($e, $type) {
+			resolve_expr_ids($e, $ids_map);
+ 		},
+		AST_SizeOfT => sub($of_type, $type) { ; },
 		default => sub {
 			die "unknown expression $expr"
 		}
@@ -461,8 +465,13 @@ sub check_type {
 						   'type', $common_type);
 			},
 			AST_Return => sub($expr) {
-				$expr = check_type_and_decay($expr);
-				$node->set('expr', convert_as_if_by_assignment($expr, $current_fun_ret_type));
+				if (defined $expr) {
+					die "void fun return val" if ($current_fun_ret_type->is('T_Void'));
+					$expr = check_type_and_decay($expr);
+					$node->set('expr', convert_as_if_by_assignment($expr, $current_fun_ret_type));
+				} else {
+					die "missing return expr" unless ($current_fun_ret_type->is('T_Void'));
+				}
 			},
 			AST_Dereference => sub($expr, $dummy_type) {
 				$expr = check_type_and_decay($expr);
@@ -489,6 +498,12 @@ sub check_type {
 					$node->set('expr1', $e1, 'expr2', $e2, 'type', $t2->get('to_type'));
 				} else {
 					die "bad operands for subscript: \n\t$e1\n\t$e2";}
+			},
+			AST_SizeOf => sub($expr, $dummy_type) {
+				# TODO
+			},
+			AST_SizeOfT => sub($of_type, $dummy_type) {
+				# TODO
 			},
 			AST_String => sub($val, $type) { ; },
 			default => sub {

@@ -105,6 +105,7 @@ sub parse_type {
 			   	: $freqs{unsigned} ? T_UChar
 				: T_Char;
 	}
+	return T_Void if ($freqs{void});
 	return T_Double if ($freqs{double});
 	return T_ULong if ($freqs{long} && $freqs{unsigned});
 	return T_UInt if ($freqs{unsigned});
@@ -396,12 +397,12 @@ sub parse_factor {
 					my ($type, $storage) = parse_specifiers();
 					die "storage specifier in cast" if (defined $storage);
 					my $result = defined($type)
-						? AST_SizeOfT(process_abstract_declarator(parse_abstract_declarator(), $type))
-						: AST_SizeOf(parse_expr(0));
+						? AST_SizeOfT(process_abstract_declarator(parse_abstract_declarator(), $type), T_DummyType)
+						: AST_SizeOf(parse_expr(0), T_DummyType);
 					expect("LEX_Symbol", ")");
 					return $result;
 				}
-				return AST_SizeOf(parse_expr(0));
+				return AST_SizeOf(parse_expr(0), T_DummyType);
 			}
 			die "cant parse $token as factor";
 		},

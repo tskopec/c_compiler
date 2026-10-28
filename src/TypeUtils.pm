@@ -55,6 +55,8 @@ sub get_common_pointer_type {
 	return $t1 if ($t1 eq $t2);
 	return T_Pointer($t1) if (is_null_pointer_const($_[0]));
 	return T_Pointer($t2) if (is_null_pointer_const($_[1]));
+	return T_Pointer(T_Void) if ($t1->is('T_Pointer') && $t2->is('T_Pointer')
+								&& grep { $_->get('to_type')->is('T_Void') } ($t1, $t2));
 	die "incompatible types: " . join(" - ", @_);
 }
 
@@ -116,9 +118,12 @@ sub convert_type {
 
 sub convert_as_if_by_assignment {
 	my ($expr, $target_type) = @_;
-	return $expr if ($expr->get('type') eq $target_type);
-	if ((is_arithmetic($expr->get('type')) && is_arithmetic($target_type))
-		|| (is_null_pointer_const($expr) && $target_type->is('T_Pointer'))) {
+	my $expr_type = $expr->get('type');
+	return $expr if ($expr_type eq $target_type);
+	if ((is_arithmetic($expr_type) && is_arithmetic($target_type))
+		|| (is_null_pointer_const($expr) && $target_type->is('T_Pointer'))
+		|| ($expr_type->is('T_Pointer') && $target_type->is('T_Pointer')
+			&& grep { $_->get('to_type')->is('T_Void') } ($expr_type, $target_type))) {
 		return convert_type($expr, $target_type);
 	}
 	die "cant convert $expr to $target_type";
