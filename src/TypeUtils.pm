@@ -7,18 +7,18 @@ use ADT::AlgebraicTypes qw(:AST :INI :SI :T :C is_ADT);
 
 use base 'Exporter';
 our @EXPORT_OK = qw(MAX_ULONG MAX_LONG MAX_UINT MAX_INT get_type_of_TAC get_common_type get_common_pointer_type
-	get_int_type_rank is_signed is_arithmetic is_integer is_character size_of get_base_type convert_type convert_as_if_by_assignment types_equal create_const
-	flatten_init get_static_init);
+	get_int_type_rank is_signed is_arithmetic is_integer is_character is_scalar is_complete is_pointer_to_complete size_of get_base_type
+	convert_type convert_as_if_by_assignment types_equal create_const flatten_init get_static_init validate_type_specifier);
 
 use constant MAX_ULONG => 2 ** 64;
 use constant MAX_LONG => 2 ** 63 - 1;
 use constant MAX_UINT => 2 ** 32;
 use constant MAX_INT => 2 ** 31 - 1;
 
-my $signed_types = ['T_Int', 'T_Long', 'T_Double', 'T_Char', 'T_SChar'];
-my $arithmetic_types = ['T_Int', 'T_UInt', 'T_Long', 'T_ULong', 'T_Char', 'T_SChar', 'T_UChar', 'T_Double'];
-my $integer_types = ['T_Int', 'T_UInt', 'T_Long', 'T_ULong', 'T_Char', 'T_SChar', 'T_UChar'];
-my $character_types = ['T_Char', 'T_SChar', 'T_UChar'];
+my $signed_types = [ 'T_Int', 'T_Long', 'T_Double', 'T_Char', 'T_SChar' ];
+my $arithmetic_types = [ 'T_Int', 'T_UInt', 'T_Long', 'T_ULong', 'T_Char', 'T_SChar', 'T_UChar', 'T_Double' ];
+my $integer_types = [ 'T_Int', 'T_UInt', 'T_Long', 'T_ULong', 'T_Char', 'T_SChar', 'T_UChar' ];
+my $character_types = [ 'T_Char', 'T_SChar', 'T_UChar' ];
 
 sub is_signed {
 	return is_one_of(\@_, $signed_types);
@@ -34,6 +34,38 @@ sub is_integer {
 
 sub is_character {
 	return is_one_of(\@_, $character_types);
+}
+
+sub is_scalar {
+	return 0 == grep { $_->is('T_FunType', 'T_Void', 'T_Array') } @_;
+}
+
+sub is_complete {
+	return !shift()->is('T_Void');
+}
+
+sub is_pointer_to_complete {
+	return $_[0]->is('T_Pointer') && is_complete($_[0]->get('to_type'));
+}
+
+sub validate_type_specifier {
+	shift()->match({
+		T_Array => sub($elem_type, $size) {
+			die "array of incomplete type" unless is_complete($elem_type);
+			validate_type_specifier($elem_type);
+		},
+		T_Pointer => sub($to_type) {
+			validate_type_specifier($to_type);
+		},
+		T_FunType => sub($param_types, $ret_type) {
+			for my $p_type (@$param_types) {
+				die "void param" if $p_type->is('T_Void');
+				validate_type_specifier($p_type);
+			}
+			validate_type_specifier($ret_type);
+		},
+		default => sub { ; }
+	});
 }
 
 sub get_common_type {
@@ -55,9 +87,9 @@ sub get_common_pointer_type {
 	return $t1 if ($t1 eq $t2);
 	return T_Pointer($t1) if (is_null_pointer_const($_[0]));
 	return T_Pointer($t2) if (is_null_pointer_const($_[1]));
-	return T_Pointer(T_Void) if ($t1->is('T_Pointer') && $t2->is('T_Pointer')
-								&& grep { $_->get('to_type')->is('T_Void') } ($t1, $t2));
-	die "incompatible types: " . join(" - ", @_);
+	return T_Pointer(T_Void) if (($t1->is('T_Pointer') && $t1->get('to_type')->is('T_Void') && $t2->is('T_Pointer'))
+								|| ($t2->is('T_Pointer') && $t2->get('to_type')->is('T_Void') && $t1->is('T_Pointer')));
+	die "incompatible types: \n\t" . join("\n\t", @_);
 }
 
 sub is_null_pointer_const {

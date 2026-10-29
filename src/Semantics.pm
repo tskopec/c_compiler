@@ -5,7 +5,7 @@ use feature qw(say state isa signatures);
 
 use ADT::AlgebraicTypes qw(:AST :C :ATT :INI :STOR :T is_ADT);
 use TypeUtils qw(/^MAX_/ get_common_type get_common_pointer_type convert_type convert_as_if_by_assignment types_equal
-	create_const get_static_init flatten_init is_arithmetic is_integer is_character);
+	create_const get_static_init flatten_init is_arithmetic is_integer is_character is_scalar is_complete is_pointer_to_complete validate_type_specifier);
 
 our %symbol_table;
 
@@ -207,7 +207,7 @@ sub resolve_expr_ids {
 		AST_String => sub($val, $type) { ; },
 		AST_SizeOf => sub($e, $type) {
 			resolve_expr_ids($e, $ids_map);
- 		},
+		},
 		AST_SizeOfT => sub($of_type, $type) { ; },
 		default => sub {
 			die "unknown expression $expr"
@@ -251,6 +251,7 @@ sub check_type {
 				my $has_body = defined($body);
 				my $already_defined = 0;
 				my $global = not is_ADT($storage, 'STOR_Static');
+				validate_type_specifier($fun_type);
 				my @decayed_param_types = map { $_->is('T_Array') ? T_Pointer($_->get('elem_type')) : $_ } $fun_type->get('param_types')->@*;
 				$fun_type->set('param_types', \@decayed_param_types);
 
@@ -276,6 +277,8 @@ sub check_type {
 				}
 			},
 			AST_VarDeclaration => sub($name, $init, $type, $storage) {
+				validate_type_specifier($type);
+				die "void var" if $type->is('T_Void');
 	###### file scope var
 				if (is_ADT($parent_node, 'AST_Program')) {
 					if (defined $init) {
@@ -350,6 +353,11 @@ sub check_type {
 				}
 				$node->set('type', $ret_type);
 			},
+			'AST_If, AST_For, AST_While, AST_DoWhile' => sub {
+				check_type($_, $node) for $node->values_in_order();
+				my $cond = $node->get('cond');
+				die "cond expr must be scalar" if (defined($cond) && !is_scalar($cond->get('type')));
+			},
 			AST_Var => sub($name, $dummy_type) {
 				my $type = get_symbol_attr($name, 'type');
 				die "is not var: $name" if ($type->is('T_FunType'));
@@ -358,16 +366,23 @@ sub check_type {
 			AST_ConstantExpr => sub($const, $type) { ; },
 			AST_Cast => sub($expr, $type) {
 				die "cant cast $expr to array: $type" if ($type->is('T_Array'));
+				validate_type_specifier($type);
 				$expr = check_type_and_decay($expr);
-				if (($expr->get('type')->is('T_Double') && $type->is('T_Pointer'))
-					|| ($expr->get('type')->is('T_Pointer') && $type->is('T_Double'))) {
+				my $expr_type = $expr->get('type');
+				if (($expr_type->is('T_Double') && $type->is('T_Pointer'))
+					|| ($expr_type->is('T_Pointer') && $type->is('T_Double'))) {
 					die "cant convert $expr to $type";
 				}
-				$node->set('expr', $expr, 'type', $type);
+				if ($type->is('T_Void') || (is_scalar($type) && is_scalar($expr_type))) {
+					$node->set('expr', $expr, 'type', $type);
+				} else {
+					die "bad cast $expr_type -> $type";
+				}
 			},
 			AST_Unary => sub($op, $expr, $dummy_type) {
 				$expr = check_type_and_decay($expr);
 				my $expr_type = $expr->get('type');
+				die "must be scalar expr" unless (is_scalar($expr_type));
 				$op->match({
 					AST_Complement => sub {
 						die "cant complement $expr_type" if ($expr_type->is('T_Double', 'T_Pointer'));
@@ -392,16 +407,17 @@ sub check_type {
 			AST_Binary => sub($op, $e1, $e2, $dummy_type) {
 				($e1, $e2) = map { check_type_and_decay($_) } ($e1, $e2);
 				my ($t1, $t2) = map { $_->get('type') } ($e1, $e2);
+				die "must be scalar" unless (is_scalar($t1, $t2));
 				my $is_pointer_op = $t1->is('T_Pointer') || $t2->is('T_Pointer');
-				die "cant $op pointer" if ($is_pointer_op && $op->is('AST_Multiply', 'AST_Divide', 'AST_Remainder'));
 				$op->match({
 					AST_Add => sub {
 						if ($is_pointer_op == 0) {
+							die "cant add $e1 $e2" unless (is_arithmetic($t1, $t2));
 							my $common_type = get_common_type($t1, $t2);
 							$node->set('expr1', convert_type($e1, $common_type), 'expr2', convert_type($e2, $common_type), 'type', $common_type);
-						} elsif ($t1->is('T_Pointer') && is_integer($t2)) {
+						} elsif (is_pointer_to_complete($t1) && is_integer($t2)) {
 							$node->set('expr1', $e1, 'expr2', convert_type($e2, T_Long), 'type', $t1);
-						} elsif (is_integer($t1) && $t2->is('T_Pointer')) {
+						} elsif (is_integer($t1) && is_pointer_to_complete($t2)) {
 							$node->set('expr1', convert_type($e1, T_Long), 'expr2', $e2, 'type', $t2);
 						} else {
 							die "cant add $e1 and $e2";
@@ -409,17 +425,19 @@ sub check_type {
 					},
 					AST_Subtract => sub {
 						if ($is_pointer_op == 0) {
+							die "cant sub $e1 $e2" unless (is_arithmetic($t1, $t2));
 							my $common_type = get_common_type($t1, $t2);
 							$node->set('expr1', convert_type($e1, $common_type), 'expr2', convert_type($e2, $common_type), 'type', $common_type);
-						} elsif ($t1->is('T_Pointer') && is_integer($t2)) {
+						} elsif (is_pointer_to_complete($t1) && is_integer($t2)) {
 							$node->set('expr1', $e1, 'expr2', convert_type($e2, T_Long), 'type', $t1);
-						} elsif ($t1->is('T_Pointer') && $t1 eq $t2) {
+						} elsif (is_pointer_to_complete($t1) && $t1 eq $t2) {
 							$node->set('expr1', $e1, 'expr2', $e2, 'type', T_Long);
 						} else {
 							die "cant subtract $e1 and $e2";
 						}
 					},
 					'AST_Multiply, AST_Divide, AST_Remainder' => sub {
+						die "cant $op $e1 $e2" unless (is_arithmetic($t1, $t2));
 						my $common_type = get_common_type($t1, $t2);
 						die "cant apply '%' to double" if ($common_type->is('T_Double') && $op->is('AST_Remainder'));
 						$node->set('expr1', convert_type($e1, $common_type), 'expr2', convert_type($e2, $common_type), 'type', $common_type);
@@ -428,7 +446,11 @@ sub check_type {
 						$node->set('expr1', $e1, 'expr2', $e2, 'type', T_Int);
 					},
 					'AST_Equal, AST_NotEqual' => sub {
-						my $common_type = $is_pointer_op ? get_common_pointer_type($e1, $e2) : get_common_type($t1, $t2);
+						my $common_type = $is_pointer_op
+							? get_common_pointer_type($e1, $e2)
+							: is_arithmetic($t1, $t2)
+								? get_common_type($t1, $t2)
+								: die "bad types $t1 $t2";
 						$node->set('expr1', convert_type($e1, $common_type), 'expr2', convert_type($e2, $common_type), 'type', T_Int);
 					},
 					'AST_LessThan, AST_LessOrEqual, AST_GreaterThan, AST_GreaterOrEqual' => sub {
@@ -456,6 +478,7 @@ sub check_type {
 			},
 			AST_Conditional => sub($cond, $then, $else, $dummy_type) {
 				($cond, $then, $else) = map { check_type_and_decay($_) } ($cond, $then, $else);
+				die "must be scalar" unless (is_scalar($cond->get('type')));
 				my $common_type = $then->get('type')->is('T_Pointer') || $else->get('type')->is('T_Pointer')
 					? get_common_pointer_type($then, $else)
 					: get_common_type($then->get('type'), $else->get('type'));
@@ -477,6 +500,7 @@ sub check_type {
 				$expr = check_type_and_decay($expr);
 				$expr->get('type')->match({
 					T_Pointer => sub($to_type) {
+						die "cant dereference ptr to void" if $to_type->is('T_Void');
 						$node->set('expr', $expr, 'type', $to_type);
 					},
 					default => sub { die "cant dereference $expr" }
@@ -490,20 +514,25 @@ sub check_type {
 			AST_Subscript => sub($expr1, $expr2, $dummy_type) {
 				my ($e1, $e2) = map { check_type_and_decay($_) } ($expr1, $expr2);
 				my ($t1, $t2) = map { $_->get('type') } ($e1, $e2);
-				if ($t1->is('T_Pointer') && is_integer($t2)) {
+				if (is_pointer_to_complete($t1) && is_integer($t2)) {
 					$e2 = convert_type($e2, T_Long);
 					$node->set('expr1', $e1, 'expr2', $e2, 'type', $t1->get('to_type'));
-				} elsif (is_integer($t1) && $t2->is('T_Pointer')) {
+				} elsif (is_integer($t1) && is_pointer_to_complete($t2)) {
 					$e1 = convert_type($e1, T_Long);
 					$node->set('expr1', $e1, 'expr2', $e2, 'type', $t2->get('to_type'));
 				} else {
-					die "bad operands for subscript: \n\t$e1\n\t$e2";}
+					die "bad operands for subscript: \n\t$e1\n\t$e2";
+				}
 			},
 			AST_SizeOf => sub($expr, $dummy_type) {
-				# TODO
+				check_type($expr);
+				die "size of incomplete type" unless is_complete($expr->get('type'));
+				$node->set('type', T_ULong);
 			},
-			AST_SizeOfT => sub($of_type, $dummy_type) {
-				# TODO
+			AST_SizeOfT => sub($of_type, $type) {
+				validate_type_specifier($type);
+				die "size of incomplete type" unless is_complete($type);
+				$node->set('type', T_ULong);
 			},
 			AST_String => sub($val, $type) { ; },
 			default => sub {
@@ -574,7 +603,7 @@ sub zero_initializer {
 	my $type = shift;
 	return $type->match({
 		T_Array => sub($elem_type, $size) {
-			AST_CompoundInit([ map { zero_initializer($elem_type) } (1..$size) ], $type);
+			AST_CompoundInit([ map { zero_initializer($elem_type) } (1 .. $size) ], $type);
 		},
 		default => sub { AST_SingleInit(AST_ConstantExpr(create_const($type, 0), $type), $type) }
 	});

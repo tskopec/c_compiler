@@ -24,6 +24,8 @@ BEGIN {
 	ADT::AlgebraicTypes::introduce_types('Parser', @asdl_lines);
 }
 
+use constant MAX_PRECEDENCE => 100;
+
 my @TOKENS;
 
 sub parse {
@@ -380,7 +382,7 @@ sub parse_factor {
 					my $declarator = parse_abstract_declarator();
 					$type = process_abstract_declarator($declarator, $type);
 					expect("LEX_Symbol", ")");
-					my $expr = parse_expr(100);
+					my $expr = parse_expr(MAX_PRECEDENCE);
 					return AST_Cast($expr, $type);
 				} else {
 					my $inner = parse_expr(0);
@@ -397,12 +399,12 @@ sub parse_factor {
 					my ($type, $storage) = parse_specifiers();
 					die "storage specifier in cast" if (defined $storage);
 					my $result = defined($type)
-						? AST_SizeOfT(process_abstract_declarator(parse_abstract_declarator(), $type), T_DummyType)
+						? AST_SizeOfT(process_abstract_declarator(parse_abstract_declarator(), $type), $type)
 						: AST_SizeOf(parse_expr(0), T_DummyType);
 					expect("LEX_Symbol", ")");
 					return $result;
 				}
-				return AST_SizeOf(parse_expr(0), T_DummyType);
+				return AST_SizeOf(parse_expr(MAX_PRECEDENCE), T_DummyType);
 			}
 			die "cant parse $token as factor";
 		},
@@ -533,7 +535,6 @@ sub _expect {
 		}
 	}
 	if ($args{fatal}) {
-		say "todo pryc";
 		die(sprintf("syntax err -> expected: %s (%s), but found: %s",
 			$args{tag}, join(',', $args{possible_vals}->@*), $next));
 	}
