@@ -110,9 +110,10 @@ sub translate_to_ASM {
 			return ASM_Function($ident, $global, \@asm_instructions);
 		},
 		TAC_Return => sub($value) {
-			return (ASM_Mov(asm_type_of($value),
-							translate_to_ASM($value),
-							(get_type_of_TAC($value)->is('T_Double') ? $xmm0 : $ax)),
+			return (defined($value) ? ASM_Mov(asm_type_of($value),
+											translate_to_ASM($value),
+											(get_type_of_TAC($value)->is('T_Double') ? $xmm0 : $ax))
+									: (),
 					ASM_Ret());
 		},
 		TAC_Unary => sub($op, $src, $dst) {
@@ -218,8 +219,10 @@ sub translate_to_ASM {
 			if ($remove_bytes) {
 				push(@instructions, deallocate_stack($remove_bytes));
 			}
-			my $ret_type = asm_type_of($dst);
-			push(@instructions, ASM_Mov($ret_type, ($ret_type->is('ASM_Double') ? $xmm0 : $ax), translate_to_ASM($dst)));
+			if (defined($dst)) {
+				my $ret_type = asm_type_of($dst);
+				push(@instructions, ASM_Mov($ret_type, ($ret_type->is('ASM_Double') ? $xmm0 : $ax), translate_to_ASM($dst)));
+			}
 			return @instructions;
 		},
 		TAC_Constant => sub($const) {

@@ -12,7 +12,7 @@ use TypeUtils qw(get_int_type_rank is_signed is_integer size_of get_static_init 
 BEGIN { # Local data types
 	my @asdl_lines = split /\n/, q{
 		# expression result that hasn't been lvalue converted
-		ExpResult = PlainOperand(TAC_Value val) | DereferencedPointer(TAC_Value val)
+		ExpResult = PlainOperand(TAC_Value? val) | DereferencedPointer(TAC_Value val)
 	};
 	ADT::AlgebraicTypes::introduce_types('TAC', @asdl_lines);
 }
@@ -89,8 +89,8 @@ sub emit_TAC {
 		AST_Block => sub($items) {
 			emit_TAC($_->value_by_index(0), $instructions) for @$items;
 		},
-		AST_Return => sub($exp) {
-			push(@$instructions, TAC_Return(emit_TAC_and_convert($exp, $instructions)));
+		AST_Return => sub($expr) {
+			push(@$instructions, TAC_Return(defined($expr) ? emit_TAC_and_convert($expr, $instructions) : undef));
 		},
 		AST_Null => sub() { ; },
 		AST_If => sub($cond, $then, $else) {
@@ -166,6 +166,7 @@ sub emit_TAC {
 		AST_Cast => sub($expr, $type) {
 			my $expr_type = $expr->get('type');
 			my $res = emit_TAC_and_convert($expr, $instructions);
+			return PlainOperand(TAC_Variable("dummy")) if ($type->is('T_Void'));
 			return PlainOperand($res) if ($type->same_type_as($expr_type));
 
 			my $dst = make_TAC_var($type);
@@ -275,22 +276,24 @@ sub emit_TAC {
 			});
 		},
 		AST_Conditional => sub($cond, $then, $else, $type) {
-			my $res = make_TAC_var($type);
+			my $is_void = $type->is('T_Void');
+			my $res = $is_void ? TAC_Variable("dummy") : make_TAC_var($type);
 			my ($e2_label, $end_label) = labels(qw(e2 end));
 			my $cond_res = emit_TAC_and_convert($cond, $instructions);
 			push @$instructions, TAC_JumpIfZero($cond_res, $e2_label);
 			my $e1_res = emit_TAC_and_convert($then, $instructions);
-			push @$instructions, (TAC_Copy($e1_res, $res),
+			push @$instructions, (
+				($is_void ? () : TAC_Copy($e1_res, $res)),
 				TAC_Jump($end_label),
 				TAC_Label($e2_label));
 			my $e2_res = emit_TAC_and_convert($else, $instructions);
 			push @$instructions, (
-				TAC_Copy($e2_res, $res),
+				($is_void ? () : TAC_Copy($e2_res, $res)),
 				TAC_Label($end_label));
 			return PlainOperand($res);
 		},
 		AST_FunctionCall => sub($name, $args, $type) {
-			my $dst = make_TAC_var($type);
+			my $dst = $type->is('T_Void') ? undef : make_TAC_var($type);
 			my $arg_vals = [ map { emit_TAC_and_convert($_, $instructions) } @$args ];
 			push(@$instructions, (TAC_FunCall($name, $arg_vals, $dst)));
 			return PlainOperand($dst);
@@ -331,6 +334,14 @@ sub emit_TAC {
 				attrs => ATT_ConstantAttrs(SI_StringInit($val, 1))
 			};
 			return PlainOperand(TAC_Variable($name));
+		},
+		AST_SizeOf => sub($expr, $type) {
+			my $size = size_of($expr->get('type'));
+			return PlainOperand(TAC_Constant(C_ConstULong($size)));
+		},
+		AST_SizeOfT => sub($of_type, $type) {
+			my $size = size_of($of_type);
+			return PlainOperand(TAC_Constant(C_ConstULong($size)));
 		},
 		default => sub {
 			die "unknown AST node: $node";

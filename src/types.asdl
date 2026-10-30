@@ -68,7 +68,7 @@ TAC_TopLevelDeclaration =
 	| TAC_Function(string identifier, bool global, string* params, TAC_Instruction* instructions)
 	| TAC_StaticConstant(string identifier, T_Type type, SI_StaticInit init)
 TAC_Instruction =
-	TAC_Return(TAC_Value value)
+	TAC_Return(TAC_Value? value)
 	| TAC_SignExtend(TAC_Value src, TAC_Value dst)
 	| TAC_Truncate(TAC_Value src, TAC_Value dst)
 	| TAC_ZeroExtend(TAC_Value src, TAC_Value dst)
@@ -83,7 +83,7 @@ TAC_Instruction =
 	| TAC_JumpIfZero(TAC_Value cond, string target)
 	| TAC_JumpIfNotZero(TAC_Value cond, string target)
 	| TAC_Label(string ident)
-	| TAC_FunCall(string name, TAC_Value* params, TAC_Value dst)
+	| TAC_FunCall(string name, TAC_Value* params, TAC_Value? dst)
 	| TAC_GetAddress(TAC_Value src, TAC_Value dst)
 	| TAC_Load(TAC_Value src_ptr, TAC_Value dst)
 	| TAC_Store(TAC_Value src, TAC_Value dst_ptr)
