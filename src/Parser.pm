@@ -77,10 +77,13 @@ sub parse_initializer {
 }
 
 sub parse_specifiers {
-	my (@storage_specs, @type_specs);
+	my (@storage_specs, @type_specs, $struct_tag);
 	my $kw;
 	while (1) {
 		if ($kw = expect_maybe('LEX_Keyword', 'int', 'long', 'double', 'signed', 'unsigned', 'char', 'void')) {
+			push @type_specs, $kw->get('word');
+		} elsif ($kw = expect_maybe('LEX_Keyword', 'struct')) {
+			$struct_tag = expect('LEX_Identifier')->get('name');
 			push @type_specs, $kw->get('word');
 		} elsif ($kw = expect_maybe('LEX_Keyword', 'static', 'extern')) {
 			push @storage_specs, $kw->get('word');
@@ -90,15 +93,18 @@ sub parse_specifiers {
 	if (@type_specs == 0) {
 		return (@storage_specs == 0) ? () : die "missing type specifier";
 	}
-	return (parse_type(@type_specs), parse_storage_class(@storage_specs));
+	return (parse_type(\@type_specs, $struct_tag), parse_storage_class(@storage_specs));
 }
 
 sub parse_type {
-	my %freqs = map { my $_outer = $_; ($_outer, 0 + grep { $_outer eq $_ } @_) } @_;
+	my ($specifiers, $struct_tag) = @_;
+	my %freqs;
+	$freqs{$_}++ for ($specifiers->@*);
 	die "duplicate type spec: " . join(",", @_) if (grep { $_ > 1 } (values %freqs));
 	die "type both signed & unsigned" if ($freqs{signed} && $freqs{unsigned});
-	die "double cant be combined with others" if ($freqs{double} && keys(%freqs) > 1);
-	die "void cant be combined with others" if ($freqs{void} && keys(%freqs) > 1);
+	for (qw(double void struct)) {
+		die "$_ cant be combined with others" if ($freqs{$_} && keys(%freqs) > 1);
+	}
 	if ($freqs{char}) {
 		while (my ($word, $count) = each %freqs) {
 			die "char can be combined only with signed/unsigned" if ($count && $word !~ /^char|signed|unsigned$/);
@@ -107,6 +113,7 @@ sub parse_type {
 			   	: $freqs{unsigned} ? T_UChar
 				: T_Char;
 	}
+	return T_Struct($struct_tag) if ($freqs{struct});
 	return T_Void if ($freqs{void});
 	return T_Double if ($freqs{double});
 	return T_ULong if ($freqs{long} && $freqs{unsigned});

@@ -18,6 +18,8 @@ AST_Program =
 AST_Declaration =
 	AST_VarDeclaration(string name, AST_Initializer? initializer, T_Type type, STOR_StorageClass? storage)
 	| AST_FunDeclaration(string name, string* params, AST_Block? body, T_Type type, STOR_StorageClass? storage)
+	| AST_StructDeclaration(string tag, AST_Member* members)
+AST_Member = AST_Member (string name, T_Type type)
 AST_Initializer =
     AST_SingleInit(AST_Expression expr, T_Type type)
     | AST_CompoundInit(AST_Initializer* inits, T_Type type)
@@ -55,6 +57,8 @@ AST_Expression =
 	 | AST_String(string val, T_Type type)
 	 | AST_SizeOf(AST_Expression expr, T_Type type)
 	 | AST_SizeOfT(T_Type of_type, T_Type type)
+	 | AST_Dot(AST_expression structure, string member, T_Type type)
+	 | AST_Arrow(AST_Expression pointer, string member, T_Type type)
 AST_UnaryOperator =
 	AST_Complement | AST_Negate | AST_Not
 AST_BinaryOperator =
@@ -163,6 +167,7 @@ T_Type =
 	| T_FunType(T_Type* param_types, T_Type ret_type)
 	| T_Pointer(T_Type to_type)
 	| T_Array(T_Type elem_type, int size)
+	| T_Struct(string tag)
 	| T_Void
 	| T_DummyType
 C_Constant =

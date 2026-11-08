@@ -7,16 +7,16 @@ use ADT::AlgebraicTypes qw(:LEX);
 use Utils qw(unescape_str);
 
 my $sym_re = qr/^([ {} () [\] , ; ])/x;
-my $op_re = qr/^(!=|==|<=|>=|<|>|=|!|\|\||&&|--|-|\+|\*|\/|%|~|\?|:|&)/;
-my $kw_re = qr/^(int|long|double|signed|unsigned|void|return|if|else|do|while|for|break|continue|static|extern|char|sizeof)\b/;
-my $long_const_re = qr/^(([0-9]+)[lL])[^\w.]/;
-my $ulong_const_re = qr/^(([0-9]+)(lu|ul))[^\w.]/i;
-my $int_const_re = qr/^([0-9]+)[^\w.]/;
-my $uint_const_re = qr/^(([0-9]+)u)[^\w.]/i;
+my $op_re = qr/^(!=|==|<=|>=|<|>|=|!|\|\||&&|--|-|\+|\*|\/|%|~|\?|:|&|->|\.(?!\d))/;
+my $kw_re = qr/^(int|long|double|signed|unsigned|void|return|if|else|do|while|for|break|continue|static|extern|char|sizeof|struct)\b/;
+my $long_const_re = qr/^((\d+)[lL])[^\w.]/;
+my $ulong_const_re = qr/^((\d+)(lu|ul))[^\w.]/i;
+my $int_const_re = qr/^(\d+)[^\w.]/;
+my $uint_const_re = qr/^((\d+)u)[^\w.]/i;
 my $fp_const_re = qr/^(
-	([0-9]*\.[0-9]+|[0-9]+\.?)e[+-]?[0-9]+
-	|[0-9]*\.[0-9]+
-	|[0-9]+\.
+	(\d*\.\d+|\d+\.?)e[+-]?\d+
+	|\d*\.\d+
+	|\d+\.
 )[^\w.]/xi;
 my $char_const_re = qr/^('
 	(
