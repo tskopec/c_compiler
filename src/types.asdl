@@ -57,7 +57,7 @@ AST_Expression =
 	 | AST_String(string val, T_Type type)
 	 | AST_SizeOf(AST_Expression expr, T_Type type)
 	 | AST_SizeOfT(T_Type of_type, T_Type type)
-	 | AST_Dot(AST_expression structure, string member, T_Type type)
+	 | AST_Dot(AST_Expression structure, string member, T_Type type)
 	 | AST_Arrow(AST_Expression pointer, string member, T_Type type)
 AST_UnaryOperator =
 	AST_Complement | AST_Negate | AST_Not

@@ -7,7 +7,7 @@ use ADT::AlgebraicTypes qw(:LEX);
 use Utils qw(unescape_str);
 
 my $sym_re = qr/^([ {} () [\] , ; ])/x;
-my $op_re = qr/^(!=|==|<=|>=|<|>|=|!|\|\||&&|--|-|\+|\*|\/|%|~|\?|:|&|->|\.(?!\d))/;
+my $op_re = qr/^(!=|==|<=|>=|<|>|=|!|\|\||&&|->|--|-|\+|\*|\/|%|~|\?|:|&|\.(?!\d))/;
 my $kw_re = qr/^(int|long|double|signed|unsigned|void|return|if|else|do|while|for|break|continue|static|extern|char|sizeof|struct)\b/;
 my $long_const_re = qr/^((\d+)[lL])[^\w.]/;
 my $ulong_const_re = qr/^((\d+)(lu|ul))[^\w.]/i;

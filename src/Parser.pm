@@ -44,17 +44,35 @@ sub parse_program {
 sub parse_declaration {
 	my ($type, $storage_class) = parse_specifiers();
 	return undef unless defined $type;
-	my $declarator = parse_declarator();
-	my ($name, $declarator_type, $params) = process_declarator($declarator, $type);
-	if ($declarator_type->is('T_FunType')) {
-		my $body = expect_maybe('LEX_Symbol', '{')
-			? parse_block()
-			: (expect('LEX_Symbol', ';') ? undef : die "missing body or semicolon");
-		return AST_FunDeclaration($name, $params, $body, $declarator_type, $storage_class);
-	} else {
-		my $init = expect_maybe('LEX_Operator', '=') ? parse_initializer() : undef;
+	if ($type->is('T_Struct') && (next_is('LEX_Symbol', '{') || next_is('LEX_Symbol', ';'))) {
+		my @members;
+		if (expect_maybe('LEX_Symbol', '{')) {
+			until (expect_maybe('LEX_Symbol', '}')) {
+				my ($member_type, $member_storage_class) = parse_specifiers();
+				die "member cant have storage class" if defined($member_storage_class);
+				my $member_declarator = parse_declarator();
+				my ($member_name, $member_declarator_type) = process_declarator($member_declarator, $member_type);
+				die "fun members not supported" if ($member_declarator_type->is('T_FunType'));
+				push @members, AST_Member($member_name, $member_declarator_type);
+				expect('LEX_Symbol', ';');
+			}
+			die "empty struct" unless @members;
+		}
 		expect('LEX_Symbol', ';');
-		return AST_VarDeclaration($name, $init, $declarator_type, $storage_class);
+		return AST_StructDeclaration($type->get('tag'), \@members);
+	} else {
+		my $declarator = parse_declarator();
+		my ($name, $declarator_type, $params) = process_declarator($declarator, $type);
+		if ($declarator_type->is('T_FunType')) {
+			my $body = expect_maybe('LEX_Symbol', '{')
+				? parse_block()
+				: (expect('LEX_Symbol', ';') ? undef : die "missing body or semicolon");
+			return AST_FunDeclaration($name, $params, $body, $declarator_type, $storage_class);
+		} else {
+			my $init = expect_maybe('LEX_Operator', '=') ? parse_initializer() : undef;
+			expect('LEX_Symbol', ';');
+			return AST_VarDeclaration($name, $init, $declarator_type, $storage_class);
+		}
 	}
 }
 
@@ -109,9 +127,9 @@ sub parse_type {
 		while (my ($word, $count) = each %freqs) {
 			die "char can be combined only with signed/unsigned" if ($count && $word !~ /^char|signed|unsigned$/);
 		}
-		return 	$freqs{signed} ? T_SChar
-			   	: $freqs{unsigned} ? T_UChar
-				: T_Char;
+		return $freqs{signed} ? T_SChar
+			   : $freqs{unsigned} ? T_UChar
+			   : T_Char;
 	}
 	return T_Struct($struct_tag) if ($freqs{struct});
 	return T_Void if ($freqs{void});
@@ -419,9 +437,19 @@ sub parse_factor {
 			die "cant parse $token as factor";
 		}
 	});
-	while (expect_maybe('LEX_Symbol', '[')) {
-		$result = AST_Subscript($result, parse_expr(0), T_DummyType);
-		expect('LEX_Symbol', ']');
+	while (my $next = expect_maybe('LEX_Symbol', '[') || expect_maybe('LEX_Operator', '->', '.')) {
+		$next->match({
+			LEX_Symbol => sub($brace) {
+				$result = AST_Subscript($result, parse_expr(0), T_DummyType);
+				expect('LEX_Symbol', ']');
+			},
+			LEX_Operator => sub($op) {
+				$result = ($op eq '->') ? AST_Arrow($result, expect('LEX_Identifier')->get('name'), T_DummyType)
+						: ($op eq '.') ? AST_Dot($result, expect('LEX_Identifier')->get('name'), T_DummyType)
+						: die "wtf $op";
+			},
+			default => sub { die "wtf $next" }
+		});
 	}
 	return $result;
 }
@@ -519,12 +547,12 @@ sub peek {
 
 sub next_is {
 	my ($tag, $val) = @_;
-	return _expect(tag => $tag, possible_vals => [ $val ], fatal => 0, consume => 0);
+	return _expect(tag => $tag, possible_vals => [ $val // () ], fatal => 0, consume => 0);
 }
 
 sub expect {
 	my ($tag, $val) = @_;
-	return _expect(tag => $tag, possible_vals => [ $val ], fatal => 1, consume => 1);
+	return _expect(tag => $tag, possible_vals => [ $val // () ], fatal => 1, consume => 1);
 }
 
 sub expect_maybe {
