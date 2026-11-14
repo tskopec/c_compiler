@@ -7,10 +7,10 @@ use ADT::AlgebraicTypes qw(:AST :C :ATT :INI :STOR :T is_ADT);
 use TypeUtils qw(/^MAX_/ get_common_type get_common_pointer_type convert_type convert_as_if_by_assignment types_equal
 	create_const get_static_init flatten_init is_arithmetic is_integer is_character is_scalar is_complete is_pointer_to_complete validate_type_specifier);
 
-our %symbol_table;
+our (%symbol_table, %type_table);
 
 sub run {
-	%symbol_table = ();
+	(%symbol_table, %type_table) = ();
 	my $ast = shift;
 	resolve_ids($ast);
 	check_type($ast);
@@ -20,14 +20,17 @@ sub run {
 #1# IDENTIFIER RESOLUTION ##########################################
 sub resolve_ids {
 	my $program = shift;
-	my $ids_map = {};
+	my ($ids_map, $tag_map) = ({}, {});
 	for my $decl (@{$program->get('declarations')}) {
 		$decl->match({
 			AST_FunDeclaration => sub($name, $params, $body, $type, $storage) {
-				resolve_fun_declaration_ids($name, $params, $body, $type, $storage, $ids_map, 0);
+				resolve_fun_declaration_ids($name, $params, $body, $type, $storage, $ids_map, $tag_map, 0);
 			},
 			AST_VarDeclaration => sub($name, $init, $type, $storage) {
-				resolve_top_level_var_declaration_ids($name, $init, $type, $storage, $ids_map);
+				resolve_top_level_var_declaration_ids($name, $init, $type, $storage, $ids_map, $tag_map);
+			},
+			AST_StructDeclaration => sub($tag, $members) {
+				resolve_struct_declaration($decl, $tag_map);
 			},
 			default => sub {
 				die "unknown declaration: $decl";
@@ -38,11 +41,12 @@ sub resolve_ids {
 
 sub resolve_fun_declaration_ids {
 	my ($name, $params, $body, $fun_type, $storage,
-		$ids_map, $in_block_scope) = @_;
+		$ids_map, $tag_map, $in_block_scope) = @_;
 	if ($in_block_scope) {
 		die "nested fun definition" if (defined $body);
 		die "static nested fun" if (is_ADT($storage, 'STOR_Static'));
 	}
+	resolve_type($fun_type, $tag_map);
 	if (exists $ids_map->{$name}) {
 		my $previous_entry = $ids_map->{$name};
 		if ($previous_entry->{from_this_scope} && !$previous_entry->{has_linkage}) {
@@ -50,27 +54,29 @@ sub resolve_fun_declaration_ids {
 		}
 	}
 	$ids_map->{$name} = { uniq_name => $name, from_this_scope => 1, has_linkage => 1 };
-	my $inner_ids_map = make_inner_scope_map($ids_map);
+	my ($new_ids, $new_tags) = make_inner_scope_map($ids_map, $tag_map);
 	for (my $i = 0; $i < @$params; $i++) {
 		my $temp_var_dec = AST_VarDeclaration($params->[$i], undef, $fun_type->get('param_types')->[$i], undef);
-		resolve_local_var_declaration_ids($temp_var_dec, $inner_ids_map);
+		resolve_local_var_declaration_ids($temp_var_dec, $new_ids, $new_tags);
 		$params->[$i] = $temp_var_dec->get('name');
 	}
 	if (defined $body) {
 		my $items = $body->get('items');
-		resolve_block_item_ids($_, $inner_ids_map) for @$items;
+		resolve_block_item_ids($_, $new_ids, $new_tags) for @$items;
 	}
 }
 
 sub resolve_top_level_var_declaration_ids {
 	my ($name, $init, $type, $storage,
-		$ids_map) = @_;
+		$ids_map, $tag_map) = @_;
+	resolve_type($type, $tag_map);
 	$ids_map->{$name} = { uniq_name => $name, from_this_scope => 1, has_linkage => 1 };
 }
 
 sub resolve_local_var_declaration_ids {
-	my ($declaration, $ids_map) = @_;
+	my ($declaration, $ids_map, $tag_map) = @_;
 	my ($name, $init, $type, $storage) = $declaration->values_in_order('AST_VarDeclaration');
+	resolve_type($type, $tag_map);
 	if (exists $ids_map->{$name}
 		&& $ids_map->{$name}{from_this_scope}
 		&& !($ids_map->{$name}{has_linkage} && is_ADT($storage, 'STOR_Extern'))) {
@@ -79,83 +85,103 @@ sub resolve_local_var_declaration_ids {
 	if (is_ADT($storage, 'STOR_Extern')) {
 		$ids_map->{$name} = { uniq_name => $name, from_this_scope => 1, has_linkage => 1 };
 	} else {
-		$declaration->set('name', unique_var_name($name));
+		$declaration->set('name', unique_name($name));
 		$ids_map->{$name} = { uniq_name => $declaration->get('name'), from_this_scope => 1, has_linkage => 0 };
-		resolve_initializer_ids($init, $ids_map) if (defined $init);
+		resolve_initializer_ids($init, $ids_map, $tag_map) if (defined $init);
 	}
 }
 
+sub resolve_struct_declaration {
+	my ($declaration, $tag_map) = @_;
+	my ($user_tag, $uniq_tag) = ($declaration->get('tag'), undef);
+	if (exists($tag_map->{$user_tag}) && $tag_map->{$user_tag}{from_this_scope}) {
+		$uniq_tag = $tag_map->{$user_tag}{uniq_tag};
+	} else {
+		$uniq_tag = unique_name($user_tag);
+		$tag_map->{$declaration->get('tag')} = { uniq_tag => $uniq_tag, from_this_scope => 1 };
+	}
+	for my $m ($declaration->get('members')->@*) {
+		resolve_type($m->get('type'), $tag_map);
+	}
+	$declaration->set('tag', $uniq_tag);
+}
+
 sub resolve_initializer_ids {
-	my ($init, $ids_map) = @_;
+	my ($init, $ids_map, $tag_map) = @_;
 	$init->match({
 		AST_SingleInit => sub($expr, $type) {
-			resolve_expr_ids($expr, $ids_map);
+			resolve_expr_ids($expr, $ids_map, $tag_map);
+			resolve_type($type, $tag_map);
 		},
 		AST_CompoundInit => sub($inits, $type) {
-			resolve_initializer_ids($_, $ids_map) for @$inits;
+			resolve_initializer_ids($_, $ids_map, $tag_map) for @$inits;
+			resolve_type($type, $tag_map);
 		},
 		default => sub { die "bad initializer type: $init" }
 	});
 }
 
 sub resolve_block_item_ids {
-	my ($item, $ids_map) = @_;
+	my ($item, $ids_map, $tag_map) = @_;
 	$item->match({
 		AST_BlockDeclaration => sub($decl) {
 			$decl->match({
 				AST_VarDeclaration => sub($name, $init, $type, $storage) {
-					resolve_local_var_declaration_ids($decl, $ids_map);
+					resolve_local_var_declaration_ids($decl, $ids_map, $tag_map);
 				},
 				AST_FunDeclaration => sub($name, $params, $body, $type, $storage) {
 					die "local fun definition: $name" if (defined $body);
-					resolve_fun_declaration_ids($name, $params, $body, $type, $storage, $ids_map, 1);
+					resolve_fun_declaration_ids($name, $params, $body, $type, $storage, $ids_map, $tag_map, 1);
 				},
+				AST_StructDeclaration => sub($tag, $members) {
+					resolve_struct_declaration($decl, $tag_map);
+				}
 			});
 		},
 		AST_BlockStatement => sub($stat) {
-			resolve_statement_ids($stat, $ids_map);
+			resolve_statement_ids($stat, $ids_map, $tag_map);
 		},
 	});
 }
 
 sub resolve_statement_ids {
-	my ($statement, $ids_map) = @_;
+	my ($statement, $ids_map, $tag_map) = @_;
 	$statement->match({
 		"AST_Return, AST_ExprStatement" => sub($e) {
-			resolve_expr_ids($e, $ids_map) if (defined $e);
+			resolve_expr_ids($e, $ids_map, $tag_map) if (defined $e);
 		},
 		AST_Null => sub() { ; },
 		AST_If => sub($cond, $then, $else) {
-			resolve_expr_ids($cond, $ids_map);
-			resolve_statement_ids($then, $ids_map);
-			resolve_statement_ids($else, $ids_map) if (defined $else);
+			resolve_expr_ids($cond, $ids_map, $tag_map);
+			resolve_statement_ids($then, $ids_map, $tag_map);
+			resolve_statement_ids($else, $ids_map, $tag_map) if (defined $else);
 		},
 		AST_Compound => sub($block) {
 			my $items = $block->get('items');
-			my $new_idents = make_inner_scope_map($ids_map);
-			resolve_block_item_ids($_, $new_idents) for @$items;
+			my ($new_ids, $new_tags) = make_inner_scope_map($ids_map, $tag_map);
+			resolve_block_item_ids($_, $new_ids, $new_tags) for @$items;
 		},
 		AST_While => sub($cond, $body, $label) {
-			resolve_expr_ids($cond, $ids_map);
-			resolve_statement_ids($body, $ids_map);
+			resolve_expr_ids($cond, $ids_map, $tag_map);
+			resolve_statement_ids($body, $ids_map, $tag_map);
 		},
 		AST_DoWhile => sub($body, $cond, $label) {
-			resolve_statement_ids($body, $ids_map);
-			resolve_expr_ids($cond, $ids_map);
+			resolve_statement_ids($body, $ids_map, $tag_map);
+			resolve_expr_ids($cond, $ids_map, $tag_map);
 		},
 		AST_For => sub($init, $cond, $post, $body, $label) {
-			my $new_idents = make_inner_scope_map($ids_map);
+			my ($new_ids, $new_tags) = make_inner_scope_map($ids_map, $tag_map);
 			$init->match({
 				AST_ForInitDeclaration => sub($decl) {
-					resolve_local_var_declaration_ids($decl, $new_idents);
+					resolve_local_var_declaration_ids($decl, $new_ids, $new_tags);
 				},
 				AST_ForInitExpression => sub($expr) {
-					resolve_opt_expr_ids($expr, $new_idents);
+					resolve_opt_expr_ids($expr, $new_ids, $new_tags);
 				}
 			});
-			resolve_opt_expr_ids($cond, $new_idents);
-			resolve_opt_expr_ids($post, $new_idents);
-			resolve_statement_ids($body, $new_idents);
+			resolve_opt_expr_ids($cond, $new_ids, $new_tags);
+			resolve_opt_expr_ids($post, $new_ids, $new_tags);
+			resolve_statement_ids($body, $new_ids, $new_tags);
 		},
 		"AST_Break, AST_Continue" => sub($label) { ; },
 		default => sub {
@@ -165,70 +191,102 @@ sub resolve_statement_ids {
 }
 
 sub resolve_opt_expr_ids {
-	my ($expr, $ids_map) = @_;
-	resolve_expr_ids($expr, $ids_map) if (defined $expr);
+	my ($expr, $ids_map, $tag_map) = @_;
+	resolve_expr_ids($expr, $ids_map, $tag_map) if (defined $expr);
 }
 
 sub resolve_expr_ids {
-	my ($expr, $ids_map) = @_;
+	my ($expr, $ids_map, $tag_map) = @_;
 	$expr->match({
 		AST_ConstantExpr => sub($const, $type) { ; },
 		AST_Cast => sub($expr, $type) {
-			resolve_expr_ids($expr, $ids_map);
+			resolve_expr_ids($expr, $ids_map, $tag_map);
 		},
 		AST_Var => sub($name, $type) {
 			$expr->set('ident', ($ids_map->{$name}{uniq_name} // die "undeclared variable $name"));
 		},
 		AST_Unary => sub($op, $e, $type) {
-			resolve_expr_ids($e, $ids_map);
+			resolve_expr_ids($e, $ids_map, $tag_map);
 		},
 		AST_Binary => sub($op, $e1, $e2, $type) {
-			resolve_expr_ids($_, $ids_map) for ($e1, $e2);
+			resolve_expr_ids($_, $ids_map, $tag_map) for ($e1, $e2);
 		},
 		AST_Assignment => sub($le, $re, $type) {
-			resolve_expr_ids($_, $ids_map) for ($le, $re);
+			resolve_expr_ids($_, $ids_map, $tag_map) for ($le, $re);
 		},
 		AST_Conditional => sub($cond, $then, $else, $type) {
-			resolve_expr_ids($_, $ids_map) for ($cond, $then, $else);
+			resolve_expr_ids($_, $ids_map, $tag_map) for ($cond, $then, $else);
 		},
 		AST_FunctionCall => sub($name, $args, $type) {
 			$expr->set('ident', ($ids_map->{$name}{uniq_name} // die "calling undeclared function $name"));
-			resolve_expr_ids($_, $ids_map) for @$args;
+			resolve_expr_ids($_, $ids_map, $tag_map) for @$args;
 		},
 		AST_Dereference => sub($e, $type) {
-			resolve_expr_ids($e, $ids_map);
+			resolve_expr_ids($e, $ids_map, $tag_map);
 		},
 		AST_AddrOf => sub($e, $type) {
-			resolve_expr_ids($e, $ids_map);
+			resolve_expr_ids($e, $ids_map, $tag_map);
 		},
 		AST_Subscript => sub($e1, $e2, $type) {
-			resolve_expr_ids($_, $ids_map) for ($e1, $e2);
+			resolve_expr_ids($_, $ids_map, $tag_map) for ($e1, $e2);
 		},
 		AST_String => sub($val, $type) { ; },
 		AST_SizeOf => sub($e, $type) {
-			resolve_expr_ids($e, $ids_map);
+			resolve_expr_ids($e, $ids_map, $tag_map);
 		},
 		AST_SizeOfT => sub($of_type, $type) { ; },
+		AST_Dot => sub($struct, $member, $type) {
+			resolve_expr_ids($_, $ids_map, $tag_map) for ($struct, $member);
+		},
+		AST_Arrow => sub($struct, $pointer, $type) {
+			resolve_expr_ids($_, $ids_map, $tag_map) for ($struct, $pointer);
+		},
 		default => sub {
 			die "unknown expression $expr"
 		}
 	});
+	resolve_type($expr->get('type'), $tag_map);
 }
 
-sub unique_var_name { # TODO inline?
+sub resolve_type {
+	my ($type, $tag_map) = @_;
+	$type->match({
+		T_Struct => sub($tag) {
+			if ($tag !~ /\.\d+$/) { # prasarna, TODO spravit to aby se kazdy typ resolvoval jenom jednou
+				die "undeclared struct $tag" unless (exists $tag_map->{$tag});
+				$type->set('tag', $tag_map->{$tag}{uniq_tag});
+			}
+		},
+		T_Pointer => sub($to_type) {
+			resolve_type($to_type, $tag_map);
+		},
+		T_Array => sub($elem_type, $size) {
+			resolve_tag($elem_type, $tag_map);
+		},
+		T_FunType => sub($param_types, $return_type) {
+			resolve_type($_, $tag_map) for (@$param_types, $return_type);
+		},
+		default => sub { ; }
+	});
+}
+
+sub unique_name {
 	return shift() . '.' . $::global_counter++;
 }
 
 sub make_inner_scope_map {
-	my $original_ids = shift;
-	my $result = {};
-	while (my ($name_in_src, $properties) = each %$original_ids) {
-		while (my ($k, $v) = each %$properties) {
-			$result->{$name_in_src}{$k} = $v;
-		}
-		$result->{$name_in_src}{from_this_scope} = 0;
-	};
-	return $result;
+	return map {
+		my $src_map = $_;
+		my $result = {};
+		while (my ($name_in_src, $properties) = each %$src_map) {
+			while (my ($k, $v) = each %$properties) {
+				$result->{$name_in_src}{$k} = $v;
+			}
+			$result->{$name_in_src}{from_this_scope} = 0;
+		};
+		$result;
+	} @_;
+
 }
 
 

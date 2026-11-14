@@ -439,7 +439,7 @@ sub parse_factor {
 	});
 	while (my $next = expect_maybe('LEX_Symbol', '[') || expect_maybe('LEX_Operator', '->', '.')) {
 		$next->match({
-			LEX_Symbol => sub($brace) {
+			LEX_Symbol => sub($bracket) {
 				$result = AST_Subscript($result, parse_expr(0), T_DummyType);
 				expect('LEX_Symbol', ']');
 			},
