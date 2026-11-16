@@ -7,8 +7,8 @@ use ADT::AlgebraicTypes qw(:AST :INI :SI :T :C is_ADT);
 
 use base 'Exporter';
 our @EXPORT_OK = qw(MAX_ULONG MAX_LONG MAX_UINT MAX_INT get_type_of_TAC get_common_type get_common_pointer_type
-	get_int_type_rank is_signed is_arithmetic is_integer is_character is_scalar is_complete is_pointer_to_complete size_of get_base_type
-	convert_type convert_as_if_by_assignment types_equal create_const flatten_init get_static_init validate_type_specifier);
+	get_int_type_rank is_signed is_arithmetic is_integer is_character is_scalar is_complete is_pointer_to_complete is_array_of_incomplete
+	size_of get_base_type convert_type convert_as_if_by_assignment types_equal create_const flatten_init get_static_init validate_type_specifier);
 
 use constant MAX_ULONG => 2 ** 64;
 use constant MAX_LONG => 2 ** 63 - 1;
@@ -37,15 +37,25 @@ sub is_character {
 }
 
 sub is_scalar {
-	return 0 == grep { $_->is('T_FunType', 'T_Void', 'T_Array') } @_;
+	return 0 == grep { $_->is('T_FunType', 'T_Void', 'T_Array', 'T_Struct') } @_;
 }
 
 sub is_complete {
-	return !shift()->is('T_Void');
+	return shift()->match({
+		T_Void => 0,
+		T_Struct => sub($tag) {
+			exists $Semantics::type_table{$tag};
+		},
+		default => 1
+	});
 }
 
 sub is_pointer_to_complete {
 	return $_[0]->is('T_Pointer') && is_complete($_[0]->get('to_type'));
+}
+
+sub is_array_of_incomplete {
+	return $_[0]->is('T_Pointer') && !is_complete($_[0]->get('elem_type'));
 }
 
 sub validate_type_specifier {
@@ -128,9 +138,28 @@ sub size_of {
 		'T_Array' => sub($elem_type, $size) {
 			return size_of($elem_type) * $size;
 		},
+		'T_Struct' => sub($tag) {
+			$Semantics::type_table{$tag}->{size};
+		},
 		ASM_ByteArray => sub($size, $alignment) { return $size },
 		ASM_Byte => 1,
 		default => sub { die "bad type $type" }
+	});
+}
+
+sub alignment_of {
+	my $type = shift;
+	return $type->match({
+		T_Struct => sub($tag) {
+			$Semantics::type_table{$tag}->{alignment};
+		},
+		T_Array => sub($elem_type, $size) {
+			return alignment_of($elem_type);
+		},
+		"T_Char, T_UChar, T_SChar" => 1,
+		"T_Int, T_UInt" => 4,
+		"T_Long, T_ULong, T_Double, T_Pointer" => 8,
+		default => sub { die "wtf" }
 	});
 }
 

@@ -5,9 +5,11 @@ use feature qw(say state isa signatures);
 
 use ADT::AlgebraicTypes qw(:AST :C :ATT :INI :STOR :T is_ADT);
 use TypeUtils qw(/^MAX_/ get_common_type get_common_pointer_type convert_type convert_as_if_by_assignment types_equal
-	create_const get_static_init flatten_init is_arithmetic is_integer is_character is_scalar is_complete is_pointer_to_complete validate_type_specifier);
+	create_const get_static_init flatten_init is_arithmetic is_integer is_character is_scalar is_complete is_pointer_to_complete
+	is_array_of_incomplete validate_type_specifier);
 
-our (%symbol_table, %type_table);
+our (%symbol_table, 	# name => { type, attrs }
+	 %type_table);		# name => { alignment, size, { member_name, member_type, offset }+ } TODO upresnit az to bude jasny
 
 sub run {
 	(%symbol_table, %type_table) = ();
@@ -401,6 +403,27 @@ sub check_type {
 						check_init_type($init, $type) if (defined $init);
 					}
 				}
+			},
+			AST_StructDeclaration => sub($tag, $members) {
+				return unless (@$members);
+				die "duplicate struct declaration: $tag" if (exists($type_table{$tag}));
+				die "duplicate members" if do { my %h = map {($_->{name}, 1)} @$members; keys(%h) != @$members};
+				die "member of incomplete type" if grep { !is_complete($_->{type}) } @$members;
+				die "member of incomplete array type" if grep { is_array_of_incomplete($_) } @$members;
+				my ($struct_alignment, $struct_size);
+				my @m_entries;
+				for my $m (@$members) {
+					my $offset = 0; #TODO
+					my $m_entry = { name => $m->get('name'), type => $m->get('type'), $offset };
+					$struct_alignment = 0; # TODO
+					$struct_size = 0; # TODO
+				}
+				$type_table{$tag} = {
+					size => $struct_size,
+					alignment => $struct_alignment,
+					members => { '*' => \@m_entries,
+								(map { ($_->{name}, $_) } @m_entries) }
+				};
 			},
 			AST_FunctionCall => sub($name, $args, $dummy_type) {
 				my ($param_types, $ret_type) = (get_symbol_attr($name, 'type'))->values_in_order('T_FunType');
