@@ -6,7 +6,8 @@ use feature qw(say state isa signatures);
 use ADT::AlgebraicTypes qw(:AST :C :ATT :INI :STOR :T is_ADT);
 use TypeUtils qw(/^MAX_/ get_common_type get_common_pointer_type convert_type convert_as_if_by_assignment types_equal
 	create_const get_static_init flatten_init is_arithmetic is_integer is_character is_scalar is_complete is_pointer_to_complete
-	is_array_of_incomplete validate_type_specifier);
+	is_array_of_incomplete validate_type_specifier alignment_of size_of);
+use Utils qw(align_to);
 
 our (%symbol_table, 	# name => { type, attrs }
 	 %type_table);		# name => { alignment, size, { member_name, member_type, offset }+ } TODO upresnit az to bude jasny
@@ -263,7 +264,7 @@ sub resolve_type {
 			resolve_type($to_type, $tag_map);
 		},
 		T_Array => sub($elem_type, $size) {
-			resolve_tag($elem_type, $tag_map);
+			resolve_type($elem_type, $tag_map);
 		},
 		T_FunType => sub($param_types, $return_type) {
 			resolve_type($_, $tag_map) for (@$param_types, $return_type);
@@ -330,6 +331,9 @@ sub check_type {
 					)
 				};
 				if ($has_body) {
+					if (grep { !is_complete($_) } ($fun_type->get('ret_type'), $fun_type->get('param_types')->@*)) {
+						die "fundef with incomplete struct type: $name";
+					}
 					for (my $i = 0; $i < @$params; $i++) {
 						$symbol_table{$params->[$i]} = { type => $fun_type->get('param_types')->[$i], attrs => ATT_LocalAttrs };
 					}
@@ -339,6 +343,9 @@ sub check_type {
 			AST_VarDeclaration => sub($name, $init, $type, $storage) {
 				validate_type_specifier($type);
 				die "void var" if $type->is('T_Void');
+				if (defined($init) && !is_complete($type) && !$storage->is('STOR_Extern')) {
+					die "defining variable of incomplete type: $name";
+				}
 	###### file scope var
 				if (is_ADT($parent_node, 'AST_Program')) {
 					if (defined $init) {
@@ -410,14 +417,16 @@ sub check_type {
 				die "duplicate members" if do { my %h = map {($_->{name}, 1)} @$members; keys(%h) != @$members};
 				die "member of incomplete type" if grep { !is_complete($_->{type}) } @$members;
 				die "member of incomplete array type" if grep { is_array_of_incomplete($_) } @$members;
-				my ($struct_alignment, $struct_size);
+				my ($struct_alignment, $struct_size) = (1, 0);
 				my @m_entries;
 				for my $m (@$members) {
-					my $offset = 0; #TODO
-					my $m_entry = { name => $m->get('name'), type => $m->get('type'), $offset };
-					$struct_alignment = 0; # TODO
-					$struct_size = 0; # TODO
+					my $m_alignment = alignment_of($m->get('type'));
+					my $m_offset = align_to($struct_size, $m_alignment);
+					push @m_entries, { name => $m->get('name'), type => $m->get('type'), offset => $m_offset };
+					$struct_alignment = $m_alignment > $struct_alignment ? $m_alignment : $struct_alignment;
+					$struct_size = $m_offset + size_of($m->get('type'));
 				}
+				$struct_size = align_to($struct_size, $struct_alignment);
 				$type_table{$tag} = {
 					size => $struct_size,
 					alignment => $struct_alignment,
@@ -696,6 +705,9 @@ sub check_type_and_decay {
 	return $expr->get('type')->match({
 		T_Array => sub($elem_type, $size) {
 			return AST_AddrOf($expr, T_Pointer($elem_type));
+		},
+		T_Struct => sub($tag) {
+			die "invalid use of incomplete structure" unless exists($type_table{$tag});
 		},
 		default => $expr
 	});
