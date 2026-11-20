@@ -10,7 +10,7 @@ use TypeUtils qw(/^MAX_/ get_common_type get_common_pointer_type convert_type co
 use Utils qw(align_to);
 
 our (%symbol_table, 	# name => { type, attrs }
-	 %type_table);		# name => { alignment, size, { member_name, member_type, offset }+ } TODO upresnit az to bude jasny
+	 %type_table);		# name => { alignment, size, members => {membr1 => { member_name, member_type, offset }, membr2 => {...}, '*' => [vseci membri] } }
 
 sub run {
 	(%symbol_table, %type_table) = ();
@@ -568,10 +568,15 @@ sub check_type {
 			},
 			AST_Conditional => sub($cond, $then, $else, $dummy_type) {
 				($cond, $then, $else) = map { check_type_and_decay($_) } ($cond, $then, $else);
-				die "must be scalar" unless (is_scalar($cond->get('type')));
-				my $common_type = $then->get('type')->is('T_Pointer') || $else->get('type')->is('T_Pointer')
+				my ($cond_type, $then_type, $else_type) = ($cond->get('type'), $then->get('type'), $else->get('type'));
+				die "must be scalar" unless (is_scalar($cond_type));
+				if ($then_type->is('T_Struct') && $else_type->is('T_Struct')
+					&& $then_type->get('tag') ne $else_type->get('tag')) {
+					die "different structures:\n\t$then_type\n\t$else_type";
+				}
+				my $common_type = $then_type->is('T_Pointer') || $else_type->is('T_Pointer')
 					? get_common_pointer_type($then, $else)
-					: get_common_type($then->get('type'), $else->get('type'));
+					: get_common_type($then_type, $else_type);
 				$node->set('cond', $cond,
 						   'then', convert_type($then, $common_type),
 						   'else', convert_type($else, $common_type),
@@ -625,6 +630,29 @@ sub check_type {
 				$node->set('type', T_ULong);
 			},
 			AST_String => sub($val, $type) { ; },
+			AST_Dot => sub($struct, $member, $dummy_type) {
+				check_type_and_decay($struct);
+				$struct->get('type')->match({
+					T_Structure => sub($tag) {
+						my $struct_entry = $type_table{$tag} // die "no struct $tag";
+						my $member_entry = $struct_entry->{$member} // die "no member $member";
+						$node->set('type', $member_entry->get('type'));
+					},
+					default => sub { die "accessing non-structure $struct" }
+				});
+			},
+			AST_Arrow => sub($pointer, $member, $dummy_type) {
+				check_type_and_decay($pointer);
+				die "not pointer $pointer" unless ((my $p_type = $pointer->get('type'))->is('T_Pointer'));
+				$p_type->get('to_type')->match({
+					T_Structure => sub($tag) {
+						my $struct_entry = $type_table{$tag} // die "no struct $tag";
+						my $member_entry = $struct_entry->{$member} // die "no member $member";
+						$node->set('type', $member_entry->get('type'));
+					},
+					default => sub { die "not pointing to struct: $p_type" }
+				});
+			},
 			default => sub {
 				check_type($_, $node) for $node->values_in_order();
 			}
@@ -707,7 +735,7 @@ sub check_type_and_decay {
 			return AST_AddrOf($expr, T_Pointer($elem_type));
 		},
 		T_Struct => sub($tag) {
-			die "invalid use of incomplete structure" unless exists($type_table{$tag});
+			exists($type_table{$tag}) ? $expr : die "invalid use of incomplete structure";
 		},
 		default => $expr
 	});
@@ -722,7 +750,13 @@ sub get_symbol_attr {
 }
 
 sub is_lval {
-	return shift()->is('AST_Var', 'AST_Dereference', 'AST_Subscript', 'AST_String');
+	return shift()->match({
+		'AST_Var, AST_Dereference, AST_Subscript, AST_String, AST_Arrow' => 1,
+		'AST_Dot' => sub($struct, $member, $type) {
+			is_lval($struct);
+		},
+		default => 0
+	});
 }
 
 #3# LOOP LABELING ###
